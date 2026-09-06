@@ -1,0 +1,41 @@
+name: Grokbox
+options:
+  bundleIdPrefix: com.wesleykeetch
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.4.0"
+    CURRENT_PROJECT_VERSION: "2"
+    SWIFT_STRICT_CONCURRENCY: complete
+    DEAD_CODE_STRIPPING: YES
+
+packages:
+  GrokboxCore:
+    path: GrokboxCore
+
+targets:
+  Grokbox:
+    type: application
+    platform: macOS
+    sources:
+      - path: Grokbox
+    dependencies:
+      - package: GrokboxCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.wesleykeetch.grokbox
+        PRODUCT_NAME: Grokbox
+        INFOPLIST_FILE: Grokbox/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Grokbox/Grokbox.entitlements
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGNING_REQUIRED: YES
+        CODE_SIGNING_ALLOWED: YES
+        ENABLE_HARDENED_RUNTIME: YES
+        GENERATE_INFOPLIST_FILE: NO
+        COMBINE_HIDPI_IMAGES: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

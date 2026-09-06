@@ -1,0 +1,8 @@
+$ xcrun swiftc -swift-version 6 -parse-as-library repro.swift -o repro && ./repro
+silent server on 127.0.0.1:<port>
+WATCHDOG: 3s timeout still had not fired after 12s
+exit=2
+
+A 3-second withTimeout, copied verbatim from IMAPConnection.swift:247-262 and wrapping the
+exact shape of fill(), never fired against a server that completes the TCP handshake and
+then sends nothing. Independently reproduces the finding in GB-003 / GB-002.

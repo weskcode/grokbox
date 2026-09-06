@@ -1,0 +1,33 @@
+# Changelog
+
+All notable changes to Grokbox are recorded here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
+[Semantic Versioning](https://semver.org/).
+
+## [Unreleased]
+
+### Added
+- Settings → Your data: export accounts (without passwords), rules, the action
+  log and saved digests as JSON; import rules from an export.
+- Unsubscribe requests are refused unless the target is an HTTPS URL on a
+  public host, and follow at most one redirect under the same rule.
+- Versioned SwiftData schema with a migration plan; the store now recovers
+  from an unreadable database instead of failing to launch.
+- Threat model, security policy, contributing guide, and an audit against the
+  Privacy Guides criteria.
+- Continuous integration on GitHub Actions (macOS 26).
+
+### Fixed
+- IMAP deadlines now tear the connection down, so a silent server can no
+  longer stall the engine for the rest of the session.
+- Stop now cancels indexing, reading, sweeping and tidy-up, including a
+  command parked on an unresponsive server.
+- Undo compares the mailbox's UIDVALIDITY recorded at sweep time against the
+  live value, so a renumbered mailbox can no longer be undone against the
+  wrong messages.
+- Idle CPU usage: a menu-bar binding loop that kept one core busy.
+- Main window not appearing at launch on macOS 26.
+
+## [0.4.0] — 2026-09-06
+
+First public source release.
