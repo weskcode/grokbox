@@ -22,7 +22,8 @@ public protocol MailProvider: Sendable {
     func openReadWrite(_ mailbox: String) async throws -> MailboxStatus
     func setFlags(uids: [UInt32], _ change: IMAPClient.FlagChange, flags: [String]) async throws
     func setGmailLabels(uids: [UInt32], _ change: IMAPClient.FlagChange, labels: [String]) async throws
-    func move(uids: [UInt32], to mailbox: String) async throws
+    @discardableResult
+    func move(uids: [UInt32], to mailbox: String) async throws -> MoveResult
     func ensureMailbox(_ name: String) async throws
 
     func finish() async
@@ -116,7 +117,8 @@ public struct IMAPMailProvider: MailProvider {
         try await client.storeGmailLabels(uids: uids, change, labels: labels)
     }
 
-    public func move(uids: [UInt32], to mailbox: String) async throws {
+    @discardableResult
+    public func move(uids: [UInt32], to mailbox: String) async throws -> MoveResult {
         try await client.move(uids: uids, to: mailbox)
     }
 
@@ -139,9 +141,40 @@ extension Array where Element == IMAPMailbox {
     }
 
     /// The Sent mailbox, used to learn who the user actually writes to.
+    /// RFC 6154 `\Sent` first; then the names providers use when they do not
+    /// advertise special-use, in the languages most accounts are set to.
     public var sentMailbox: IMAPMailbox? {
-        first(where: \.isSent)
-            ?? first { $0.name.localizedCaseInsensitiveContains("sent") }
+        if let flagged = first(where: \.isSent) { return flagged }
+        let known = ["sent", "sent mail", "sent items", "sent messages", "envoyés", "envoyes", "éléments envoyés",
+                     "gesendet", "gesendete objekte", "enviados", "elementos enviados", "inviata", "posta inviata",
+                     "verzonden", "verzonden items", "enviadas", "itens enviados", "skickat", "sendt", "lähetetyt", "wysłane"]
+        return first { box in
+            let leaf = box.displayName.split(separator: Character(box.delimiter ?? "/")).last.map(String.init) ?? box.displayName
+            return known.contains(leaf.lowercased())
+        }
+    }
+
+    /// The hierarchy delimiter in use, from whichever entry reported one.
+    public var hierarchyDelimiter: String {
+        first { $0.delimiter != nil && $0.name.caseInsensitiveCompare("INBOX") != .orderedSame }?.delimiter
+            ?? first { $0.delimiter != nil }?.delimiter ?? "/"
+    }
+
+    /// Some servers (Courier, older Dovecot setups) keep every user folder
+    /// under `INBOX.`: `INBOX.Sent`, `INBOX.Archive`. Detected when every
+    /// non-INBOX mailbox carries that prefix.
+    public var personalNamespacePrefix: String {
+        let others = filter { $0.name.caseInsensitiveCompare("INBOX") != .orderedSame }
+        guard !others.isEmpty else { return "" }
+        let prefix = "INBOX" + hierarchyDelimiter
+        return others.allSatisfy { $0.name.uppercased().hasPrefix(prefix.uppercased()) } ? prefix : ""
+    }
+
+    /// Turns Grokbox's logical folder name (`Grokbox/Newsletters`) into what
+    /// this server needs: its delimiter, its namespace prefix, modified UTF-7.
+    public func serverName(forLogical logical: String) -> String {
+        let parts = logical.split(separator: "/").map { IMAPUTF7.encode(String($0)) }
+        return personalNamespacePrefix + parts.joined(separator: hierarchyDelimiter)
     }
 
     /// Where archived mail goes on a non-Gmail server.

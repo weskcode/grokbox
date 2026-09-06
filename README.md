@@ -150,6 +150,15 @@ Bridge** running, which requires a paid Proton plan.
 GPL-3.0-or-later. See [LICENSE](LICENSE).
 
 
+## Works with any IMAP server
+
+Gmail is handled natively (labels, All Mail). Everything else — iCloud,
+Fastmail, Outlook, Yahoo, Proton via Bridge, your own Dovecot — goes through
+plain IMAP: mail is filed by moving it into folders Grokbox creates, spelled the
+way that server spells folders, and moves are undoable wherever the server
+supports UIDPLUS. Setup notes per provider are in
+[docs/SETUP-ACCOUNTS.md](docs/SETUP-ACCOUNTS.md).
+
 ## Build from source
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Two commands: `xcodegen generate`, then

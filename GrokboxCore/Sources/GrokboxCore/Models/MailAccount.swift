@@ -57,7 +57,7 @@ public enum AccountKind: String, Codable, CaseIterable, Sendable {
             + "Your normal Google password will not work."
         case .protonBridge:
             "The password shown in the Proton Mail Bridge app, not your Proton password. "
-            + "Bridge must be running."
+            + "Bridge must be running, with Settings → Advanced → Connection mode set to SSL."
         case .generic:
             "Your IMAP password, or an app-specific password if your provider issues them."
         case .demo:

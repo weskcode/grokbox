@@ -193,8 +193,10 @@ public final class DemoMailServer: @unchecked Sendable {
             guard let space = rest.firstIndex(of: " ") else { bad("MOVE syntax"); return }
             let target = Self.quotedArgument(String(rest[rest.index(after: space)...]))
             let wanted = Self.parseSet(String(rest[..<space]), max: mailbox.nextUID(in: selected) - 1)
-            mailbox.move(from: selected, uids: wanted, to: target)
-            ok("[COPYUID \(Self.uidValidity) 1 1] Moved")
+            let assigned = mailbox.move(from: selected, uids: wanted, to: target)
+            let src = wanted.sorted().map(String.init).joined(separator: ",")
+            let dst = assigned.map(String.init).joined(separator: ",")
+            ok("[COPYUID \(Self.uidValidity) \(src.isEmpty ? "0" : src) \(dst.isEmpty ? "0" : dst)] Moved")
 
         case upper.hasPrefix("CREATE"):
             mailbox.create(Self.quotedArgument(command))

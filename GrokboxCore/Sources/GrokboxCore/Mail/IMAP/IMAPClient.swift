@@ -42,6 +42,18 @@ public struct FlagUpdate: Sendable {
 public struct IMAPMailbox: Sendable, Hashable {
     public var name: String
     public var attributes: [String]
+    /// The hierarchy delimiter the server reported for this entry (`/`, `.`,
+    /// or nil for a flat namespace).
+    public var delimiter: String?
+
+    public init(name: String, attributes: [String], delimiter: String? = "/") {
+        self.name = name
+        self.attributes = attributes
+        self.delimiter = delimiter
+    }
+
+    /// The name as a person would read it: modified UTF-7 decoded.
+    public var displayName: String { IMAPUTF7.decode(name) }
 
     private func has(_ attribute: String) -> Bool {
         attributes.contains { $0.caseInsensitiveCompare(attribute) == .orderedSame }
@@ -53,6 +65,7 @@ public struct IMAPMailbox: Sendable, Hashable {
     public var isTrash: Bool { has("\\Trash") }
     public var isJunk: Bool { has("\\Junk") }
     public var isArchive: Bool { has("\\Archive") }
+    public var isDrafts: Bool { has("\\Drafts") }
     public var isSelectable: Bool { !has("\\Noselect") }
 }
 
@@ -64,6 +77,17 @@ public struct IMAPCapabilities: Sendable {
     public var supportsUIDPlus: Bool { raw.contains("UIDPLUS") }
     /// Gmail's extensions: labels as first-class, thread IDs, and so on.
     public var supportsGmailExtensions: Bool { raw.contains("X-GM-EXT-1") }
+}
+
+/// What a MOVE produced on the other side.
+public struct MoveResult: Sendable, Equatable {
+    public var targetUIDValidity: UInt32?
+    /// UIDs the moved messages now have in the target mailbox, in the order the
+    /// server listed them. Nil when the server gave no COPYUID.
+    public var targetUIDs: [UInt32]?
+    public init(targetUIDValidity: UInt32? = nil, targetUIDs: [UInt32]? = nil) {
+        self.targetUIDValidity = targetUIDValidity; self.targetUIDs = targetUIDs
+    }
 }
 
 /// What EXAMINE/SELECT reported about a mailbox.
@@ -255,13 +279,29 @@ public actor IMAPClient {
     }
 
     /// RFC 6851 `UID MOVE`. Used only on non-Gmail servers that advertise it.
-    public func move(uids: [UInt32], to mailbox: String) async throws {
+    /// `UID MOVE`. Returns the messages' UIDs in the target mailbox when the
+    /// server reports them (`[COPYUID validity src dst]`, RFC 4315), which is
+    /// what makes a move undoable. Nil when the server did not say.
+    @discardableResult
+    public func move(uids: [UInt32], to mailbox: String) async throws -> MoveResult {
+        var newUIDs: [UInt32] = []
+        var validity: UInt32?
+        var complete = true
         for chunk in Self.uidSets(uids) {
             let result = try await execute("UID MOVE \(chunk) \(Self.quoted(mailbox))")
             guard result.isOK else {
                 throw IMAPError.commandFailed(command: "UID MOVE", response: result.completionDetail)
             }
+            // COPYUID may arrive on the tagged OK or as an untagged OK.
+            let candidates = [result.completion] + result.untagged.map(\.text)
+            if let parsed = candidates.lazy.compactMap(IMAPResponseParser.parseCopyUID).first {
+                validity = parsed.validity
+                newUIDs.append(contentsOf: parsed.destination)
+            } else {
+                complete = false
+            }
         }
+        return MoveResult(targetUIDValidity: validity, targetUIDs: complete ? newUIDs : nil)
     }
 
     public func createMailbox(_ name: String) async throws {

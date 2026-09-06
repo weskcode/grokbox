@@ -12,31 +12,75 @@ public final class DemoMailbox: @unchecked Sendable {
     /// one thing that makes stored UIDs meaningless: a server renumbering.
     public var uidValidity: UInt32 = DemoMailbox.uidValidity
 
+    /// Which kind of server the demo imitates. The Gmail flavour has labels
+    /// and a virtual INBOX; the generic flavour is a plain RFC 3501 server with
+    /// real folders, a configurable delimiter, and optionally the `INBOX.`
+    /// namespace prefix some servers use.
+    public enum Flavor: Sendable, Equatable {
+        case gmail
+        case generic(delimiter: String, inboxPrefix: Bool)
+        public var isGmail: Bool { self == .gmail }
+    }
+
     public let persona: DemoPersona
+    public let flavor: Flavor
     public var username: String { persona.username }
 
     private let lock = NSLock()
     private var store: [String: [DemoMailServer.Message]]
 
-    public init(persona: DemoPersona) {
+    public init(persona: DemoPersona, flavor: Flavor = .gmail) {
         self.persona = persona
-        store = DemoCorpus.generate(persona: persona)
+        self.flavor = flavor
+        var generated = DemoCorpus.generate(persona: persona)
+        if !flavor.isGmail {
+            // A plain server has no labels: what Gmail keeps in All Mail with
+            // `\Inbox` simply lives in INBOX, and the rest is not there at all.
+            let inbox = (generated[Self.allMail] ?? []).filter { $0.labels.contains("\\Inbox") }
+                .map { var m = $0; m.labels = []; return m }
+            let sent = generated["[Gmail]/Sent Mail"] ?? []
+            generated = ["INBOX": inbox]
+            generated[flavor.folderName("Sent")] = sent.map { var m = $0; m.labels = []; return m }
+            for name in ["Archive", "Junk", "Trash", IMAPUTF7.encode("Entwürfe")] {
+                generated[flavor.folderName(name)] = []
+            }
+        }
+        store = generated
     }
 
     public var capabilities: IMAPCapabilities {
-        IMAPCapabilities(raw: ["IMAP4REV1", "UNSELECT", "IDLE", "NAMESPACE", "X-GM-EXT-1", "UIDPLUS", "MOVE"])
+        flavor.isGmail
+            ? IMAPCapabilities(raw: ["IMAP4REV1", "UNSELECT", "IDLE", "NAMESPACE", "X-GM-EXT-1", "UIDPLUS", "MOVE"])
+            : IMAPCapabilities(raw: ["IMAP4REV1", "UNSELECT", "IDLE", "NAMESPACE", "UIDPLUS", "MOVE", "SPECIAL-USE"])
     }
 
     // MARK: - Reads
 
     public func listMailboxes() -> [IMAPMailbox] {
-        [
-            IMAPMailbox(name: "INBOX", attributes: ["\\HasNoChildren"]),
-            IMAPMailbox(name: "[Gmail]", attributes: ["\\HasChildren", "\\Noselect"]),
-            IMAPMailbox(name: Self.allMail, attributes: ["\\All", "\\HasNoChildren"]),
-            IMAPMailbox(name: "[Gmail]/Sent Mail", attributes: ["\\HasNoChildren", "\\Sent"]),
-            IMAPMailbox(name: "[Gmail]/Trash", attributes: ["\\HasNoChildren", "\\Trash"]),
-        ]
+        switch flavor {
+        case .gmail:
+            return [
+                IMAPMailbox(name: "INBOX", attributes: ["\\HasNoChildren"]),
+                IMAPMailbox(name: "[Gmail]", attributes: ["\\HasChildren", "\\Noselect"]),
+                IMAPMailbox(name: Self.allMail, attributes: ["\\All", "\\HasNoChildren"]),
+                IMAPMailbox(name: "[Gmail]/Sent Mail", attributes: ["\\HasNoChildren", "\\Sent"]),
+                IMAPMailbox(name: "[Gmail]/Trash", attributes: ["\\HasNoChildren", "\\Trash"]),
+            ]
+        case .generic(let delimiter, _):
+            lock.lock(); defer { lock.unlock() }
+            return store.keys.sorted().map { name in
+                var attrs = ["\\HasNoChildren"]
+                let leaf = name.split(separator: Character(delimiter)).last.map(String.init) ?? name
+                switch leaf {
+                case "Sent": attrs.append("\\Sent")
+                case "Archive": attrs.append("\\Archive")
+                case "Junk": attrs.append("\\Junk")
+                case "Trash": attrs.append("\\Trash")
+                default: break
+                }
+                return IMAPMailbox(name: name, attributes: attrs, delimiter: delimiter)
+            }
+        }
     }
 
     public func exists(_ mailbox: String) -> Bool {
@@ -56,7 +100,7 @@ public final class DemoMailbox: @unchecked Sendable {
     }
 
     private func unlockedMessages(in mailbox: String) -> [DemoMailServer.Message] {
-        if mailbox == "INBOX" { return (store[Self.allMail] ?? []).filter { $0.labels.contains("\\Inbox") } }
+        if flavor.isGmail, mailbox == "INBOX" { return (store[Self.allMail] ?? []).filter { $0.labels.contains("\\Inbox") } }
         return store[mailbox] ?? []
     }
 
@@ -68,18 +112,19 @@ public final class DemoMailbox: @unchecked Sendable {
     public func headers(in mailbox: String, from start: Int, to end: Int) -> [FetchedHeader] {
         let all = messages(in: mailbox)
         guard start >= 1, start <= all.count else { return [] }
-        return all[(start - 1)..<min(end, all.count)].map(Self.header)
+        return all[(start - 1)..<min(end, all.count)].map { Self.header($0, gmail: flavor.isGmail) }
     }
 
     public func headers(in mailbox: String, uidsFrom start: UInt32) -> [FetchedHeader] {
-        messages(in: mailbox).filter { $0.uid >= start }.map(Self.header)
+        messages(in: mailbox).filter { $0.uid >= start }.map { Self.header($0, gmail: flavor.isGmail) }
     }
 
     public func flags(in mailbox: String, from start: Int, to end: Int) -> [FlagUpdate] {
         let all = messages(in: mailbox)
         guard start >= 1, start <= all.count else { return [] }
         return all[(start - 1)..<min(end, all.count)].map {
-            FlagUpdate(uid: $0.uid, isUnread: !$0.flags.contains("\\Seen"), isFlagged: $0.flags.contains("\\Flagged"), gmailLabels: $0.labels.sorted())
+            FlagUpdate(uid: $0.uid, isUnread: !$0.flags.contains("\\Seen"), isFlagged: $0.flags.contains("\\Flagged"),
+                       gmailLabels: flavor.isGmail ? $0.labels.sorted() : nil)
         }
     }
 
@@ -92,7 +137,7 @@ public final class DemoMailbox: @unchecked Sendable {
 
     public func store(in mailbox: String, uids: Set<UInt32>, add: Bool, labels: [String]? = nil, flags: [String]? = nil) {
         lock.lock(); defer { lock.unlock() }
-        for key in store.keys where key == mailbox || mailbox == "INBOX" || key == Self.allMail {
+        for key in store.keys where key == mailbox || (flavor.isGmail && (mailbox == "INBOX" || key == Self.allMail)) {
             store[key] = store[key]?.map { message in
                 guard uids.contains(message.uid) else { return message }
                 var updated = message
@@ -103,11 +148,20 @@ public final class DemoMailbox: @unchecked Sendable {
         }
     }
 
-    public func move(from mailbox: String, uids: Set<UInt32>, to target: String) {
+    /// Relocates messages and, like a real server, gives them fresh UIDs in
+    /// the target. Returns those UIDs in source-UID order — the COPYUID contract.
+    @discardableResult
+    public func move(from mailbox: String, uids: Set<UInt32>, to target: String) -> [UInt32] {
         lock.lock(); defer { lock.unlock() }
         let moving = (store[mailbox] ?? []).filter { uids.contains($0.uid) }
         store[mailbox] = (store[mailbox] ?? []).filter { !uids.contains($0.uid) }
-        store[target, default: []].append(contentsOf: moving)
+        var next = (store[target]?.last?.uid ?? 0) + 1
+        var assigned: [UInt32] = []
+        for var message in moving {
+            message.uid = next; assigned.append(next); next += 1
+            store[target, default: []].append(message)
+        }
+        return assigned
     }
 
     public func create(_ mailbox: String) {
@@ -117,7 +171,9 @@ public final class DemoMailbox: @unchecked Sendable {
 
     // MARK: - Rendering shared with the IMAP front
 
-    static func header(_ message: DemoMailServer.Message) -> FetchedHeader {
+    /// `gmail: false` reports no labels at all — a plain server has none, and
+    /// "no labels" is what tells the indexer that INBOX membership is literal.
+    static func header(_ message: DemoMailServer.Message, gmail: Bool = true) -> FetchedHeader {
         FetchedHeader(
             uid: message.uid,
             subject: message.subject,
@@ -127,7 +183,7 @@ public final class DemoMailbox: @unchecked Sendable {
             date: message.date,
             isUnread: !message.flags.contains("\\Seen"),
             isFlagged: message.flags.contains("\\Flagged"),
-            gmailLabels: message.labels.sorted(),
+            gmailLabels: gmail ? message.labels.sorted() : nil,
             listUnsubscribe: message.listUnsubscribe,
             listUnsubscribePost: message.oneClick ? "List-Unsubscribe=One-Click" : nil,
             listID: nil,
@@ -204,8 +260,10 @@ public struct DemoMailProvider: MailProvider {
         mailbox.store(in: try requireSelected(), uids: Set(uids), add: change == .add, labels: labels)
     }
 
-    public func move(uids: [UInt32], to target: String) async throws {
-        mailbox.move(from: try requireSelected(), uids: Set(uids), to: target)
+    @discardableResult
+    public func move(uids: [UInt32], to target: String) async throws -> MoveResult {
+        let assigned = mailbox.move(from: try requireSelected(), uids: Set(uids), to: target)
+        return MoveResult(targetUIDValidity: mailbox.uidValidity, targetUIDs: assigned)
     }
 
     public func ensureMailbox(_ name: String) async throws { mailbox.create(name) }
@@ -237,5 +295,16 @@ public enum MailProviderFactory {
             return DemoMailProvider(mailbox: mailbox)
         }
         return try await IMAPMailProvider.connect(to: account)
+    }
+}
+
+
+extension DemoMailbox.Flavor {
+    /// A folder name the way this flavour of server spells it.
+    func folderName(_ leaf: String) -> String {
+        switch self {
+        case .gmail: return leaf
+        case .generic(let delimiter, let prefixed): return (prefixed ? "INBOX" + delimiter : "") + leaf
+        }
     }
 }

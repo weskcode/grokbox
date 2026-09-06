@@ -31,7 +31,43 @@ enum IMAPResponseParser {
         }
 
         guard !name.isEmpty else { return nil }
-        return IMAPMailbox(name: name, attributes: attributes)
+        // The delimiter sits between the attributes and the name: `"/"`, `"."`, or NIL.
+        let delimiter: String?
+        if let q = rest.firstIndex(of: "\""), rest.hasPrefix("\""),
+           let q2 = rest[rest.index(after: q)...].firstIndex(of: "\""), rest.index(after: q) < q2 {
+            let d = String(rest[rest.index(after: q)..<q2]); delimiter = d == "\\\\" ? "\\" : d
+        } else if rest.uppercased().hasPrefix("NIL") {
+            delimiter = nil
+        } else {
+            delimiter = "/"
+        }
+        return IMAPMailbox(name: name, attributes: attributes, delimiter: delimiter)
+    }
+
+    // MARK: - COPYUID (RFC 4315)
+
+    /// `a5 OK [COPYUID 1725000000 10,12:14 301:303] Success` → validity and the
+    /// destination UIDs, expanded in order.
+    static func parseCopyUID(_ text: String) -> (validity: UInt32, destination: [UInt32])? {
+        guard let open = text.range(of: "[COPYUID ") else { return nil }
+        guard let close = text[open.upperBound...].firstIndex(of: "]") else { return nil }
+        let parts = text[open.upperBound..<close].split(separator: " ")
+        guard parts.count == 3, let validity = UInt32(parts[0]) else { return nil }
+        return (validity, expandUIDSet(String(parts[2])))
+    }
+
+    /// `10,12:14` → `[10, 12, 13, 14]`.
+    static func expandUIDSet(_ set: String) -> [UInt32] {
+        var out: [UInt32] = []
+        for piece in set.split(separator: ",") {
+            let bounds = piece.split(separator: ":")
+            if bounds.count == 2, let a = UInt32(bounds[0]), let b = UInt32(bounds[1]) {
+                out.append(contentsOf: min(a, b)...max(a, b))
+            } else if let one = UInt32(piece) {
+                out.append(one)
+            }
+        }
+        return out
     }
 
     // MARK: - CAPABILITY

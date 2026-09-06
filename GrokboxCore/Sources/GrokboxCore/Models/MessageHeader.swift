@@ -178,6 +178,13 @@ public final class CleanupAction {
     /// different messages. 0 means "recorded before this was tracked".
     public var uidValidity: UInt32 = 0
 
+    /// For a MOVE on a non-Gmail server: where the messages went, what UIDs
+    /// they have there, and that mailbox's validity at the time. Undo moves
+    /// them back from here. Empty for label-based (Gmail) archives.
+    public var targetMailbox: String?
+    public var targetUIDs: [UInt32] = []
+    public var targetUIDValidity: UInt32 = 0
+
     /// Messages the sweep guard kept out of this action, and why.
     public var heldUIDs: [UInt32] = []
     public var heldSummary: String?

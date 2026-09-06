@@ -7,6 +7,14 @@ All notable changes to Grokbox are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- Plain IMAP servers are first-class: folders are created with the server's
+  own hierarchy delimiter and namespace prefix, mailbox names in modified
+  UTF-7 are decoded and encoded, the Sent folder is found by special-use flag
+  or by its name in twenty languages, and archives done by MOVE are undoable
+  when the server reports the new message IDs (COPYUID).
+- A generic-server flavour of the demo mailbox, and end-to-end tests of every
+  feature against it and a Courier-style `INBOX.`-prefixed server.
+- Transport handshake tests against Gmail, iCloud, Outlook, Yahoo and Fastmail.
 - Settings → Your data: export accounts (without passwords), rules, the action
   log and saved digests as JSON; import rules from an export.
 - Unsubscribe requests are refused unless the target is an HTTPS URL on a

@@ -25,6 +25,40 @@ ADR-0002 covers the alternative.
 Gmail can require that IMAP be enabled: Gmail → Settings → Forwarding and
 POP/IMAP → Enable IMAP.
 
+## iCloud Mail
+
+1. Turn on two-factor authentication for the Apple Account.
+2. Go to account.apple.com → Sign-In and Security → App-Specific Passwords → generate one.
+3. In Grokbox: Add Account → Other IMAP. Server `imap.mail.me.com`, port 993, TLS.
+   Username is the full iCloud address; password is the app-specific password.
+
+## Outlook.com / Microsoft 365
+
+Microsoft is phasing out password sign-in for IMAP in favour of OAuth, which
+Grokbox does not implement yet. If your account still allows an app password
+(Security → Advanced security options → App passwords), use: server
+`outlook.office365.com`, port 993, TLS, Other IMAP.
+
+## Yahoo Mail
+
+Account Security → Generate app password. Server `imap.mail.yahoo.com`, port
+993, TLS, Other IMAP.
+
+## Fastmail
+
+Settings → Privacy & Security → Third-party apps → New app password, scoped to
+Mail. Server `imap.fastmail.com`, port 993, TLS, Other IMAP.
+
+## Any other IMAP server
+
+Add Account → Other IMAP and enter the server and port from your provider.
+Grokbox tries the provider's published autoconfig first and fills the fields
+when it finds one. On a plain server (no Gmail labels) Grokbox files mail by
+**moving** it into folders it creates under `Grokbox/`, spelled with whatever
+hierarchy delimiter and namespace prefix the server uses (`INBOX.Grokbox.Newsletters`
+on a Courier-style server, for instance). Moves are undoable when the server
+reports the new message IDs (UIDPLUS), which every major provider does.
+
 ## Proton Mail
 
 Proton does not offer IMAP directly. You need **Proton Mail Bridge**, which
@@ -34,7 +68,9 @@ decrypts locally and exposes a normal IMAP server on your machine.
 2. Install Bridge from proton.me and sign in.
 3. Bridge shows a per-account username and a **Bridge-specific password** — this
    is not your Proton password. Copy it.
-4. In Grokbox: Add Account → Proton Mail (via Bridge), paste both.
+4. In Bridge → Settings → Advanced, set **Connection mode** to **SSL**. Grokbox does not
+   speak STARTTLS.
+5. In Grokbox: Add Account → Proton Mail (via Bridge), paste both.
 5. Bridge must be running whenever Grokbox syncs.
 
 Defaults are `127.0.0.1`, port 1143.

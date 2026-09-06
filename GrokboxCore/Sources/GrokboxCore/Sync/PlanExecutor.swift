@@ -77,13 +77,19 @@ public final class PlanExecutor {
 
             let capabilities = await provider.capabilities
             let isGmail = capabilities.supportsGmailExtensions
+            // Folder names as this server spells them: its delimiter, its
+            // namespace prefix, modified UTF-7. Gmail takes the logical name.
+            var serverFolder: [String: String] = [:]
             if !isGmail, items.contains(where: \.archive) {
                 guard capabilities.supportsMove else {
                     phase = .failed("This server does not support MOVE, so Grokbox cannot archive safely. Mark-read still works.")
                     return
                 }
+                let mailboxes = try await provider.discoverMailboxes()
                 for folder in Set(items.map(\.folder)) {
-                    try await provider.ensureMailbox(folder)
+                    let name = mailboxes.serverName(forLogical: folder)
+                    serverFolder[folder] = name
+                    try await provider.ensureMailbox(name)
                 }
             }
 
@@ -133,13 +139,21 @@ public final class PlanExecutor {
                         }
                         if archive.errorMessage == nil { markSwept(uids: uids, in: account, swept: true, address: item.cluster.address) }
                     } else {
-                        // MOVE assigns new UIDs in the target mailbox and does not tell
-                        // us what they are, so this one cannot be undone from here.
+                        // MOVE gives the messages new UIDs in the target. Servers with
+                        // UIDPLUS report them (COPYUID), and that is what makes the
+                        // move undoable; without it the action is recorded as final.
+                        let target = serverFolder[item.folder] ?? item.folder
                         let archive = record(.archive, for: item, uids: uids, account: account, labelName: item.folder, undoable: false, uidValidity: openValidity)
                         archive.heldUIDs = verdict.held.map(\.uid)
                         archive.heldSummary = verdict.summary
+                        archive.targetMailbox = target
                         await run(archive) {
-                            try await provider.move(uids: uids, to: item.folder)
+                            let moved = try await provider.move(uids: uids, to: target)
+                            if let newUIDs = moved.targetUIDs, newUIDs.count == uids.count {
+                                archive.targetUIDs = newUIDs
+                                archive.targetUIDValidity = moved.targetUIDValidity ?? 0
+                                archive.isUndoable = true
+                            }
                         }
                         if archive.errorMessage == nil { markSwept(uids: uids, in: account, swept: true, address: item.cluster.address) }
                     }
@@ -188,15 +202,29 @@ public final class PlanExecutor {
             activeProvider = provider
             defer { activeProvider = nil; Task { await provider.finish() } }
 
-            let status = try await provider.openReadWrite(action.mailbox)
-            try guardUndo(status, action: action, account: account)
             switch action.kind {
+            case .archive where action.targetMailbox != nil && !action.targetUIDs.isEmpty:
+                // A MOVE on a plain server: bring the messages back from the
+                // folder they went to. The guard runs against *that* mailbox.
+                let target = action.targetMailbox!
+                let status = try await provider.openReadWrite(target)
+                if let live = status.uidValidity, action.targetUIDValidity != 0, live != action.targetUIDValidity {
+                    throw IMAPError.mailboxChanged
+                }
+                try await provider.move(uids: action.targetUIDs, to: action.mailbox)
+                markSwept(uids: action.uids, in: account, swept: false, address: action.senderAddress)
             case .archive:
+                let status = try await provider.openReadWrite(action.mailbox)
+                try guardUndo(status, action: action, account: account)
                 try await provider.setGmailLabels(uids: action.uids, .add, labels: ["\\Inbox"])
                 markSwept(uids: action.uids, in: account, swept: false, address: action.senderAddress)
             case .markRead:
+                let status = try await provider.openReadWrite(action.mailbox)
+                try guardUndo(status, action: action, account: account)
                 try await provider.setFlags(uids: action.uids, .remove, flags: ["\\Seen"])
             case .label:
+                let status = try await provider.openReadWrite(action.mailbox)
+                try guardUndo(status, action: action, account: account)
                 if let label = action.labelName {
                     try await provider.setGmailLabels(uids: action.uids, .remove, labels: [label])
                 }
