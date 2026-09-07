@@ -7,6 +7,12 @@ All notable changes to Grokbox are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- Cleanup settings: three named approaches (Gentle, Balanced, Thorough) plus
+  individual dials. Choose where swept mail goes — filed into folders,
+  archived, or moved to the provider's Trash — separately for promotions;
+  protect recent mail and the newest few from each sender; and let Grokbox
+  unsubscribe automatically from senders that clearly qualify. Every policy
+  states in a sentence what it will do, above the Sweep button.
 - UI tests for the phone app (tabs, swipe to Done, Undo, search, Sweep,
   Settings), run in CI on a simulator.
 - A rules-only demo reader (`--stub-model`) so demos, screenshots and tests
@@ -44,6 +50,13 @@ All notable changes to Grokbox are recorded here. The format follows
 - Continuous integration on GitHub Actions (macOS 26).
 
 ### Fixed
+- The Sweep button promised a message count that ignored the policy's own
+  guards. It now previews them, so the number shown is the number that moves,
+  and says how many are being held back.
+- The phone's Sweep screen kept a plan built before indexing finished, so a
+  full mailbox could read as "nothing to sweep".
+- "Erase everything Grokbox knows" left the settings behind, including the
+  cleanup policy.
 - A model that failed on every message was reported as "nothing new to
   read". The tidy-up now says reading failed, and why, in plain words.
 - IMAP deadlines now tear the connection down, so a silent server can no

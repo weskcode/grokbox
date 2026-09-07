@@ -68,6 +68,37 @@ final class GrokboxiOSUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Instagram"].exists)
     }
 
+    /// Changing the approach in Settings must change what Sweep says it will
+    /// do, and what it proposes — the policy is not decoration.
+    func testCleanupPolicyChangesTheSweep() {
+        app.tabBars.buttons["Sweep"].tap()
+        wait(app.navigationBars["Sweep"], 20)
+        let gentleButton = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Archive'")).firstMatch
+        wait(gentleButton, 90)
+        let gentleLabel = gentleButton.label
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Never unsubscribes'")).firstMatch.exists,
+                      "the default policy states that it never unsubscribes")
+
+        app.tabBars.buttons["Settings"].tap()
+        wait(app.staticTexts["How Grokbox cleans"], 20)
+        app.buttons["Thorough"].tap()
+
+        app.tabBars.buttons["Sweep"].tap()
+        wait(app.navigationBars["Sweep"], 20)
+        let thoroughSummary = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Unsubscribes automatically'")).firstMatch
+        wait(thoroughSummary, 20)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'promotions go to the Trash'")).firstMatch.exists,
+                      "Thorough trashes promotions, and says so")
+        let thoroughButton = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Archive'")).firstMatch
+        wait(thoroughButton, 30)
+        XCTAssertNotEqual(gentleLabel, thoroughButton.label, "a more aggressive policy proposes more mail")
+
+        // Put it back, so the setting does not leak into other tests.
+        app.tabBars.buttons["Settings"].tap()
+        wait(app.buttons["Gentle"], 20)
+        app.buttons["Gentle"].tap()
+    }
+
     func testSweepListsPlanAndSettingsHasNoOllama() {
         app.tabBars.buttons["Sweep"].tap()
         wait(app.navigationBars["Sweep"], 20)

@@ -17,7 +17,6 @@ struct SettingsView: View {
     @AppStorage("grokbox.readLimit") private var readLimit = 25
     @AppStorage("grokbox.indexDepth") private var indexDepth = 1_000
     @AppStorage("grokbox.notify") private var notify = false
-    @AppStorage("grokbox.guardTransactional") private var guardTransactional = true
 
     @State private var confirmingErase = false
     @State private var exportDocument: ExportFile?
@@ -93,11 +92,7 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
 
-            Section("Sweep guard") {
-                Toggle("Hold receipts, orders, appointments and security mail out of sweeps", isOn: $guardTransactional)
-                Text("Flagged mail and anything the model marked as needing you are always held, regardless. Held messages stay in the inbox and are listed on the action in Activity.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
+            CleanupPolicyEditor(policy: Bindable(state).policy)
 
             Section("Budgets") {
                 Stepper("Read up to \(readLimit) messages per pass", value: $readLimit, in: 10...500, step: 10)

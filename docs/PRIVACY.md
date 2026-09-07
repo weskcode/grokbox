@@ -8,7 +8,7 @@
 |---|---|---|---|
 | **Your IMAP server** (e.g. `imap.gmail.com:993`) | Index, Read, Sweep, Tidy-up | IMAP commands. Credentials over TLS. Header and body reads are `PEEK`, so nothing is marked read by looking. | It is the product; remove the account. |
 | **`127.0.0.1:11434`** (Ollama) | Read, if you chose Ollama | Subject, sender, and up to 3,000 characters of body text per message | Choose Apple's model instead, or none. Loopback only — the code refuses any other host. |
-| **A sender's unsubscribe URL** | Only when *you* click Unsubscribe on that sender | An RFC 8058 POST to the HTTPS URL the sender put in their own `List-Unsubscribe` header | Do not click it. |
+| **A sender's unsubscribe URL** | When you click Unsubscribe, or — only if you turn it on in Settings — automatically during a sweep for senders that meet the conditions you set | An RFC 8058 POST to the HTTPS URL the sender put in their own `List-Unsubscribe` header | Do not click it. |
 
 That is the complete list. The demo mailboxes run entirely inside the app's
 process — there is no listening socket anywhere in the shipped app, and the

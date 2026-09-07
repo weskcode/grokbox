@@ -34,8 +34,10 @@ TLS handshake with `imap.gmail.com` (no credentials are sent).
 - **Nothing leaves the machine that is not in `docs/PRIVACY.md`.** A pull
   request that adds an outbound request must add the row first.
 - **No third-party dependencies.** The engine builds with stock Xcode.
-- **No message is ever deleted.** "Get rid of it" means unsubscribe, file, and
-  write a rule.
+- **No message is ever destroyed.** There is no code path that sets `\Deleted`
+  and none that issues `EXPUNGE`. Moving to the provider's own Trash is allowed
+  when the user has chosen it, because they can take it back until the provider
+  empties it; see ADR-0019.
 - **No telemetry, ever.** Not opt-in, not anonymised, not "just crash reports".
 - **Every action is undoable** from Activity, and every automatic action must
   explain itself in one line a tired person can read.

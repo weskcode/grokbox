@@ -42,16 +42,29 @@ public enum SweepGuard {
         public var subject: String
         public var isFlagged: Bool
         public var importance: Importance?
+        public var receivedAt: Date
 
-        public init(uid: UInt32, subject: String, isFlagged: Bool, importance: Importance?) {
+        public init(uid: UInt32, subject: String, isFlagged: Bool, importance: Importance?, receivedAt: Date = .distantPast) {
             self.uid = uid
             self.subject = subject
             self.isFlagged = isFlagged
             self.importance = importance
+            self.receivedAt = receivedAt
         }
     }
 
-    public static func check(_ facts: [MessageFacts], keepTransactional: Bool) -> Verdict {
+    /// The whole check, under a policy. Order matters only for the *reason*
+    /// reported; a message held for any reason is held.
+    public static func check(_ facts: [MessageFacts], policy: CleanupPolicy, now: Date = Date()) -> Verdict {
+        // "Keep the newest N from this sender" is decided across the set, so
+        // work it out before walking the messages.
+        let keepNewest: Set<UInt32> = policy.keepNewestPerSender > 0
+            ? Set(facts.sorted { $0.receivedAt > $1.receivedAt }.prefix(policy.keepNewestPerSender).map(\.uid))
+            : []
+        let recentCutoff: Date? = policy.protectRecentDays > 0
+            ? Calendar.current.date(byAdding: .day, value: -policy.protectRecentDays, to: now)
+            : nil
+
         var allowed: [UInt32] = []
         var held: [Held] = []
         for fact in facts {
@@ -59,13 +72,26 @@ public enum SweepGuard {
                 held.append(Held(uid: fact.uid, reason: "flagged"))
             } else if fact.importance == .needsYou {
                 held.append(Held(uid: fact.uid, reason: "need you"))
-            } else if keepTransactional, looksTransactional(fact.subject) {
+            } else if let cutoff = recentCutoff, fact.receivedAt > cutoff {
+                held.append(Held(uid: fact.uid, reason: "too recent"))
+            } else if keepNewest.contains(fact.uid) {
+                held.append(Held(uid: fact.uid, reason: "newest from this sender"))
+            } else if policy.guardTransactional, looksTransactional(fact.subject) {
                 held.append(Held(uid: fact.uid, reason: "look transactional"))
             } else {
                 allowed.append(fact.uid)
             }
         }
         return Verdict(allowed: allowed, held: held)
+    }
+
+    /// Older call site, kept so existing callers and tests still read clearly.
+    public static func check(_ facts: [MessageFacts], keepTransactional: Bool) -> Verdict {
+        var policy = CleanupPolicy.gentle
+        policy.guardTransactional = keepTransactional
+        policy.protectRecentDays = 0
+        policy.keepNewestPerSender = 0
+        return check(facts, policy: policy)
     }
 
     public static func looksTransactional(_ subject: String) -> Bool {

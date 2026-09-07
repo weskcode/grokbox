@@ -15,6 +15,16 @@ final class AppState {
     let maintainer: Maintainer
     private let context: ModelContext
 
+    /// How aggressively Grokbox cleans. Held here so every screen sees a
+    /// change the moment it is made — a stale Sweep plan after changing the
+    /// policy is the difference between a setting and a decoration.
+    var policy: CleanupPolicy = .current {
+        didSet {
+            guard oldValue != policy else { return }
+            CleanupPolicy.current = policy
+        }
+    }
+
     /// Set once at launch if the index had to be rebuilt or cannot be written.
     /// Shown as a banner until dismissed — silently losing someone's index and
     /// saying nothing would be the worst possible behaviour here.
@@ -131,7 +141,7 @@ final class AppState {
         }
         if options.runAll {
             Log.note("run-all starting for \(accounts.count) account(s), model=\(model?.name ?? "none")")
-            await maintainer.run(accounts: accounts, model: model, settings: .load())
+            await maintainer.run(accounts: accounts, model: model, settings: .load(), policy: policy)
             Log.note("run-all finished — \(maintainer.phase.label)")
         }
         if options.demoSweep {
@@ -285,7 +295,7 @@ final class AppState {
 
     /// Tidy up and refresh the cross-account summary; what the menu bar calls.
     func tidyUp(_ accounts: [MailAccount]) async {
-        await maintainer.run(accounts: accounts, model: model, settings: .load())
+        await maintainer.run(accounts: accounts, model: model, settings: .load(), policy: policy)
         _ = try? DigestBuilder.build(for: accounts, in: context)
     }
 
@@ -343,6 +353,11 @@ final class AppState {
         for action in (try? context.fetch(FetchDescriptor<CleanupAction>())) ?? [] { context.delete(action) }
         for snapshot in (try? context.fetch(FetchDescriptor<MailboxSnapshot>())) ?? [] { context.delete(snapshot) }
         try? context.save()
+        // "Erase everything Grokbox knows" has to include the settings that
+        // decide what it does, or the next sweep runs under a policy the
+        // person thought they had wiped.
+        policy = .gentle
+        MailboxSnapshotDefaults.reset()
     }
 }
 

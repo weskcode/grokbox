@@ -8,6 +8,17 @@ import SwiftData
 @MainActor
 @Suite(.serialized)
 struct DemoFlowTests {
+    /// These tests exercise the sweep *mechanics*, so they fix the policy
+    /// rather than inheriting whatever the user's default happens to be:
+    /// file everything into folders, mark it read, unsubscribe from nothing.
+    private var sweepEverything: CleanupPolicy {
+        var policy = CleanupPolicy.thorough
+        policy.promotionDisposition = nil
+        policy.unsubscribe = .never
+        policy.markRead = true
+        return policy
+    }
+
     private func makeContainer() throws -> ModelContainer {
         let schema = Schema([MailAccount.self, MessageHeader.self, ContactedAddress.self, CleanupAction.self, SenderRule.self, MailboxSnapshot.self, SenderProfile.self, InboxDigest.self])
         return try ModelContainer(for: schema, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
@@ -64,7 +75,7 @@ struct DemoFlowTests {
         #expect(megamart.cluster.supportsOneClickUnsubscribe)
 
         // 3. Plan and apply (the Sweep screen)
-        let plan = CleanupPlan.suggested(from: assessed, rules: RuleStore.all(in: context))
+        let plan = CleanupPlan.suggested(from: assessed, rules: RuleStore.all(in: context), policy: sweepEverything)
         #expect(!plan.isEmpty)
         #expect(plan.items.allSatisfy { $0.cluster.address != "alice@adamsfamily.example" }, "never proposes a contact")
         #expect(plan.items.first { $0.cluster.address == "offers@megamart.example" }?.folder == "Grokbox/Promotions")
@@ -74,7 +85,7 @@ struct DemoFlowTests {
         let planned = plan.enabledMessageCount
 
         let executor = PlanExecutor(modelContext: context)
-        await executor.apply(plan, to: account)
+        await executor.apply(plan, to: account, policy: sweepEverything)
         guard case .finished = executor.phase else { Issue.record("apply failed: \(executor.phase.label)"); return }
 
         let actionsSoFar = try context.fetch(FetchDescriptor<CleanupAction>())
@@ -112,7 +123,7 @@ struct DemoFlowTests {
         let maintainer = Maintainer(modelContext: context, engine: engine, executor: executor)
         RuleStore.set(.keep, for: "hello@morningdigest.example", in: context)
         let digestInboxBefore = server.messages(in: "INBOX").filter { $0.fromAddress == "hello@morningdigest.example" }.count
-        await maintainer.run(accounts: [account], model: nil, settings: .init(isAutoEnabled: false, intervalMinutes: 30, readLimit: 10, indexDepth: 100))
+        await maintainer.run(accounts: [account], model: nil, settings: .init(isAutoEnabled: false, intervalMinutes: 30, readLimit: 10, indexDepth: 100), policy: sweepEverything)
         guard case .finished = maintainer.phase else { Issue.record("maintain failed: \(maintainer.phase.label)"); return }
         #expect(server.messages(in: "INBOX").filter { $0.fromAddress == "offers@megamart.example" }.isEmpty, "sweep rule re-applied")
         #expect(server.messages(in: "INBOX").filter { $0.fromAddress == "hello@morningdigest.example" }.count == digestInboxBefore, "keep rule respected")
@@ -262,7 +273,11 @@ struct DigestTests {
         #expect(first.asText.contains("Start with:"))
 
         let executor = PlanExecutor(modelContext: context)
-        await executor.apply(CleanupPlan.suggested(from: SenderProfileBuilder.assessments(for: account, in: context)), to: account)
+        var sweepAll = CleanupPolicy.thorough
+        sweepAll.promotionDisposition = nil
+        sweepAll.unsubscribe = .never
+        await executor.apply(CleanupPlan.suggested(from: SenderProfileBuilder.assessments(for: account, in: context), policy: sweepAll),
+                             to: account, policy: sweepAll)
         let second = try DigestBuilder.build(for: [account], in: context)
         #expect(second.sweptToday > 0)
         #expect(second.pendingBulkSenders < first.pendingBulkSenders)
