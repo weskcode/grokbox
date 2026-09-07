@@ -7,6 +7,15 @@ All notable changes to Grokbox are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- Setup runs the moment an account is added: it confirms the password was
+  accepted, says what it found on the server, asks how much mail to look at
+  and how tidy you want things, then indexes and reads while showing progress
+  — and ends with what it found. Re-runnable from the account's context menu.
+- An account that has never synced now says so in the sidebar and offers to
+  get started, instead of showing an empty screen.
+- In-app instructions for every provider's app password, with a button that
+  opens the right page. Gmail, iCloud, Yahoo, Fastmail, Outlook and Proton,
+  matched by provider or by server name.
 - Per-sender overrides: tell Grokbox where one sender's mail goes regardless of
   your policy ("always bin this shop"), and whether it may ever be
   unsubscribed from automatically — in both directions, so a sender can be

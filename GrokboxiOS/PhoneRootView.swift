@@ -10,6 +10,7 @@ struct PhoneRootView: View {
     @Query(sort: \MailAccount.createdAt) private var accounts: [MailAccount]
     @State private var scope: UUID?          // nil = all accounts
     @State private var addingAccount = false
+    @State private var onboarding: MailAccount?
     /// `--section senders` at launch opens on that tab (screenshots, tests).
     @State private var tab: AppSection = LaunchOptions.current.section ?? .brief
 
@@ -32,7 +33,10 @@ struct PhoneRootView: View {
                 }
             }
         }
-        .sheet(isPresented: $addingAccount) { PhoneAddAccountView() }
+        .sheet(isPresented: $addingAccount) { PhoneAddAccountView(onCreate: { onboarding = $0 }) }
+        .sheet(item: $onboarding) { account in
+            NavigationStack { AccountOnboarding(account: account, state: state) }
+        }
         .task {
             Log.note("phone root appeared")
             await state.startIfNeeded()

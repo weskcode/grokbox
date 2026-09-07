@@ -53,10 +53,7 @@ struct AddAccountSheet: View {
                     .autocorrectionDisabled()
                 SecureField("Password", text: $password)
 
-                Text(kind.credentialHint)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                CredentialGuide(kind: kind, host: host)
 
                 Section("Connection") {
                     TextField("Server", text: $host)

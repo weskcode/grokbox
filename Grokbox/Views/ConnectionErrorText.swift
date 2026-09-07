@@ -7,7 +7,7 @@ enum ConnectionErrorText {
         let text = error.localizedDescription
         if text.localizedCaseInsensitiveContains("AUTHENTICATIONFAILED") || text.localizedCaseInsensitiveContains("Invalid credentials") {
             switch kind {
-            case .gmail: return "Google rejected the sign-in. Use an App Password (not your Google password), and make sure IMAP is enabled in Gmail settings."
+            case .gmail: return "Google rejected the sign-in. This is almost always because a normal Google password was used — Google requires a 16-character App Password. Press “Show me how” above for the steps."
             case .protonBridge: return "Bridge rejected the sign-in. Use the password shown inside the Proton Mail Bridge app."
             default: return "The server rejected the username or password."
             }

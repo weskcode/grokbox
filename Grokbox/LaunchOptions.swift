@@ -23,6 +23,8 @@ struct LaunchOptions {
     var selftest = false
     /// Read with the rules-only demo reader instead of a model (screenshots, UI tests).
     var stubModel = false
+    /// Opens the setup flow for the first account (for checking it renders).
+    var onboard = false
     /// Diagnostic: render only part of the UI. bare | sidebar | detail | full (default).
     var ui = "full"
     /// Diagnostic: menu-bar content variant. text | query | state | full (default).
@@ -43,6 +45,7 @@ struct LaunchOptions {
         options.catchUp = args.contains("--catch-up")
         options.selftest = args.contains("--selftest")
         options.stubModel = args.contains("--stub-model")
+        options.onboard = args.contains("--onboard")
         if let i = args.firstIndex(of: "--ui"), i + 1 < args.count { options.ui = args[i + 1] }
         if let i = args.firstIndex(of: "--mb"), i + 1 < args.count { options.menuBar = args[i + 1] }
         if let i = args.firstIndex(of: "--scene"), i + 1 < args.count { options.scene = args[i + 1] }
