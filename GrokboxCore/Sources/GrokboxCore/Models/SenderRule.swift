@@ -13,9 +13,34 @@ public final class SenderRule {
     public var createdAt: Date = Date()
     public var timesApplied: Int = 0
 
+    /// Where this sender's mail goes, overriding the policy. Nil means "do
+    /// whatever the policy says for this kind of sender" — the common case.
+    /// This is how someone says "always bin MegaMart" without turning the
+    /// whole policy up.
+    public var dispositionRaw: String?
+
+    /// Overrides the policy's automatic unsubscribe for this sender alone.
+    /// Nil follows the policy; false means never, even under Thorough; true
+    /// means yes, if the sender has a one-click link.
+    public var autoUnsubscribeOverride: Bool?
+
     public var decision: RuleDecision {
         get { RuleDecision(rawValue: decisionRaw) ?? .sweep }
         set { decisionRaw = newValue.rawValue }
+    }
+
+    public var disposition: CleanupPolicy.Disposition? {
+        get { dispositionRaw.flatMap(CleanupPolicy.Disposition.init(rawValue:)) }
+        set { dispositionRaw = newValue?.rawValue }
+    }
+
+    /// One line describing everything this rule does, for the UI.
+    public var summary: String {
+        var parts = [decision.label]
+        if let disposition { parts.append("→ \(disposition.label.lowercased())") }
+        if autoUnsubscribeOverride == false { parts.append("never unsubscribe") }
+        if autoUnsubscribeOverride == true { parts.append("unsubscribe when possible") }
+        return parts.joined(separator: ", ")
     }
 
     public init(address: String, decision: RuleDecision) {
@@ -46,6 +71,37 @@ public enum RuleStore {
         return Dictionary(rules.map { ($0.address, $0.decision) }, uniquingKeysWith: { a, _ in a })
     }
 
+    /// Every rule, whole — what the plan needs to honour per-sender overrides.
+    public static func overrides(in context: ModelContext) -> [String: SenderOverride] {
+        let rules = (try? context.fetch(FetchDescriptor<SenderRule>())) ?? []
+        return Dictionary(rules.map { ($0.address, SenderOverride(decision: $0.decision, disposition: $0.disposition, autoUnsubscribe: $0.autoUnsubscribeOverride)) },
+                          uniquingKeysWith: { a, _ in a })
+    }
+
+    /// Sets or clears the per-sender disposition without touching the
+    /// sweep/keep decision.
+    public static func setDisposition(_ disposition: CleanupPolicy.Disposition?, for address: String, in context: ModelContext) {
+        let rule = existingOrNew(address, in: context)
+        rule.disposition = disposition
+        try? context.save()
+    }
+
+    public static func setAutoUnsubscribe(_ allowed: Bool?, for address: String, in context: ModelContext) {
+        let rule = existingOrNew(address, in: context)
+        rule.autoUnsubscribeOverride = allowed
+        try? context.save()
+    }
+
+    private static func existingOrNew(_ address: String, in context: ModelContext) -> SenderRule {
+        let descriptor = FetchDescriptor<SenderRule>(predicate: #Predicate { $0.address == address })
+        if let existing = try? context.fetch(descriptor).first { return existing }
+        // A disposition on its own implies "sweep this sender": you would not
+        // say where mail goes for a sender you never sweep.
+        let rule = SenderRule(address: address, decision: .sweep)
+        context.insert(rule)
+        return rule
+    }
+
     public static func set(_ decision: RuleDecision, for address: String, in context: ModelContext) {
         let descriptor = FetchDescriptor<SenderRule>(predicate: #Predicate { $0.address == address })
         if let existing = try? context.fetch(descriptor).first {
@@ -70,5 +126,19 @@ public enum RuleStore {
             rule.timesApplied += 1
         }
         try? context.save()
+    }
+}
+
+
+/// A sender's rule, flattened for the planner.
+public struct SenderOverride: Sendable, Equatable {
+    public var decision: RuleDecision
+    public var disposition: CleanupPolicy.Disposition?
+    public var autoUnsubscribe: Bool?
+
+    public init(decision: RuleDecision, disposition: CleanupPolicy.Disposition? = nil, autoUnsubscribe: Bool? = nil) {
+        self.decision = decision
+        self.disposition = disposition
+        self.autoUnsubscribe = autoUnsubscribe
     }
 }

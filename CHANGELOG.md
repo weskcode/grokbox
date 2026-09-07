@@ -7,6 +7,10 @@ All notable changes to Grokbox are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- Per-sender overrides: tell Grokbox where one sender's mail goes regardless of
+  your policy ("always bin this shop"), and whether it may ever be
+  unsubscribed from automatically — in both directions, so a sender can be
+  exempt under Thorough or opted in under Gentle.
 - Cleanup settings: three named approaches (Gentle, Balanced, Thorough) plus
   individual dials. Choose where swept mail goes — filed into folders,
   archived, or moved to the provider's Trash — separately for promotions;

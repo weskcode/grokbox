@@ -395,3 +395,37 @@ real RFC 8058 one-click endpoint, a bulk category, a minimum message count, a
 minimum unread ratio, and by default no evidence the user ever wrote back. It
 runs last, after the sweep succeeded, and is recorded as non-undoable with a
 plain sentence saying so.
+
+---
+
+## ADR-0021 — Versioned schemas need their own model types, so additive changes get none
+
+**Status:** accepted
+
+An attempt to add a `GrokboxSchemaV2` alongside V1 crashed the app on launch:
+
+```
+NSInvalidArgumentException: Duplicate version checksums detected.
+```
+
+Both versions pointed at the same live `@Model` types, so they described an
+identical shape and hashed identically; SwiftData rejects a migration stage
+between two versions it cannot tell apart. The V2 was a label, not a version,
+and the test that "proved" the migration was vacuous — it wrote the store using
+the current types under the V1 name, so no old shape was ever exercised.
+
+The rule that follows:
+
+- **Additive changes** (a new optional property with no default) need no new
+  version and no stage. SwiftData migrates them in place. Bump the version
+  identifier so the store records which shape wrote it, and stop there.
+- **A breaking change** (rename, retype, remove) needs a real second version,
+  which means copying the affected `@Model` types into an enum namespace for
+  the old version, so the two schemas genuinely differ. The stage goes between
+  those, and the test must write with the old namespace and read with the new.
+
+`GrokboxStore.swift` carries this as a comment where the next person will hit
+it. What is tested now is the property that actually protects an install: an
+unreadable store is moved aside rather than deleted, and the app still opens —
+verified against the real store on the developer's machine, which gained both
+new columns in place with 4,950 messages and 19 rules intact.
