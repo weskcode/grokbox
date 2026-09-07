@@ -19,8 +19,16 @@ public struct CleanupPlan: Sendable {
         /// Set when the policy says this sender qualifies for an automatic
         /// one-click unsubscribe as part of the sweep.
         public var unsubscribe: Bool
+        /// How many of this sender's messages the guard will actually take,
+        /// and how many it will hold back, under the current policy. Nil until
+        /// `previewGuard` has run — the plan alone cannot know, because the
+        /// reasons live on individual messages.
+        public var guardedCount: Int?
+        public var heldCount: Int = 0
 
-        public var messageCount: Int { cluster.pendingUIDs.count }
+        /// What a sweep will really touch: the guard's answer where it is
+        /// known, the sender's pending mail otherwise.
+        public var messageCount: Int { guardedCount ?? cluster.pendingUIDs.count }
 
         /// Where the swept mail goes — the category's folder, never a generic bin.
         public var folder: String { cluster.category.folderName }
@@ -100,6 +108,25 @@ public struct CleanupPlan: Sendable {
                         unsubscribe: qualifiesForAutoUnsubscribe($0.cluster, policy: policy)) }
         return CleanupPlan(items: items)
     }
+
+    /// Runs the message-level guard over the plan so the count shown to the
+    /// user is the count that will happen. The executor checks again at run
+    /// time against live data; this is the honest preview, not the authority.
+    public mutating func previewGuard(policy: CleanupPolicy, now: Date = Date(),
+                                      facts: (SenderCluster) -> [SweepGuard.MessageFacts]) {
+        items = items.map { item in
+            var item = item
+            let verdict = SweepGuard.check(facts(item.cluster), policy: policy, now: now)
+            item.guardedCount = verdict.allowed.count
+            item.heldCount = verdict.held.count
+            return item
+        }
+        // A sender whose every message is held has nothing left to propose.
+        items.removeAll { $0.guardedCount == 0 }
+    }
+
+    /// How many messages the guard is holding back across the plan.
+    public var heldMessageCount: Int { enabledItems.reduce(0) { $0 + $1.heldCount } }
 
     public var enabledItems: [Item] { items.filter(\.isEnabled) }
     /// Senders this plan will unsubscribe from without asking.

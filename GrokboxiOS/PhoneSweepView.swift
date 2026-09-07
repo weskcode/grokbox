@@ -7,13 +7,27 @@ struct PhoneSweepView: View {
     @Environment(AppState.self) private var state
     @Environment(\.modelContext) private var modelContext
     @Query private var rules: [SenderRule]
+    /// Observed so the plan rebuilds when an index or a sweep changes the
+    /// profiles underneath it — a plan built before indexing finished is
+    /// empty, and staying empty is worse than being wrong.
+    @Query private var profiles: [SenderProfile]
     @State private var plan: CleanupPlan?
+
+    init(account: MailAccount) {
+        self.account = account
+        let id = account.id
+        _profiles = Query(filter: #Predicate<SenderProfile> { $0.accountID == id })
+    }
 
     var body: some View {
         List {
             Section {
-                Text(CleanupPolicy.current.summary)
+                Text(state.policy.summary)
                     .font(.footnote).foregroundStyle(.secondary)
+                if let plan, plan.heldMessageCount > 0 {
+                    Label("Holding back \(plan.heldMessageCount.formatted()) message\(plan.heldMessageCount == 1 ? "" : "s") under this policy.", systemImage: "hand.raised")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
                 if let plan, !plan.autoUnsubscribeItems.isEmpty {
                     Label("Will also unsubscribe from \(plan.autoUnsubscribeItems.count) sender\(plan.autoUnsubscribeItems.count == 1 ? "" : "s"). That cannot be undone.",
                           systemImage: "hand.raised")
@@ -24,7 +38,7 @@ struct PhoneSweepView: View {
                 } else if let plan, !plan.isEmpty {
                     Button {
                         let toApply = plan
-                        Task { await state.executor.apply(toApply, to: account, policy: CleanupPolicy.current); self.plan = buildPlan() }
+                        Task { await state.executor.apply(toApply, to: account, policy: state.policy); self.plan = buildPlan() }
                     } label: {
                         Label("Archive \(plan.enabledMessageCount.formatted()) messages from \(plan.enabledItems.count) senders", systemImage: "wind")
                     }
@@ -54,13 +68,18 @@ struct PhoneSweepView: View {
         .navigationTitle("Sweep")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: account.id) { plan = buildPlan() }
+        .onChange(of: state.policy) { plan = buildPlan() }
+        .onChange(of: profiles.map(\.updatedAt)) { plan = buildPlan() }
+        .onChange(of: rules.count) { plan = buildPlan() }
         .refreshable { plan = buildPlan() }
     }
 
     private func buildPlan() -> CleanupPlan {
         let assessed = SenderProfileBuilder.assessments(for: account, in: modelContext)
         let ruleMap = Dictionary(rules.map { ($0.address, $0.decision) }, uniquingKeysWith: { a, _ in a })
-        return CleanupPlan.suggested(from: assessed, rules: ruleMap, policy: CleanupPolicy.current)
+        var plan = CleanupPlan.suggested(from: assessed, rules: ruleMap, policy: state.policy)
+        GuardPreview.apply(to: &plan, policy: state.policy, account: account, in: modelContext)
+        return plan
     }
 
     private func binding(for id: String) -> Binding<Bool> {

@@ -50,6 +50,13 @@ All notable changes to Grokbox are recorded here. The format follows
 - Continuous integration on GitHub Actions (macOS 26).
 
 ### Fixed
+- The Sweep button promised a message count that ignored the policy's own
+  guards. It now previews them, so the number shown is the number that moves,
+  and says how many are being held back.
+- The phone's Sweep screen kept a plan built before indexing finished, so a
+  full mailbox could read as "nothing to sweep".
+- "Erase everything Grokbox knows" left the settings behind, including the
+  cleanup policy.
 - A model that failed on every message was reported as "nothing new to
   read". The tidy-up now says reading failed, and why, in plain words.
 - IMAP deadlines now tear the connection down, so a silent server can no

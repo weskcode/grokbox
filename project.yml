@@ -52,6 +52,8 @@ targets:
       - path: Grokbox/LaunchOptions.swift
       - path: Grokbox/Views/ConnectionErrorText.swift
       - path: Grokbox/Views/CleanupPolicyEditor.swift
+      - path: Grokbox/DefaultsReset.swift
+      - path: Grokbox/GuardPreview.swift
     dependencies:
       - package: GrokboxCore
     settings:

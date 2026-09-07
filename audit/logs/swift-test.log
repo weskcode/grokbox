@@ -1,422 +1,427 @@
 Building for debugging...
 [0/2] Write swift-version-3CD7052B146186F2.txt
-Build complete! (0.14s)
-Test Suite 'All tests' started at 2026-09-07 02:59:18.915.
-Test Suite 'All tests' passed at 2026-09-07 02:59:18.917.
+Build complete! (0.13s)
+Test Suite 'All tests' started at 2026-09-07 03:34:14.666.
+Test Suite 'All tests' passed at 2026-09-07 03:34:14.667.
 	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
 􀟈  Test run started.
 􀄵  Testing Library Version: 1902
 􀄵  Target Platform: arm64e-apple-macos14.0
+􀟈  Suite IMAPDeadlineTests started.
+􀟈  Suite ProviderHandshakeTests started.
+􀟈  Suite ListAndCopyUIDParsingTests started.
+􀟈  Suite HeuristicAnalyzerTests started.
+􀟈  Suite RealServerTLSTests started.
+􀟈  Suite DemoFlowTests started.
+􀟈  Suite DigestTests started.
+􀟈  Suite RuleTests started.
+􀟈  Suite LinkHygieneTests started.
+􀟈  Suite UnsubscribeHTTPTests started.
+􀟈  Suite DataExportTests started.
+􀟈  Suite ConnectionSafetyTests started.
+􀟈  Suite CatchUpTests started.
+􀟈  Suite CleanupPolicyModelTests started.
+􀟈  Suite ImportanceScorerTests started.
+􀟈  Suite BodyExtractorTests started.
+􀟈  Suite ParserTests started.
+􀟈  Suite SnoozeTests started.
+􀟈  Suite GuardPreviewTests started.
+􀟈  Suite AutoconfigDiscoveryTests started.
+􀟈  Suite UnsubscribeTests started.
+􀟈  Suite OllamaProviderTests started.
+􀟈  Suite DueDateParserTests started.
+􀟈  Suite PolicyExecutionTests started.
+􀟈  Suite DemoServerTests started.
+􀟈  Suite ThreadKeyTests started.
+􀟈  Suite StoreVersioningTests started.
+􀟈  Suite SweepGuardTests started.
+􀟈  Suite IMAPUTF7Tests started.
+􀟈  Suite PolicyPlanTests started.
+􀟈  Suite PriorityScorerTests started.
+􀟈  Suite PolicyGuardTests started.
 􀟈  Suite MaintainerFailureTests started.
 􀟈  Suite CleanupPlanTests started.
-􀟈  Suite SweepGuardTests started.
-􀟈  Suite OllamaProviderTests started.
-􀟈  Suite AutoconfigParsingTests started.
-􀟈  Suite DigestTests started.
-􀟈  Suite PolicyPlanTests started.
-􀟈  Suite ThreadKeyTests started.
-􀟈  Suite UndoSafetyTests started.
-􀟈  Suite IMAPClientTests started.
-􀟈  Suite StoreVersioningTests started.
-􀟈  Suite DemoFlowTests started.
-􀟈  Suite PriorityScorerTests started.
-􀟈  Suite DueDateParserTests started.
-􀟈  Suite GenericServerFlowTests started.
-􀟈  Suite IMAPDeadlineTests started.
-􀟈  Suite RuleTests started.
-􀟈  Suite UnsubscribeTests started.
-􀟈  Suite UnsubscribeHTTPTests started.
-􀟈  Suite LinkHygieneTests started.
-􀟈  Suite MailboxNamingTests started.
-􀟈  Suite CleanupPolicyModelTests started.
-􀟈  Suite SenderProfileTests started.
-􀟈  Suite AutoconfigDiscoveryTests started.
-􀟈  Suite PublicHostPolicyTests started.
-􀟈  Suite ProviderHandshakeTests started.
-􀟈  Suite ImportanceScorerTests started.
-􀟈  Suite SnoozeTests started.
-􀟈  Suite ListAndCopyUIDParsingTests started.
-􀟈  Suite BodyExtractorTests started.
 􀟈  Suite UnsubscribeRedirectTests started.
+􀟈  Suite SenderProfileTests started.
+􀟈  Suite AutoconfigParsingTests started.
 􀟈  Suite SenderCategorizerTests started.
-􀟈  Suite SanitizerTests started.
-􀟈  Suite CatchUpTests started.
-􀟈  Suite RealServerTLSTests started.
 􀟈  Suite RecommenderTests started.
-􀟈  Suite DataExportTests started.
-􀟈  Suite DemoServerTests started.
-􀟈  Suite ConnectionSafetyTests started.
-􀟈  Suite HeuristicAnalyzerTests started.
-􀟈  Suite ParserTests started.
-􀟈  Suite PolicyExecutionTests started.
-􀟈  Test suggestedPlanIsBulkOnly() started.
-􀟈  Suite IMAPUTF7Tests started.
-􀟈  Test transactionalGuardCanBeTurnedOff() started.
-􀟈  Test brokenModelIsReportedNotHidden() started.
-􀟈  Test parsesTheRealGmailEntry() started.
-􀟈  Suite PolicyGuardTests started.
-􀟈  Test holdsFlaggedNeedsYouAndTransactional() started.
-􀟈  Test resolvesLocalPartPlaceholderAndSkipsPOP() started.
-􀟈  Test wholeWordMatching() started.
-􀟈  Test prefersSSLEntryWhenBothOffered() started.
-􀟈  Test starttlsOnlyIsReportedNotSilentlyDowngraded() started.
-􀟈  Test dispositionComesFromThePolicyPerCategory() started.
-􀟈  Test rejectsMalformedAddresses() started.
-􀟈  Test doesNotOverStrip() started.
-􀟈  Test readsThroughTheJSONContract() started.
-􀟈  Test keyIncludesAccountAndSender() started.
-􀟈  Test undoRefusesAfterTheMailboxIsRenumbered() started.
-􀟈  Test anExplicitRuleBeatsTheContactedGuard() started.
-􀟈  Test stripsReplyAndForwardPrefixes() started.
-􀟈  Test openingInMemoryNeverReportsRecovery() started.
-􀟈  Test indexSweepUndoAndIncrementalSync() started.
-􀟈  Test schemaIsVersionedAndCoversEveryModel() started.
-􀟈  Test autoUnsubscribeIsConservative() started.
-􀟈  Test digestReflectsTheInboxAndKeepsHistory() started.
-􀟈  Test contactedSendersAreNotProposedWhenGuarded() started.
-􀟈  Test plainIsNeverAccepted() started.
-􀟈  Test noiseScoresNothing() started.
-􀟈  Test overdueIsNamed() started.
-􀟈  Test refusesToGuess() started.
-􀟈  Test billDueSoonOutranksCasualReply() started.
-􀟈  Test flaggedAndKnownContactsRise() started.
-􀟈  Test weekdays() started.
-􀟈  Test unansweredMailAgesUpButCaps() started.
-􀟈  Test readDeadlineActuallyFires() started.
-􀟈  Test plainIMAPServerSweepsAndUndoesByMoving() started.
-􀟈  Test relativePhrases() started.
-􀟈  Test prefersHTTPSTarget() started.
-􀟈  Test keepRuleRemovesBulkSender() started.
-􀟈  Test logsInAndReadsCapabilities() started.
-􀟈  Test alreadySweptSendersAreSkipped() started.
-􀟈  Test plainTextBodiesAreScannedToo() started.
-􀟈  Test punycodeAndBareIPAreFlagged() started.
-􀟈  Test maintenancePlanOnlyContainsApprovedSenders() started.
-􀟈  Test newslettersLinkingOutAreFine() started.
-􀟈  Test oneClickPostsTheRFC8058Body() started.
-􀟈  Test dotDelimiterWithInboxNamespace() started.
-􀟈  Test gmailStyleKeepsLogicalNames() started.
-􀟈  Test nonASCIIFoldersAreEncodedForTheServer() started.
-􀟈  Test ordinalsAndMonths() started.
-􀟈  Test textHrefMismatchIsAPhishingTell() started.
-􀟈  Test sentIsFoundWithoutSpecialUse() started.
-􀟈  Test mailtoOnlyIsReportedNotSent() started.
-􀟈  Test summaryNamesWhatWillHappen() started.
-􀟈  Test onlyTrashCarriesAWarning() started.
-􀟈  Test registrableDomainHandlesCountryCodes() started.
-􀟈  Test discoversThroughTheISPDBSendingOnlyTheDomain() started.
-􀟈  Test sweepRulePromotesReviewSender() started.
-􀟈  Test presetsAreDistinctAndRecognisable() started.
-􀟈  Test accountMailThatNeverLinksHomeIsFlagged() started.
-􀟈  Test plainHTTPIsRefused() started.
-􀟈  Test promotionsCanDifferFromEverythingElse() started.
-􀟈  Test profilesMatchTheInMemoryClustering() started.
-􀟈  Test serviceRefusesToPostToPrivateAddresses() started.
-􀟈  Test defaultIsTheGentlePreset() started.
-􀟈  Test privateNetworksAreRefused() started.
-􀟈  Test tlsHandshakeAndCapabilities(provider:) started.
-􀟈  Test bulkSendersSkipTheModel() started.
-􀟈  Test modelBudgetIsCapped() started.
+􀟈  Suite UndoSafetyTests started.
+􀟈  Suite GenericServerFlowTests started.
+􀟈  Suite MailboxNamingTests started.
+􀟈  Suite SanitizerTests started.
+􀟈  Suite IMAPClientTests started.
 􀟈  Test copyUIDExpandsRangesInOrder() started.
-􀟈  Test loopbackIsRefused() started.
-􀟈  Test roundTripsThroughDefaults() started.
-􀟈  Test unreadMailFromAContactNeedsYou() started.
-􀟈  Test prefersPlainPartOfMultipart() started.
-􀟈  Test oldMailIsOutsideTheWindow() started.
-􀟈  Test publicHTTPSIsAllowed() started.
-􀟈  Test contactedSenderIsAPerson() started.
-􀟈  Test truncates() started.
-􀟈  Test stripsLeakedLabels() started.
-􀟈  Test redirectToLoopbackIsNotFollowed() started.
 􀟈  Test listLineCarriesTheDelimiter() started.
-􀟈  Test softSellLanguageIsPromotion() started.
-􀟈  Test stripsHTMLWhenThatIsAllThereIs() started.
-􀟈  Test editorialWithUnsubscribeIsNewsletter() started.
-􀟈  Test salesLanguageWithUnsubscribeIsPromotion() started.
-􀟈  Test gmailGreetsOverTLS() started.
-􀟈  Test noReplyReceiptsAreNotNotifications() started.
-􀟈  Test ambiguousStaysUnknownForTheModel() started.
-􀟈  Test peopleFlagsAndReceiptsAreAlwaysKept() started.
-􀟈  Test receiptsAreTransactional() started.
-􀟈  Test importingRulesIntoAFreshStoreIsIdempotent() started.
-􀟈  Test newsletterYouReadIsKept() started.
-􀟈  Test notificationsAreMuted() started.
-􀟈  Test neverOpenedPromoGetsUnsubscribe() started.
-􀟈  Test insecureModesRefuseRemoteHosts() started.
+􀟈  Test tlsHandshakeAndCapabilities(provider:) started.
+􀟈  Test someoneYouWriteToIsKeptEvenIfTheyLookBulk() started.
+􀟈  Test newsletterYouNeverOpenIsBulk() started.
 􀟈  Test sortsBulkFirst() started.
-􀟈  Test automatedActivityIsNotification() started.
-􀟈  Test planRoutesByCategoryFolder() started.
-􀟈  Test newsletterYouSkimIsFiled() started.
-􀟈  Test snoozedMailLeavesTheBriefAndTheDigestUntilItsTime() started.
+􀟈  Test gmailGreetsOverTLS() started.
+􀟈  Test accountMailThatNeverLinksHomeIsFlagged() started.
+􀟈  Test plainTextBodiesAreScannedToo() started.
+􀟈  Test readDeadlineActuallyFires() started.
+􀟈  Test flaggedMailIsKept() started.
+􀟈  Suite PublicHostPolicyTests started.
+􀟈  Test keepRuleRemovesBulkSender() started.
+􀟈  Test registrableDomainHandlesCountryCodes() started.
+􀟈  Test alreadySweptSendersAreSkipped() started.
+􀟈  Test punycodeAndBareIPAreFlagged() started.
+􀟈  Test digestReflectsTheInboxAndKeepsHistory() started.
+􀟈  Test indexSweepUndoAndIncrementalSync() started.
+􀟈  Test textHrefMismatchIsAPhishingTell() started.
+􀟈  Test newslettersLinkingOutAreFine() started.
 􀟈  Test catchUpReadsOnlyPeopleAndRecords() started.
 􀟈  Test roundTripsRulesActionsAndDigests() started.
-􀟈  Test newsletterYouNeverOpenIsBulk() started.
-􀟈  Test flaggedMailIsKept() started.
-􀟈  Test someoneYouWriteToIsKeptEvenIfTheyLookBulk() started.
-􀟈  Test corpusIsDeterministicAndPlausible() started.
-􀟈  Test parsesInternalDate() started.
-􀟈  Test parsesListLines() started.
-􀟈  Test parsesAddresses() started.
+􀟈  Test prefersPlainPartOfMultipart() started.
+􀟈  Test sweepRulePromotesReviewSender() started.
+􀟈  Test truncates() started.
+􀟈  Test insecureModesRefuseRemoteHosts() started.
 􀟈  Test parsesExistsAndCapability() started.
-􀟈  Test decodesRFC2047() started.
-􀟈  Test parsesUIDValidityAndLabels() started.
+􀟈  Test parsesListLines() started.
+􀟈  Test importingRulesIntoAFreshStoreIsIdempotent() started.
+􀟈  Test onlyTrashCarriesAWarning() started.
+􀟈  Test oneClickPostsTheRFC8058Body() started.
+􀟈  Test parsesInternalDate() started.
+􀟈  Test presetsAreDistinctAndRecognisable() started.
+􀟈  Test roundTripsThroughDefaults() started.
+􀟈  Test parsesAddresses() started.
+􀟈  Test maintenancePlanOnlyContainsApprovedSenders() started.
+􀟈  Test stripsHTMLWhenThatIsAllThereIs() started.
+􀟈  Test promotionsCanDifferFromEverythingElse() started.
+􀟈  Test defaultIsTheGentlePreset() started.
+􀟈  Test summaryNamesWhatWillHappen() started.
+􀟈  Test bulkSendersSkipTheModel() started.
+􀟈  Test oldMailIsOutsideTheWindow() started.
 􀟈  Test foldsHeaders() started.
+􀟈  Test modelBudgetIsCapped() started.
+􀟈  Test decodesRFC2047() started.
+􀟈  Test weekdays() started.
+􀟈  Test snoozedMailLeavesTheBriefAndTheDigestUntilItsTime() started.
+􀟈  Test unreadMailFromAContactNeedsYou() started.
+􀟈  Test prefersHTTPSTarget() started.
+􀟈  Test previewMatchesWhatTheSweepActuallyDoes() started.
+􀟈  Test readsThroughTheJSONContract() started.
 􀟈  Test trashDispositionMovesToTrashAndIsUndoable() started.
-􀟈  Test case passing 1 argument provider → Gmail to tlsHandshakeAndCapabilities(provider:) started.
-􀟈  Test roundTripsNonASCII() started.
+􀟈  Test ordinalsAndMonths() started.
+􀟈  Test parsesUIDValidityAndLabels() started.
+􀟈  Test corpusIsDeterministicAndPlausible() started.
+􀟈  Test mailtoOnlyIsReportedNotSent() started.
+􀟈  Test schemaIsVersionedAndCoversEveryModel() started.
+􀟈  Test stripsReplyAndForwardPrefixes() started.
+􀟈  Test openingInMemoryNeverReportsRecovery() started.
+􀟈  Test transactionalGuardCanBeTurnedOff() started.
+􀟈  Test keyIncludesAccountAndSender() started.
 􀟈  Test matchesKnownServerSpellings() started.
+􀟈  Test discoversThroughTheISPDBSendingOnlyTheDomain() started.
+􀟈  Test refusesToGuess() started.
+􀟈  Test doesNotOverStrip() started.
+􀟈  Test wholeWordMatching() started.
+􀟈  Test holdsFlaggedNeedsYouAndTransactional() started.
+􀟈  Test unansweredMailAgesUpButCaps() started.
+􀟈  Test flaggedAndKnownContactsRise() started.
+􀟈  Test brokenModelIsReportedNotHidden() started.
+􀟈  Test relativePhrases() started.
 􀟈  Test newestFromEachSenderIsKept() started.
+􀟈  Test recentMailIsHeldBack() started.
+􀟈  Test overdueIsNamed() started.
 􀟈  Test malformedInputIsLeftAlone() started.
-􀟈  Test flaggedAndTransactionalStillWinOverEverything() started.
 􀟈  Test thoroughPolicyHoldsBackNothingRoutine() started.
-􁁛  Test wholeWordMatching() passed after 0.008 seconds.
-􁁛  Test prefersSSLEntryWhenBothOffered() passed after 0.008 seconds.
-􁁛  Test starttlsOnlyIsReportedNotSilentlyDowngraded() passed after 0.008 seconds.
-􁁛  Test transactionalGuardCanBeTurnedOff() passed after 0.008 seconds.
-􁁛  Test resolvesLocalPartPlaceholderAndSkipsPOP() passed after 0.008 seconds.
-􁁛  Test keyIncludesAccountAndSender() passed after 0.008 seconds.
-􁁛  Test doesNotOverStrip() passed after 0.008 seconds.
+􀟈  Test billDueSoonOutranksCasualReply() started.
+􀟈  Test redirectToLoopbackIsNotFollowed() started.
+􀟈  Test anExplicitRuleBeatsTheContactedGuard() started.
+􀟈  Test suggestedPlanIsBulkOnly() started.
+􀟈  Test profilesMatchTheInMemoryClustering() started.
+􀟈  Test plainIsNeverAccepted() started.
+􀟈  Test noiseScoresNothing() started.
+􀟈  Test dispositionComesFromThePolicyPerCategory() started.
+􀟈  Test contactedSendersAreNotProposedWhenGuarded() started.
+􀟈  Test ambiguousStaysUnknownForTheModel() started.
+􀟈  Test roundTripsNonASCII() started.
+􀟈  Test flaggedAndTransactionalStillWinOverEverything() started.
+􀟈  Test parsesTheRealGmailEntry() started.
+􀟈  Test noReplyReceiptsAreNotNotifications() started.
+􀟈  Test resolvesLocalPartPlaceholderAndSkipsPOP() started.
+􀟈  Test rejectsMalformedAddresses() started.
+􀟈  Test editorialWithUnsubscribeIsNewsletter() started.
+􀟈  Test softSellLanguageIsPromotion() started.
+􀟈  Test automatedActivityIsNotification() started.
+􀟈  Test starttlsOnlyIsReportedNotSilentlyDowngraded() started.
+􀟈  Test contactedSenderIsAPerson() started.
+􀟈  Test peopleFlagsAndReceiptsAreAlwaysKept() started.
+􀟈  Test receiptsAreTransactional() started.
+􀟈  Test prefersSSLEntryWhenBothOffered() started.
+􀟈  Test neverOpenedPromoGetsUnsubscribe() started.
+􀟈  Test salesLanguageWithUnsubscribeIsPromotion() started.
+􀟈  Test newsletterYouSkimIsFiled() started.
+􀟈  Test autoUnsubscribeIsConservative() started.
+􀟈  Test newsletterYouReadIsKept() started.
+􀟈  Test dotDelimiterWithInboxNamespace() started.
+􀟈  Test nonASCIIFoldersAreEncodedForTheServer() started.
+􀟈  Test gmailStyleKeepsLogicalNames() started.
+􀟈  Test planRoutesByCategoryFolder() started.
+􀟈  Test undoRefusesAfterTheMailboxIsRenumbered() started.
+􀟈  Test case passing 1 argument provider → Gmail to tlsHandshakeAndCapabilities(provider:) started.
+􀟈  Test notificationsAreMuted() started.
+􀟈  Test sentIsFoundWithoutSpecialUse() started.
+􀟈  Test plainIMAPServerSweepsAndUndoesByMoving() started.
+􀟈  Test stripsLeakedLabels() started.
+􀟈  Test logsInAndReadsCapabilities() started.
+􁁛  Test copyUIDExpandsRangesInOrder() passed after 0.009 seconds.
+􁁛  Test plainTextBodiesAreScannedToo() passed after 0.009 seconds.
+􀟈  Test privateNetworksAreRefused() started.
+􀟈  Test serviceRefusesToPostToPrivateAddresses() started.
+􀟈  Test plainHTTPIsRefused() started.
+􀟈  Test loopbackIsRefused() started.
+􁁛  Test accountMailThatNeverLinksHomeIsFlagged() passed after 0.009 seconds.
+􁁛  Test listLineCarriesTheDelimiter() passed after 0.010 seconds.
+􁁛  Test textHrefMismatchIsAPhishingTell() passed after 0.009 seconds.
+􁁛  Test punycodeAndBareIPAreFlagged() passed after 0.009 seconds.
+􁁛  Test newslettersLinkingOutAreFine() passed after 0.009 seconds.
+􁁛  Test registrableDomainHandlesCountryCodes() passed after 0.009 seconds.
+􁁛  Test prefersPlainPartOfMultipart() passed after 0.009 seconds.
+􁁛  Test alreadySweptSendersAreSkipped() passed after 0.009 seconds.
+􁁛  Test keepRuleRemovesBulkSender() passed after 0.009 seconds.
+􁁛  Test parsesExistsAndCapability() passed after 0.009 seconds.
+􁁛  Test sweepRulePromotesReviewSender() passed after 0.009 seconds.
+􀟈  Test publicHTTPSIsAllowed() started.
+􁁛  Test onlyTrashCarriesAWarning() passed after 0.009 seconds.
+􁁛  Test presetsAreDistinctAndRecognisable() passed after 0.009 seconds.
+􁁛  Test parsesListLines() passed after 0.009 seconds.
+􁁛  Test someoneYouWriteToIsKeptEvenIfTheyLookBulk() passed after 0.010 seconds.
+􁁛  Test newsletterYouNeverOpenIsBulk() passed after 0.010 seconds.
+􁁛  Test insecureModesRefuseRemoteHosts() passed after 0.009 seconds.
+􁁛  Test sortsBulkFirst() passed after 0.010 seconds.
+􁁛  Test flaggedMailIsKept() passed after 0.010 seconds.
+􁁛  Test parsesAddresses() passed after 0.009 seconds.
+􁁛  Test promotionsCanDifferFromEverythingElse() passed after 0.009 seconds.
+􁁛  Test stripsHTMLWhenThatIsAllThereIs() passed after 0.009 seconds.
+􁁛  Test maintenancePlanOnlyContainsApprovedSenders() passed after 0.009 seconds.
+􁁛  Test foldsHeaders() passed after 0.009 seconds.
+􁁛  Test decodesRFC2047() passed after 0.009 seconds.
+􁁛  Test prefersHTTPSTarget() passed after 0.009 seconds.
+􁁛  Test summaryNamesWhatWillHappen() passed after 0.009 seconds.
+􁁛  Test truncates() passed after 0.010 seconds.
+􁁛  Test parsesUIDValidityAndLabels() passed after 0.009 seconds.
+􁁛  Test mailtoOnlyIsReportedNotSent() passed after 0.009 seconds.
+􁁛  Test stripsReplyAndForwardPrefixes() passed after 0.009 seconds.
+􁁛  Test transactionalGuardCanBeTurnedOff() passed after 0.009 seconds.
+􁁛  Test keyIncludesAccountAndSender() passed after 0.009 seconds.
+􁁛  Test parsesInternalDate() passed after 0.009 seconds.
+􁁛  Test defaultIsTheGentlePreset() passed after 0.010 seconds.
+􁁛  Test doesNotOverStrip() passed after 0.009 seconds.
+􁁛  Test wholeWordMatching() passed after 0.009 seconds.
+􁁛  Test matchesKnownServerSpellings() passed after 0.009 seconds.
+􁁛  Test unansweredMailAgesUpButCaps() passed after 0.009 seconds.
+􁁛  Test flaggedAndKnownContactsRise() passed after 0.009 seconds.
+􁁛  Test newestFromEachSenderIsKept() passed after 0.009 seconds.
+􁁛  Test recentMailIsHeldBack() passed after 0.009 seconds.
+􁁛  Test relativePhrases() passed after 0.009 seconds.
 􁁛  Test holdsFlaggedNeedsYouAndTransactional() passed after 0.009 seconds.
-􁁛  Test stripsReplyAndForwardPrefixes() passed after 0.008 seconds.
-􁁛  Test plainIsNeverAccepted() passed after 0.009 seconds.
-􁁛  Test parsesTheRealGmailEntry() passed after 0.009 seconds.
-􁁛  Test schemaIsVersionedAndCoversEveryModel() passed after 0.009 seconds.
+􁁛  Test overdueIsNamed() passed after 0.009 seconds.
+􁁛  Test weekdays() passed after 0.009 seconds.
+􁁛  Test billDueSoonOutranksCasualReply() passed after 0.009 seconds.
 􁁛  Test suggestedPlanIsBulkOnly() passed after 0.009 seconds.
 􁁛  Test noiseScoresNothing() passed after 0.009 seconds.
-􁁛  Test flaggedAndKnownContactsRise() passed after 0.009 seconds.
-􁁛  Test unansweredMailAgesUpButCaps() passed after 0.009 seconds.
-􁁛  Test prefersHTTPSTarget() passed after 0.009 seconds.
-􁁛  Test keepRuleRemovesBulkSender() passed after 0.009 seconds.
-􁁛  Test alreadySweptSendersAreSkipped() passed after 0.009 seconds.
-􁁛  Test billDueSoonOutranksCasualReply() passed after 0.009 seconds.
-􁁛  Test overdueIsNamed() passed after 0.009 seconds.
-􁁛  Test maintenancePlanOnlyContainsApprovedSenders() passed after 0.009 seconds.
-􁁛  Test relativePhrases() passed after 0.009 seconds.
-􁁛  Test plainTextBodiesAreScannedToo() passed after 0.009 seconds.
+􁁛  Test plainIsNeverAccepted() passed after 0.009 seconds.
+􁁛  Test thoroughPolicyHoldsBackNothingRoutine() passed after 0.009 seconds.
+􁁛  Test malformedInputIsLeftAlone() passed after 0.009 seconds.
+􁁛  Test ambiguousStaysUnknownForTheModel() passed after 0.009 seconds.
+􁁛  Test roundTripsNonASCII() passed after 0.009 seconds.
+􁁛  Test noReplyReceiptsAreNotNotifications() passed after 0.009 seconds.
+􁁛  Test roundTripsThroughDefaults() passed after 0.010 seconds.
+􁁛  Test parsesTheRealGmailEntry() passed after 0.009 seconds.
+􁁛  Test flaggedAndTransactionalStillWinOverEverything() passed after 0.009 seconds.
+􁁛  Test resolvesLocalPartPlaceholderAndSkipsPOP() passed after 0.009 seconds.
+􁁛  Test schemaIsVersionedAndCoversEveryModel() passed after 0.009 seconds.
+􁁛  Test contactedSenderIsAPerson() passed after 0.009 seconds.
+􁁛  Test starttlsOnlyIsReportedNotSilentlyDowngraded() passed after 0.009 seconds.
+􁁛  Test softSellLanguageIsPromotion() passed after 0.009 seconds.
+􁁛  Test ordinalsAndMonths() passed after 0.010 seconds.
+􁁛  Test peopleFlagsAndReceiptsAreAlwaysKept() passed after 0.009 seconds.
+􁁛  Test automatedActivityIsNotification() passed after 0.009 seconds.
+􁁛  Test receiptsAreTransactional() passed after 0.009 seconds.
+􁁛  Test prefersSSLEntryWhenBothOffered() passed after 0.009 seconds.
+􁁛  Test editorialWithUnsubscribeIsNewsletter() passed after 0.009 seconds.
+􁁛  Test newsletterYouSkimIsFiled() passed after 0.009 seconds.
+􁁛  Test neverOpenedPromoGetsUnsubscribe() passed after 0.009 seconds.
+􁁛  Test refusesToGuess() passed after 0.010 seconds.
+􁁛  Test nonASCIIFoldersAreEncodedForTheServer() passed after 0.009 seconds.
 􁁛  Test dotDelimiterWithInboxNamespace() passed after 0.009 seconds.
 􁁛  Test gmailStyleKeepsLogicalNames() passed after 0.009 seconds.
-􁁛  Test weekdays() passed after 0.009 seconds.
-􁁛  Test nonASCIIFoldersAreEncodedForTheServer() passed after 0.009 seconds.
-􁁛  Test newslettersLinkingOutAreFine() passed after 0.009 seconds.
-􁁛  Test punycodeAndBareIPAreFlagged() passed after 0.009 seconds.
-􁁛  Test mailtoOnlyIsReportedNotSent() passed after 0.009 seconds.
-􁁛  Test registrableDomainHandlesCountryCodes() passed after 0.009 seconds.
-􁁛  Test onlyTrashCarriesAWarning() passed after 0.009 seconds.
-􁁛  Test summaryNamesWhatWillHappen() passed after 0.009 seconds.
-􁁛  Test sentIsFoundWithoutSpecialUse() passed after 0.009 seconds.
-􁁛  Test sweepRulePromotesReviewSender() passed after 0.009 seconds.
-􁁛  Test textHrefMismatchIsAPhishingTell() passed after 0.009 seconds.
-􁁛  Test plainHTTPIsRefused() passed after 0.009 seconds.
-􁁛  Test presetsAreDistinctAndRecognisable() passed after 0.009 seconds.
-􁁛  Test serviceRefusesToPostToPrivateAddresses() passed after 0.009 seconds.
-􁁛  Test promotionsCanDifferFromEverythingElse() passed after 0.009 seconds.
-􁁛  Test privateNetworksAreRefused() passed after 0.009 seconds.
-􁁛  Test loopbackIsRefused() passed after 0.009 seconds.
-􀟈  Test recentMailIsHeldBack() started.
-􁁛  Test accountMailThatNeverLinksHomeIsFlagged() passed after 0.009 seconds.
-􁁛  Test copyUIDExpandsRangesInOrder() passed after 0.009 seconds.
-􁁛  Test prefersPlainPartOfMultipart() passed after 0.009 seconds.
-􁁛  Test contactedSenderIsAPerson() passed after 0.009 seconds.
-􁁛  Test publicHTTPSIsAllowed() passed after 0.009 seconds.
-􁁛  Test rejectsMalformedAddresses() passed after 0.010 seconds.
-􁁛  Test stripsLeakedLabels() passed after 0.009 seconds.
-􁁛  Test listLineCarriesTheDelimiter() passed after 0.009 seconds.
-􁁛  Test softSellLanguageIsPromotion() passed after 0.009 seconds.
-􁁛  Test stripsHTMLWhenThatIsAllThereIs() passed after 0.009 seconds.
-􁁛  Test refusesToGuess() passed after 0.010 seconds.
-􁁛  Test editorialWithUnsubscribeIsNewsletter() passed after 0.009 seconds.
-􁁛  Test ambiguousStaysUnknownForTheModel() passed after 0.009 seconds.
-􁁛  Test peopleFlagsAndReceiptsAreAlwaysKept() passed after 0.009 seconds.
-􁁛  Test receiptsAreTransactional() passed after 0.009 seconds.
-􁁛  Test salesLanguageWithUnsubscribeIsPromotion() passed after 0.009 seconds.
-􁁛  Test newsletterYouReadIsKept() passed after 0.009 seconds.
-􁁛  Test neverOpenedPromoGetsUnsubscribe() passed after 0.009 seconds.
-􁁛  Test noReplyReceiptsAreNotNotifications() passed after 0.009 seconds.
-􁁛  Test defaultIsTheGentlePreset() passed after 0.009 seconds.
-􁁛  Test insecureModesRefuseRemoteHosts() passed after 0.009 seconds.
-􁁛  Test sortsBulkFirst() passed after 0.009 seconds.
-􁁛  Test newsletterYouSkimIsFiled() passed after 0.009 seconds.
-􁁛  Test planRoutesByCategoryFolder() passed after 0.009 seconds.
-􁁛  Test ordinalsAndMonths() passed after 0.010 seconds.
-􁁛  Test flaggedMailIsKept() passed after 0.009 seconds.
 􁁛  Test notificationsAreMuted() passed after 0.009 seconds.
-􁁛  Test someoneYouWriteToIsKeptEvenIfTheyLookBulk() passed after 0.009 seconds.
-􁁛  Test parsesListLines() passed after 0.008 seconds.
-􁁛  Test parsesExistsAndCapability() passed after 0.008 seconds.
-􁁛  Test parsesAddresses() passed after 0.008 seconds.
-􁁛  Test parsesInternalDate() passed after 0.009 seconds.
-􁁛  Test decodesRFC2047() passed after 0.006 seconds.
-􁁛  Test foldsHeaders() passed after 0.006 seconds.
-􁁛  Test oneClickPostsTheRFC8058Body() passed after 0.010 seconds.
-􁁛  Test truncates() passed after 0.010 seconds.
-􁁛  Test newsletterYouNeverOpenIsBulk() passed after 0.010 seconds.
-􁁛  Test parsesUIDValidityAndLabels() passed after 0.006 seconds.
-􁁛  Test automatedActivityIsNotification() passed after 0.009 seconds.
-􁁛  Test roundTripsThroughDefaults() passed after 0.010 seconds.
-􁁛  Test matchesKnownServerSpellings() passed after 0.002 seconds.
-􁁛  Test malformedInputIsLeftAlone() passed after 0.002 seconds.
-􁁛  Test roundTripsNonASCII() passed after 0.002 seconds.
-􁁛  Test newestFromEachSenderIsKept() passed after 0.002 seconds.
-􁁛  Suite SweepGuardTests passed after 0.012 seconds.
-􁁛  Test thoroughPolicyHoldsBackNothingRoutine() passed after 0.002 seconds.
-􁁛  Suite AutoconfigParsingTests passed after 0.012 seconds.
-􁁛  Test flaggedAndTransactionalStillWinOverEverything() passed after 0.002 seconds.
-􁁛  Suite ThreadKeyTests passed after 0.012 seconds.
-􁁛  Suite PriorityScorerTests passed after 0.012 seconds.
-􁁛  Suite CleanupPlanTests passed after 0.012 seconds.
-􁁛  Suite RuleTests passed after 0.011 seconds.
-􁁛  Suite DueDateParserTests passed after 0.012 seconds.
-􁁛  Suite UnsubscribeTests passed after 0.011 seconds.
-􁁛  Suite MailboxNamingTests passed after 0.012 seconds.
-􁁛  Suite PublicHostPolicyTests passed after 0.012 seconds.
-􁁛  Suite SanitizerTests passed after 0.011 seconds.
-􁁛  Suite SenderCategorizerTests passed after 0.011 seconds.
-􁁛  Suite ListAndCopyUIDParsingTests passed after 0.011 seconds.
-􁁛  Suite HeuristicAnalyzerTests passed after 0.011 seconds.
-􁁛  Suite RecommenderTests passed after 0.011 seconds.
-􁁛  Suite ConnectionSafetyTests passed after 0.011 seconds.
-􁁛  Test recentMailIsHeldBack() passed after 0.001 seconds.
+􁁛  Test planRoutesByCategoryFolder() passed after 0.009 seconds.
+􁁛  Test sentIsFoundWithoutSpecialUse() passed after 0.009 seconds.
+􁁛  Test salesLanguageWithUnsubscribeIsPromotion() passed after 0.009 seconds.
 􁁛  Test corpusIsDeterministicAndPlausible() passed after 0.010 seconds.
+􁁛  Test newsletterYouReadIsKept() passed after 0.009 seconds.
+􁁛  Test stripsLeakedLabels() passed after 0.007 seconds.
+􁁛  Test rejectsMalformedAddresses() passed after 0.010 seconds.
+􁁛  Test oneClickPostsTheRFC8058Body() passed after 0.010 seconds.
+􁁛  Test plainHTTPIsRefused() passed after 0.001 seconds.
+􁁛  Suite ListAndCopyUIDParsingTests passed after 0.011 seconds.
+􁁛  Test privateNetworksAreRefused() passed after 0.001 seconds.
+􁁛  Suite RuleTests passed after 0.011 seconds.
+􁁛  Suite BodyExtractorTests passed after 0.011 seconds.
+􁁛  Suite ParserTests passed after 0.011 seconds.
+􁁛  Test serviceRefusesToPostToPrivateAddresses() passed after 0.001 seconds.
+􁁛  Suite LinkHygieneTests passed after 0.011 seconds.
+􁁛  Suite CleanupPolicyModelTests passed after 0.011 seconds.
+􁁛  Test loopbackIsRefused() passed after 0.001 seconds.
+􁁛  Suite ConnectionSafetyTests passed after 0.011 seconds.
+􁁛  Suite UnsubscribeTests passed after 0.011 seconds.
+􁁛  Suite ThreadKeyTests passed after 0.011 seconds.
+􁁛  Suite HeuristicAnalyzerTests passed after 0.011 seconds.
 􁁛  Suite IMAPUTF7Tests passed after 0.011 seconds.
-􁁛  Suite CleanupPolicyModelTests passed after 0.012 seconds.
+􁁛  Suite SweepGuardTests passed after 0.011 seconds.
+􁁛  Test publicHTTPSIsAllowed() passed after 0.001 seconds.
+􁁛  Suite CleanupPlanTests passed after 0.011 seconds.
+􁁛  Suite PriorityScorerTests passed after 0.011 seconds.
+􁁛  Suite PolicyGuardTests passed after 0.011 seconds.
+􁁛  Suite DueDateParserTests passed after 0.011 seconds.
+􁁛  Suite AutoconfigParsingTests passed after 0.011 seconds.
+􁁛  Suite MailboxNamingTests passed after 0.011 seconds.
+􁁛  Suite SenderCategorizerTests passed after 0.011 seconds.
+􁁛  Suite RecommenderTests passed after 0.011 seconds.
+􁁛  Suite SanitizerTests passed after 0.011 seconds.
+􁁛  Suite PublicHostPolicyTests passed after 0.011 seconds.
 􀟈  Test requestShapeIsCorrect() started.
 􀟈  Test fullIndexRoundTrip() started.
-􁁛  Suite LinkHygieneTests passed after 0.012 seconds.
-􁁛  Suite ParserTests passed after 0.011 seconds.
-􁁛  Suite PolicyGuardTests passed after 0.011 seconds.
-􁁛  Suite BodyExtractorTests passed after 0.012 seconds.
-􁁛  Test logsInAndReadsCapabilities() passed after 0.014 seconds.
-􀟈  Test discoversSpecialUseMailboxes() started.
 􁁛  Test openingInMemoryNeverReportsRecovery() passed after 0.016 seconds.
-􁁛  Suite StoreVersioningTests passed after 0.016 seconds.
+􁁛  Suite StoreVersioningTests passed after 0.017 seconds.
+􁁛  Test logsInAndReadsCapabilities() passed after 0.010 seconds.
+􀟈  Test discoversSpecialUseMailboxes() started.
 􁁛  Test discoversSpecialUseMailboxes() passed after 0.001 seconds.
 􀟈  Test fetchesHeadersThroughLiterals() started.
-􁁛  Test fetchesHeadersThroughLiterals() passed after 0.003 seconds.
-􀟈  Test fetchesBodyExcerpt() started.
-􁁛  Test fetchesBodyExcerpt() passed after 0.001 seconds.
-􀟈  Test indexingIsStructurallyReadOnly() started.
-􁁛  Test indexingIsStructurallyReadOnly() passed after 0.003 seconds.
-􀟈  Test archiveSendsGmailLabelRemoval() started.
-􁁛  Test redirectToLoopbackIsNotFollowed() passed after 0.036 seconds.
-􁁛  Suite UnsubscribeRedirectTests passed after 0.037 seconds.
-􁁛  Test requestShapeIsCorrect() passed after 0.025 seconds.
+􁁛  Test requestShapeIsCorrect() passed after 0.020 seconds.
 􀟈  Test nonSuccessFallsBackToBrowser() started.
-􁁛  Test discoversThroughTheISPDBSendingOnlyTheDomain() passed after 0.038 seconds.
+􁁛  Test redirectToLoopbackIsNotFollowed() passed after 0.032 seconds.
+􁁛  Suite UnsubscribeRedirectTests passed after 0.033 seconds.
+􁁛  Test discoversThroughTheISPDBSendingOnlyTheDomain() passed after 0.035 seconds.
 􀟈  Test providerEndpointWinsOverISPDB() started.
-􁁛  Test readsThroughTheJSONContract() passed after 0.040 seconds.
+􁁛  Test nonSuccessFallsBackToBrowser() passed after 0.004 seconds.
+􁁛  Suite UnsubscribeHTTPTests passed after 0.037 seconds.
+􁁛  Test readsThroughTheJSONContract() passed after 0.036 seconds.
 􀟈  Test reportsMissingModelClearly() started.
-􁁛  Test nonSuccessFallsBackToBrowser() passed after 0.003 seconds.
-􁁛  Suite UnsubscribeHTTPTests passed after 0.041 seconds.
-􁁛  Test providerEndpointWinsOverISPDB() passed after 0.001 seconds.
+􁁛  Test fetchesHeadersThroughLiterals() passed after 0.017 seconds.
+􀟈  Test fetchesBodyExcerpt() started.
+􁁛  Test providerEndpointWinsOverISPDB() passed after 0.002 seconds.
 􀟈  Test nothingFoundWithoutAGuess() started.
-􁁛  Test reportsMissingModelClearly() passed after 0.001 seconds.
+􁁛  Test reportsMissingModelClearly() passed after 0.002 seconds.
 􀟈  Test refusesRemoteHosts() started.
 􁁛  Test refusesRemoteHosts() passed after 0.001 seconds.
-􁁛  Suite OllamaProviderTests passed after 0.043 seconds.
-􁁛  Test archiveSendsGmailLabelRemoval() passed after 0.016 seconds.
+􁁛  Suite OllamaProviderTests passed after 0.040 seconds.
+􁁛  Test fetchesBodyExcerpt() passed after 0.003 seconds.
+􀟈  Test indexingIsStructurallyReadOnly() started.
+􁁛  Test nothingFoundWithoutAGuess() passed after 0.003 seconds.
+􁁛  Suite AutoconfigDiscoveryTests passed after 0.043 seconds.
+􁁛  Test indexingIsStructurallyReadOnly() passed after 0.003 seconds.
+􀟈  Test archiveSendsGmailLabelRemoval() started.
+􁁛  Test archiveSendsGmailLabelRemoval() passed after 0.001 seconds.
 􀟈  Test uidSetsCompressRanges() started.
-􁁛  Test undoRefusesAfterTheMailboxIsRenumbered() passed after 0.042 seconds.
-􀟈  Test undoStillWorksWhenNothingChanged() started.
-􁁛  Test nothingFoundWithoutAGuess() passed after 0.002 seconds.
 􁁛  Test uidSetsCompressRanges() passed after 0.001 seconds.
-􁁛  Suite AutoconfigDiscoveryTests passed after 0.044 seconds.
 􀟈  Test rejectsBadLogin() started.
 􁁛  Test rejectsBadLogin() passed after 0.001 seconds.
-􁁛  Suite IMAPClientTests passed after 0.045 seconds.
+􁁛  Suite IMAPClientTests passed after 0.050 seconds.
 HANDSHAKE Gmail: MOVE=false UIDPLUS=false X-GM-EXT-1=true (15 capabilities)
 􀟈  Test case passing 1 argument provider → iCloud to tlsHandshakeAndCapabilities(provider:) started.
-􁁛  Test fullIndexRoundTrip() passed after 0.153 seconds.
+􁁛  Test gmailGreetsOverTLS() passed after 0.158 seconds.
+􁁛  Suite RealServerTLSTests passed after 0.159 seconds.
+􁁛  Test fullIndexRoundTrip() passed after 0.161 seconds.
 􀟈  Test incrementalFetchReturnsOnlyNewerUIDs() started.
-􁁛  Test gmailGreetsOverTLS() passed after 0.172 seconds.
-􁁛  Suite RealServerTLSTests passed after 0.174 seconds.
-􁁛  Test incrementalFetchReturnsOnlyNewerUIDs() passed after 0.011 seconds.
+􁁛  Test incrementalFetchReturnsOnlyNewerUIDs() passed after 0.009 seconds.
 􀟈  Test sweepActuallyArchivesAndUndoRestores() started.
-􁁛  Test anExplicitRuleBeatsTheContactedGuard() passed after 0.207 seconds.
-􁁛  Test contactedSendersAreNotProposedWhenGuarded() passed after 0.207 seconds.
-􁁛  Test dispositionComesFromThePolicyPerCategory() passed after 0.207 seconds.
-􁁛  Test autoUnsubscribeIsConservative() passed after 0.207 seconds.
-􁁛  Suite PolicyPlanTests passed after 0.208 seconds.
-􁁛  Test sweepActuallyArchivesAndUndoRestores() passed after 0.031 seconds.
+􁁛  Test sweepActuallyArchivesAndUndoRestores() passed after 0.030 seconds.
 􀟈  Test rejectsWrongPassword() started.
-􁁛  Test rejectsWrongPassword() passed after 0.001 seconds.
+􁁛  Test rejectsWrongPassword() passed after 0.002 seconds.
 􀟈  Test personasDiffer() started.
-􁁛  Test profilesMatchTheInMemoryClustering() passed after 0.212 seconds.
-􁁛  Test bulkSendersSkipTheModel() passed after 0.212 seconds.
-􁁛  Test unreadMailFromAContactNeedsYou() passed after 0.212 seconds.
-􁁛  Test oldMailIsOutsideTheWindow() passed after 0.212 seconds.
-􁁛  Test snoozedMailLeavesTheBriefAndTheDigestUntilItsTime() passed after 0.212 seconds.
-􁁛  Test importingRulesIntoAFreshStoreIsIdempotent() passed after 0.212 seconds.
-􁁛  Test modelBudgetIsCapped() passed after 0.212 seconds.
-􁁛  Test roundTripsRulesActionsAndDigests() passed after 0.211 seconds.
-􁁛  Suite ImportanceScorerTests passed after 0.213 seconds.
-􁁛  Suite SnoozeTests passed after 0.213 seconds.
-􁁛  Suite DataExportTests passed after 0.213 seconds.
-􀟈  Test rebuildIsIdempotentAndDropsStaleSenders() started.
 􁁛  Test personasDiffer() passed after 0.005 seconds.
 􀟈  Test parsesSequenceSets() started.
 􁁛  Test parsesSequenceSets() passed after 0.001 seconds.
-􁁛  Suite DemoServerTests passed after 0.216 seconds.
-􁁛  Test undoStillWorksWhenNothingChanged() passed after 0.172 seconds.
+􁁛  Suite DemoServerTests passed after 0.220 seconds.
+􁁛  Test undoRefusesAfterTheMailboxIsRenumbered() passed after 0.221 seconds.
+􁁛  Test roundTripsRulesActionsAndDigests() passed after 0.222 seconds.
+􁁛  Test oldMailIsOutsideTheWindow() passed after 0.222 seconds.
+􁁛  Test snoozedMailLeavesTheBriefAndTheDigestUntilItsTime() passed after 0.222 seconds.
+􁁛  Test modelBudgetIsCapped() passed after 0.222 seconds.
+􁁛  Test importingRulesIntoAFreshStoreIsIdempotent() passed after 0.222 seconds.
+􁁛  Suite SnoozeTests passed after 0.223 seconds.
+􀟈  Test undoStillWorksWhenNothingChanged() started.
+􁁛  Test bulkSendersSkipTheModel() passed after 0.222 seconds.
+􁁛  Suite DataExportTests passed after 0.223 seconds.
+􁁛  Test unreadMailFromAContactNeedsYou() passed after 0.222 seconds.
+􁁛  Suite ImportanceScorerTests passed after 0.223 seconds.
+􁁛  Test anExplicitRuleBeatsTheContactedGuard() passed after 0.222 seconds.
+􁁛  Test profilesMatchTheInMemoryClustering() passed after 0.222 seconds.
+􁁛  Test autoUnsubscribeIsConservative() passed after 0.221 seconds.
+􀟈  Test rebuildIsIdempotentAndDropsStaleSenders() started.
+􁁛  Test dispositionComesFromThePolicyPerCategory() passed after 0.222 seconds.
+􁁛  Test contactedSendersAreNotProposedWhenGuarded() passed after 0.222 seconds.
+􁁛  Suite PolicyPlanTests passed after 0.223 seconds.
+􁁛  Test undoStillWorksWhenNothingChanged() passed after 0.027 seconds.
 􀟈  Test unstampedActionsStillUndo() started.
-􁁛  Test rebuildIsIdempotentAndDropsStaleSenders() passed after 0.063 seconds.
+􁁛  Test rebuildIsIdempotentAndDropsStaleSenders() passed after 0.028 seconds.
 􀟈  Test adjustTracksSweepAndUndoWithoutRescan() started.
 HANDSHAKE iCloud: MOVE=false UIDPLUS=false X-GM-EXT-1=false (8 capabilities)
 􀟈  Test case passing 1 argument provider → Outlook / Microsoft 365 to tlsHandshakeAndCapabilities(provider:) started.
-􁁛  Test unstampedActionsStillUndo() passed after 0.137 seconds.
-􁁛  Suite UndoSafetyTests passed after 0.354 seconds.
 HANDSHAKE Outlook / Microsoft 365: MOVE=true UIDPLUS=true X-GM-EXT-1=false (13 capabilities)
 􀟈  Test case passing 1 argument provider → Yahoo to tlsHandshakeAndCapabilities(provider:) started.
-􁁛  Test adjustTracksSweepAndUndoWithoutRescan() passed after 0.279 seconds.
+􁁛  Test unstampedActionsStillUndo() passed after 0.233 seconds.
+􁁛  Suite UndoSafetyTests passed after 0.484 seconds.
+􁁛  Test adjustTracksSweepAndUndoWithoutRescan() passed after 0.267 seconds.
 􀟈  Test fortyThousandMessagesRebuildQuickly() started.
 HANDSHAKE Yahoo: MOVE=true UIDPLUS=true X-GM-EXT-1=false (24 capabilities)
 􀟈  Test case passing 1 argument provider → Fastmail to tlsHandshakeAndCapabilities(provider:) started.
 HANDSHAKE Fastmail: MOVE=true UIDPLUS=true X-GM-EXT-1=false (20 capabilities)
-􁁛  Test tlsHandshakeAndCapabilities(provider:) with 5 test cases passed after 1.138 seconds.
-􁁛  Suite ProviderHandshakeTests passed after 1.139 seconds.
-􁁛  Test readDeadlineActuallyFires() passed after 2.013 seconds.
+􁁛  Test tlsHandshakeAndCapabilities(provider:) with 5 test cases passed after 1.034 seconds.
+􁁛  Suite ProviderHandshakeTests passed after 1.035 seconds.
+􁁛  Test readDeadlineActuallyFires() passed after 2.128 seconds.
 􀟈  Test connectDeadlineActuallyFires() started.
-􁁛  Test connectDeadlineActuallyFires() passed after 2.012 seconds.
+􁁛  Test connectDeadlineActuallyFires() passed after 2.046 seconds.
 􀟈  Test disconnectUnblocksAParkedRead() started.
-􁁛  Test disconnectUnblocksAParkedRead() passed after 0.424 seconds.
-􁁛  Suite IMAPDeadlineTests passed after 4.451 seconds.
-PERF seeding 40k messages took 5.457215708 seconds
-PERF 40k messages → 400 profiles: rebuild 1.466716708 seconds, re-rebuild 1.382183167 seconds, UI query 0.034274958 seconds
-􁁛  Test fortyThousandMessagesRebuildQuickly() passed after 8.870 seconds.
-􁁛  Suite SenderProfileTests passed after 9.428 seconds.
-􁁛  Test brokenModelIsReportedNotHidden() passed after 10.055 seconds.
-􁁛  Suite MaintainerFailureTests passed after 10.056 seconds.
-􁁛  Test plainIMAPServerSweepsAndUndoesByMoving() passed after 10.966 seconds.
+􁁛  Test disconnectUnblocksAParkedRead() passed after 0.404 seconds.
+􁁛  Suite IMAPDeadlineTests passed after 4.580 seconds.
+PERF seeding 40k messages took 5.340798916 seconds
+PERF 40k messages → 400 profiles: rebuild 1.412538959 seconds, re-rebuild 1.382575916 seconds, UI query 0.033683208 seconds
+􁁛  Test fortyThousandMessagesRebuildQuickly() passed after 8.769 seconds.
+􁁛  Suite SenderProfileTests passed after 9.288 seconds.
+􁁛  Test brokenModelIsReportedNotHidden() passed after 10.903 seconds.
+􁁛  Suite MaintainerFailureTests passed after 10.905 seconds.
+􁁛  Test plainIMAPServerSweepsAndUndoesByMoving() passed after 11.316 seconds.
 􀟈  Test inboxPrefixedServerGetsCorrectlySpelledFolders() started.
-􁁛  Test trashDispositionMovesToTrashAndIsUndoable() passed after 11.872 seconds.
+􁁛  Test trashDispositionMovesToTrashAndIsUndoable() passed after 12.351 seconds.
 􀟈  Test trashOnAServerWithoutTrashFailsLoudly() started.
-􁁛  Test inboxPrefixedServerGetsCorrectlySpelledFolders() passed after 1.065 seconds.
+􁁛  Test inboxPrefixedServerGetsCorrectlySpelledFolders() passed after 1.474 seconds.
 􀟈  Test everyFeatureOnEveryPersona(persona:) started.
 􀟈  Test case passing 1 argument persona → .personal to everyFeatureOnEveryPersona(persona:) started.
-􁁛  Test trashOnAServerWithoutTrashFailsLoudly() passed after 0.699 seconds.
+􁁛  Test trashOnAServerWithoutTrashFailsLoudly() passed after 0.688 seconds.
 􀟈  Test archiveOnlyDoesNotCreateFolders() started.
-􁁛  Test indexSweepUndoAndIncrementalSync() passed after 13.598 seconds.
+􁁛  Test indexSweepUndoAndIncrementalSync() passed after 14.274 seconds.
 􀟈  Test firstTidyUpLearnsContactsAndPlacesPeople() started.
-􁁛  Test digestReflectsTheInboxAndKeepsHistory() passed after 13.953 seconds.
-􁁛  Suite DigestTests passed after 13.954 seconds.
-􁁛  Test catchUpReadsOnlyPeopleAndRecords() passed after 13.961 seconds.
-􁁛  Suite CatchUpTests passed after 13.963 seconds.
-􁁛  Test archiveOnlyDoesNotCreateFolders() passed after 1.806 seconds.
-􀟈  Test gentlePolicySweepsLessThanThorough() started.
-􁁛  Test firstTidyUpLearnsContactsAndPlacesPeople() passed after 1.218 seconds.
+􁁛  Test digestReflectsTheInboxAndKeepsHistory() passed after 14.714 seconds.
+􁁛  Suite DigestTests passed after 14.715 seconds.
+􁁛  Test catchUpReadsOnlyPeopleAndRecords() passed after 14.832 seconds.
+􁁛  Suite CatchUpTests passed after 14.833 seconds.
+􁁛  Test firstTidyUpLearnsContactsAndPlacesPeople() passed after 1.161 seconds.
 􀟈  Test readPassWithStubModel() started.
+􁁛  Test archiveOnlyDoesNotCreateFolders() passed after 2.427 seconds.
+􀟈  Test gentlePolicySweepsLessThanThorough() started.
+CoreData: debug: PostSaveMaintenance: incremental_vacuum with freelist_count - 133 and pages_to_free 26
+􁁛  Test previewMatchesWhatTheSweepActuallyDoes() passed after 17.302 seconds.
+􁁛  Suite GuardPreviewTests passed after 17.303 seconds.
 􀟈  Test case passing 1 argument persona → .work to everyFeatureOnEveryPersona(persona:) started.
-􁁛  Test readPassWithStubModel() passed after 2.689 seconds.
+􁁛  Test readPassWithStubModel() passed after 2.816 seconds.
 􀟈  Test readPassWithAppleOnDeviceModel() started.
-􁁛  Test gentlePolicySweepsLessThanThorough() passed after 3.509 seconds.
+􁁛  Test gentlePolicySweepsLessThanThorough() passed after 3.620 seconds.
 􀟈  Test automaticUnsubscribeIsRecordedAndNotUndoable() started.
 􀟈  Test case passing 1 argument persona → .neglected to everyFeatureOnEveryPersona(persona:) started.
-􁁛  Test automaticUnsubscribeIsRecordedAndNotUndoable() passed after 2.538 seconds.
+􁁛  Test automaticUnsubscribeIsRecordedAndNotUndoable() passed after 2.052 seconds.
 􀟈  Test gentlePolicyNeverUnsubscribes() started.
-􁁛  Test gentlePolicyNeverUnsubscribes() passed after 2.059 seconds.
-􁁛  Suite PolicyExecutionTests passed after 22.489 seconds.
-􁁛  Test everyFeatureOnEveryPersona(persona:) with 3 test cases passed after 10.610 seconds.
-􁁛  Suite GenericServerFlowTests passed after 22.643 seconds.
-􁁛  Test readPassWithAppleOnDeviceModel() passed after 16.799 seconds.
-􁁛  Suite DemoFlowTests passed after 34.306 seconds.
-􁁛  Test run with 154 tests in 44 suites passed after 34.306 seconds.
+􁁛  Test gentlePolicyNeverUnsubscribes() passed after 1.886 seconds.
+􁁛  Suite PolicyExecutionTests passed after 23.027 seconds.
+􁁛  Test everyFeatureOnEveryPersona(persona:) with 3 test cases passed after 11.466 seconds.
+􁁛  Suite GenericServerFlowTests passed after 24.261 seconds.
+􁁛  Test readPassWithAppleOnDeviceModel() passed after 18.745 seconds.
+􁁛  Suite DemoFlowTests passed after 36.999 seconds.
+􁁛  Test run with 155 tests in 45 suites passed after 37.000 seconds.
 exit=0

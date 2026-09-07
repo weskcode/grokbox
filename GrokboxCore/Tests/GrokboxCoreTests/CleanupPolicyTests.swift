@@ -338,3 +338,56 @@ struct PolicyExecutionTests {
         #expect(try context.fetch(FetchDescriptor<CleanupAction>()).allSatisfy { $0.kind != .unsubscribe })
     }
 }
+
+@MainActor
+@Suite(.serialized)
+struct GuardPreviewTests {
+    /// The number on the Sweep button must equal the number that moves.
+    /// Regression: an empty facts lookup made the preview drop every sender,
+    /// so a real plan rendered as "nothing to sweep".
+    @Test func previewMatchesWhatTheSweepActuallyDoes() async throws {
+        let container = ModelContainer.grokboxTestContainer()
+        let context = container.mainContext
+        let mailbox = DemoMailbox(persona: .personal)
+        let account = MailAccount(displayName: "Demo", username: mailbox.username, host: "127.0.0.1", port: 0, kind: .demo, security: .none)
+        context.insert(account); try context.save()
+        DemoRegistry.shared.register(mailbox, for: account.id)
+        defer { DemoRegistry.shared.remove(account.id) }
+
+        let engine = SyncEngine(modelContext: context)
+        await engine.indexNow(account: account, mode: .full(limit: 10_000))
+
+        for policy in [CleanupPolicy.gentle, .balanced, .thorough] {
+            var plan = CleanupPlan.suggested(from: SenderProfileBuilder.assessments(for: account, in: context), policy: policy)
+            let beforePreview = plan.enabledMessageCount
+            let accountID = account.id
+            plan.previewGuard(policy: policy) { cluster in
+                let uids = cluster.pendingUIDs
+                let descriptor = FetchDescriptor<MessageHeader>(predicate: #Predicate { $0.accountID == accountID && uids.contains($0.uid) })
+                return ((try? context.fetch(descriptor)) ?? []).map {
+                    .init(uid: $0.uid, subject: $0.subject, isFlagged: $0.isFlagged, importance: $0.importance, receivedAt: $0.receivedAt)
+                }
+            }
+            let previewed = plan.enabledMessageCount
+            #expect(previewed > 0, "\(policy.matchingPreset.label): preview kept nothing of \(beforePreview)")
+            #expect(previewed <= beforePreview, "\(policy.matchingPreset.label): preview cannot grow the plan")
+
+            let executor = PlanExecutor(modelContext: context)
+            await executor.apply(plan, to: account, recordRules: false, policy: policy)
+            guard case .finished = executor.phase else { Issue.record("\(policy.matchingPreset.label): \(executor.phase.label)"); return }
+            let moved = try context.fetch(FetchDescriptor<CleanupAction>())
+                .filter { ($0.kind == .archive || $0.kind == .trash) && $0.errorMessage == nil }
+                .reduce(0) { $0 + $1.uids.count }
+            #expect(moved == previewed, "\(policy.matchingPreset.label): promised \(previewed), moved \(moved)")
+
+            // Reset for the next policy.
+            for action in try context.fetch(FetchDescriptor<CleanupAction>()) { context.delete(action) }
+            for rule in try context.fetch(FetchDescriptor<SenderRule>()) { context.delete(rule) }
+            try context.save()
+            DemoRegistry.shared.register(DemoMailbox(persona: .personal), for: account.id)
+            try context.delete(model: MessageHeader.self, where: #Predicate { $0.accountID == accountID })
+            try context.save()
+            await engine.indexNow(account: account, mode: .full(limit: 10_000))
+        }
+    }
+}

@@ -17,7 +17,6 @@ struct SettingsView: View {
     @AppStorage("grokbox.readLimit") private var readLimit = 25
     @AppStorage("grokbox.indexDepth") private var indexDepth = 1_000
     @AppStorage("grokbox.notify") private var notify = false
-    @State private var policy = CleanupPolicy.current
 
     @State private var confirmingErase = false
     @State private var exportDocument: ExportFile?
@@ -93,7 +92,7 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
 
-            CleanupPolicyEditor(policy: $policy)
+            CleanupPolicyEditor(policy: Bindable(state).policy)
 
             Section("Budgets") {
                 Stepper("Read up to \(readLimit) messages per pass", value: $readLimit, in: 10...500, step: 10)
@@ -170,7 +169,6 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Settings")
-        .onChange(of: policy) { CleanupPolicy.current = policy }
     }
 }
 

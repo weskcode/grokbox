@@ -7,7 +7,6 @@ struct PhoneSettingsView: View {
     let addAccount: () -> Void
     @Environment(AppState.self) private var state
     @Environment(\.modelContext) private var modelContext
-    @State private var policy = CleanupPolicy.current
     @State private var confirmingErase = false
     @State private var exportURL: URL?
     @State private var removing: MailAccount?
@@ -39,7 +38,7 @@ struct PhoneSettingsView: View {
                 Text("Runs entirely on this device. Nothing about your mail leaves it.").font(.footnote).foregroundStyle(.secondary)
                 Button("Check again") { Task { await state.refreshModels() } }
             }
-            CleanupPolicyEditor(policy: $policy)
+            CleanupPolicyEditor(policy: Bindable(state).policy)
             Section("Your data") {
                 Text("Accounts (never passwords), rules, the action log and saved digests, as one JSON file.").font(.footnote).foregroundStyle(.secondary)
                 if let exportURL {
@@ -56,7 +55,6 @@ struct PhoneSettingsView: View {
             }
         }
         .navigationTitle("Settings")
-        .onChange(of: policy) { CleanupPolicy.current = policy }
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog("Erase all local data?", isPresented: $confirmingErase) {
             Button("Erase", role: .destructive) { state.eraseEverything() }
