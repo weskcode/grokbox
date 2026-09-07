@@ -179,17 +179,6 @@ struct AddAccountSheet: View {
     }
 
     private func friendly(_ error: Error) -> String {
-        let text = error.localizedDescription
-        if text.localizedCaseInsensitiveContains("AUTHENTICATIONFAILED") || text.localizedCaseInsensitiveContains("Invalid credentials") {
-            switch kind {
-            case .gmail: return "Google rejected the sign-in. Use an App Password (not your Google password), and make sure IMAP is enabled in Gmail settings."
-            case .protonBridge: return "Bridge rejected the sign-in. Use the password shown inside the Proton Mail Bridge app."
-            default: return "The server rejected the username or password."
-            }
-        }
-        if text.localizedCaseInsensitiveContains("Connection refused") && kind == .protonBridge {
-            return "Nothing is listening on 127.0.0.1:\(port). Is Proton Mail Bridge running?"
-        }
-        return text
+        ConnectionErrorText.friendly(error, kind: kind, port: Int(port) ?? 0)
     }
 }

@@ -29,6 +29,9 @@ public enum DigestBuilder {
                 isQuick: message.isQuick, timesContacted: contacts[message.senderAddress] ?? 0, now: now
             )))
         }.sorted { $0.1.score != $1.1.score ? $0.1.score > $1.1.score : $0.0.receivedAt > $1.0.receivedAt }
+        // One entry per conversation, the same way the Brief shows rows, so
+        // the summary's numbers match the tiles underneath it.
+        .collapsedByThread()
 
         let needs = ranked.filter { $0.0.importance == .needsYou }
         digest.needsYou = needs.count
@@ -40,13 +43,7 @@ public enum DigestBuilder {
         }.count
         digest.quickWins = needs.filter { $0.0.isQuick }.count
 
-        // One line per sender+subject: a thread that pinged three times is one item.
-        var seenKeys = Set<String>()
-        let distinct = needs.filter { message, _ in
-            let key = message.senderAddress + "|" + message.subject.lowercased().replacingOccurrences(of: "re: ", with: "")
-            return seenKeys.insert(key).inserted
-        }
-        digest.topItems = distinct.prefix(5).map { message, result in
+        digest.topItems = needs.prefix(5).map { message, result in
             DigestItem(
                 accountID: message.accountID, uid: message.uid,
                 sender: (accounts.count > 1 ? "\(message.senderName.isEmpty ? message.senderAddress : message.senderName) · \(accountName[message.accountID] ?? "")"
@@ -132,5 +129,16 @@ public enum DigestBuilder {
             sentences.append("\(d.unreadUnclassified.formatted()) unread \(d.unreadUnclassified == 1 ? "has" : "have") not been read by the model yet — press Read new mail.")
         }
         return sentences.joined(separator: " ")
+    }
+}
+
+
+extension Array where Element == (MessageHeader, PriorityScorer.Result) {
+    /// Keeps the highest-ranked message of each conversation.
+    func collapsedByThread() -> [(MessageHeader, PriorityScorer.Result)] {
+        var seen = Set<String>()
+        return filter { message, _ in
+            seen.insert(ThreadKey.key(accountID: message.accountID, senderAddress: message.senderAddress, subject: message.subject)).inserted
+        }
     }
 }

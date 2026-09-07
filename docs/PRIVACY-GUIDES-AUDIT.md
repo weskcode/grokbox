@@ -39,7 +39,7 @@ Stated by the project in `docs/THREAT-MODEL.md` in Privacy Guides' taxonomy; che
 | A1 | Open source, recognised licence | PASS | `LICENSE` GPL-3.0 | — |
 | A2 | Actively developed | PASS | daily commits Sep 2026; single maintainer (risk noted) | — |
 | A3 | Cross-platform or gap stated | PARTIAL | macOS-only; stated in README | Not planned; native SwiftUI/SwiftData/Foundation Models are the point. |
-| A4 | Usable without technical background | PARTIAL | Requires building from source until first release | First tagged release with a notarised `.app`. |
+| A4 | Usable without technical background | PARTIAL | Requires building from source until first release; in-app: menu commands, keyboard shortcuts, VoiceOver labels, password update without data loss | First tagged release with a notarised `.app`. |
 | A5 | Documentation | PASS | README, ARCHITECTURE, PRIVACY, THREAT-MODEL, SECURITY, DECISIONS (18 ADRs), SETUP-ACCOUNTS | — |
 | A7 | No financial conflict | PASS | No funding, no sponsors, no affiliate links | — |
 | B1 | Affiliation disclosed | PASS | README "built by one person (Wesley Keetch)" | — |

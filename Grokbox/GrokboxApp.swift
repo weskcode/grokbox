@@ -30,6 +30,33 @@ struct GrokboxApp: App {
         .modelContainer(AppEnvironment.container)
         .environment(AppEnvironment.state)
         .defaultSize(width: 1180, height: 760)
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") { AppEnvironment.state.pendingCommand = .settings }
+                    .keyboardShortcut(",", modifiers: .command)
+            }
+            CommandMenu("Mailbox") {
+                Button("Add Account…") { AppEnvironment.state.pendingCommand = .addAccount }
+                    .keyboardShortcut("n", modifiers: .command)
+                Divider()
+                Button("Read New Mail") { AppEnvironment.state.pendingCommand = .readNewMail }
+                    .keyboardShortcut("r", modifiers: .command)
+                Button("Index") { AppEnvironment.state.pendingCommand = .index }
+                    .keyboardShortcut("i", modifiers: .command)
+                Button("Tidy Up Now") { AppEnvironment.state.pendingCommand = .tidyUp }
+                    .keyboardShortcut("t", modifiers: .command)
+                Button("Where Things Stand") { AppEnvironment.state.pendingCommand = .summarize }
+                    .keyboardShortcut("s", modifiers: [.command, .shift])
+                Divider()
+                Button("Stop") { AppEnvironment.state.pendingCommand = .stop }
+                    .keyboardShortcut(".", modifiers: .command)
+            }
+            CommandGroup(replacing: .help) {
+                Link("Privacy: what leaves this Mac", destination: URL(string: "https://github.com/weskcode/grokbox/blob/main/docs/PRIVACY.md")!)
+                Link("Threat model", destination: URL(string: "https://github.com/weskcode/grokbox/blob/main/docs/THREAT-MODEL.md")!)
+                Link("Report a problem", destination: URL(string: "https://github.com/weskcode/grokbox/issues/new/choose")!)
+            }
+        }
 
         // Glanceable state without opening the window; tidy-up keeps running
         // while the window is closed. Can be hidden from Settings.

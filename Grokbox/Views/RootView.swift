@@ -37,6 +37,7 @@ struct RootView: View {
     @Environment(AppState.self) private var state
     @State private var selectedAccountID: UUID?
     @State private var section: AppSection = .brief
+    @State private var passwordAccount: MailAccount?
     @State private var isAddingAccount = false
 
     private var selectedAccount: MailAccount? {
@@ -87,6 +88,14 @@ struct RootView: View {
         }
         // The account query fills in after the first appearance; choose then too.
         .onChange(of: accounts.count) { chooseInitialSelection() }
+        .sheet(item: $passwordAccount) { account in
+            UpdatePasswordSheet(account: account, state: state)
+        }
+        .onChange(of: state.pendingCommand) { _, command in
+            guard let command else { return }
+            state.pendingCommand = nil
+            perform(command)
+        }
         .sheet(isPresented: $isAddingAccount) {
             AddAccountSheet(state: state) { newAccount in selectedAccountID = newAccount.id }
         }
@@ -113,10 +122,19 @@ struct RootView: View {
                             .foregroundStyle(.secondary)
                         if let error = account.lastSyncError {
                             Text(error).font(.caption2).foregroundStyle(.red).lineLimit(1)
+                            if ConnectionErrorText.looksLikeAuthFailure(error), !account.kind.isDemo {
+                                Button("Update password…") { passwordAccount = account }
+                                    .controlSize(.mini)
+                            }
                         }
                     }
                     .tag(account.id)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(accessibilityLabel(for: account))
                     .contextMenu {
+                        if !account.kind.isDemo {
+                            Button("Update Password…") { passwordAccount = account }
+                        }
                         Button("Remove Account", role: .destructive) { remove(account) }
                     }
                 }
@@ -223,6 +241,34 @@ struct RootView: View {
         Log.note("window frame px x=\(Int(frame.minX * scale)) y=\(Int(top)) w=\(Int(frame.width * scale)) h=\(Int(frame.height * scale))")
     }
 
+    private func accessibilityLabel(for account: MailAccount) -> String {
+        var parts = [account.displayName, account.username]
+        if account.kind.isDemo { parts.append("demo account") }
+        if let error = account.lastSyncError { parts.append("error: \(error)") }
+        return parts.joined(separator: ", ")
+    }
+
+    private func perform(_ command: AppCommand) {
+        switch command {
+        case .settings: section = .settings
+        case .addAccount: isAddingAccount = true
+        case .stop:
+            state.engine.cancel(); state.executor.cancel(); state.maintainer.cancel()
+        case .readNewMail:
+            let targets = selectedAccount.map { [$0] } ?? accounts
+            Task { await state.readAll(targets) }
+        case .tidyUp:
+            let targets = selectedAccount.map { [$0] } ?? accounts
+            Task { await state.tidyUp(targets) }
+        case .index:
+            if let account = selectedAccount { section = .senders; state.engine.index(account: account, messageLimit: 1_000) }
+            else if let first = accounts.first { selectedAccountID = first.id; section = .senders; state.engine.index(account: first, messageLimit: 1_000) }
+        case .summarize:
+            section = .brief
+            state.refreshDigest(selectedAccount.map { [$0] } ?? accounts)
+        }
+    }
+
     private func remove(_ account: MailAccount) {
         state.remove(account)
         if selectedAccountID == account.id { selectedAccountID = accounts.first?.id }
@@ -243,6 +289,7 @@ struct EngineStatusBar: View {
         HStack(spacing: 10) {
             if isRunning {
                 ProgressView(value: fraction ?? 0).progressViewStyle(.linear).frame(width: 160)
+                    .accessibilityLabel(label)
                 if let onStop { Button("Stop", action: onStop).controlSize(.small) }
             }
             Text(label)

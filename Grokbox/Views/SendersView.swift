@@ -198,10 +198,11 @@ struct SendersView: View {
             TableColumn("Type", value: \.cluster.category.rawValue) { a in
                 let profile = profileByAddress[a.cluster.address]
                 HStack(spacing: 4) {
-                    Image(systemName: a.cluster.category.icon).font(.caption).foregroundStyle(.secondary)
+                    Image(systemName: a.cluster.category.icon).font(.caption).foregroundStyle(.secondary).accessibilityHidden(true)
                     Text(a.cluster.category.label).font(.caption)
                     if profile?.categoryFromModel == true {
                         Image(systemName: "sparkle").font(.caption2).foregroundStyle(.secondary).help("Placed by the local model")
+                            .accessibilityLabel("Placed by the local model")
                     }
                 }
                 .help(profile?.categoryEvidence ?? "")
@@ -216,6 +217,8 @@ struct SendersView: View {
                         Text(profile.recommendationReason).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                     }
                     .help(profile.recommendationReason)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(profile.recommendation.label). \(profile.recommendationReason)")
                 }
             }
             .width(min: 150, ideal: 190)
@@ -227,6 +230,7 @@ struct SendersView: View {
                         Image(systemName: rule == .sweep ? "wind" : "pin.fill")
                             .font(.caption2)
                             .help(rule.label)
+                            .accessibilityLabel("Rule: \(rule.label)")
                     }
                 }
                 .font(.caption.weight(.medium))
@@ -254,6 +258,8 @@ struct SendersView: View {
                         Image(systemName: "slider.horizontal.3")
                     }
                     .menuStyle(.borderlessButton).frame(width: 28)
+                    .help("Rules for this sender")
+                    .accessibilityLabel("Rules for \(a.cluster.displayName)")
 
                     if a.cluster.hasUnsubscribeLink {
                         Button(a.cluster.supportsOneClickUnsubscribe ? "Unsubscribe" : "Unsub link") {

@@ -18,6 +18,26 @@ final class AppState {
     /// saying nothing would be the worst possible behaviour here.
     var storeRecovery: String?
 
+    /// A menu-bar command waiting for the root view to act on it. Menus have
+    /// no idea which account is selected; the root view does, so it consumes
+    /// this and clears it.
+    var pendingCommand: AppCommand?
+
+    /// Replaces a stored password after proving it works. The account record
+    /// and its history are untouched; only the Keychain item changes.
+    func updatePassword(for account: MailAccount, password: String) async throws {
+        let clean = account.kind == .gmail ? password.replacingOccurrences(of: " ", with: "") : password
+        let provider = try await IMAPMailProvider.connect(
+            host: account.host, port: account.port, security: account.security,
+            username: account.username, password: clean)
+        _ = try await provider.discoverMailboxes()
+        await provider.finish()
+        try KeychainStore.save(password: clean, for: account.keychainAccount)
+        account.lastSyncError = nil
+        try context.save()
+        Log.note("password updated for \(account.displayName)")
+    }
+
     /// Set by the root view when it appears. The menu-bar label uses it to open
     /// the main window if SwiftUI declined to at launch.
     var mainWindowSeen = false
@@ -330,4 +350,10 @@ enum NotificationService {
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request) { _ in }
     }
+}
+
+
+/// Everything the Mailbox menu can ask for.
+enum AppCommand: Equatable {
+    case readNewMail, tidyUp, index, summarize, stop, settings, addAccount
 }

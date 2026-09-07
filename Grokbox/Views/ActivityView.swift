@@ -43,6 +43,7 @@ struct ActivityView: View {
             Image(systemName: icon(for: action))
                 .foregroundStyle(action.errorMessage != nil ? .red : (action.isUndone ? .secondary : .primary))
                 .frame(width: 20)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(title(for: action)).font(.headline)

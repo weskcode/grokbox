@@ -46,7 +46,10 @@ struct BriefView: View {
     struct Ranked: Identifiable {
         let message: MessageHeader
         let result: PriorityScorer.Result
+        /// Other messages in the same conversation, folded under this one.
+        var others: [MessageHeader] = []
         var id: PersistentIdentifier { message.persistentModelID }
+        var thread: [MessageHeader] { [message] + others }
     }
 
     private var accountIDs: Set<UUID> { Set(accounts.map(\.id)) }
@@ -69,6 +72,7 @@ struct BriefView: View {
                 )))
             }
             .sorted { $0.result.score != $1.result.score ? $0.result.score > $1.result.score : $0.message.receivedAt > $1.message.receivedAt }
+            .collapsedByThread()
     }
 
     private var needsYou: [Ranked] { ranked.filter { $0.message.importance == .needsYou } }
@@ -235,7 +239,7 @@ struct BriefView: View {
                 showWorthKnowing.toggle()
             } label: {
                 HStack {
-                    Image(systemName: showWorthKnowing ? "chevron.down" : "chevron.right").font(.caption)
+                    Image(systemName: showWorthKnowing ? "chevron.down" : "chevron.right").font(.caption).accessibilityHidden(true)
                     Text("Worth knowing").font(.title3.weight(.semibold))
                     Text("\(worthKnowing.count)").font(.callout).foregroundStyle(.secondary)
                     Text("— nothing required of you").font(.callout).foregroundStyle(.secondary)
@@ -264,8 +268,9 @@ struct BriefView: View {
                     }
                     if message.actionType != .none { chip(message.actionType.label, color: .secondary) }
                     if message.isQuick { chip("2 min", color: .green) }
+                    if !item.others.isEmpty { chip("\(item.thread.count) in thread", color: .secondary) }
                     Text(message.receivedAt, format: .relative(presentation: .named)).font(.caption).foregroundStyle(.secondary)
-                    if message.isUnread { Circle().fill(accent).frame(width: 6, height: 6) }
+                    if message.isUnread { Circle().fill(accent).frame(width: 6, height: 6).accessibilityLabel("Unread") }
                     if isMulti, let name = account(for: message)?.displayName {
                         chip(name, color: .secondary)
                     }
@@ -275,7 +280,7 @@ struct BriefView: View {
                     Text(summary).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 if !item.result.reasons.isEmpty {
-                    Text("Why here: " + item.result.reasons.joined(separator: " · ")).font(.caption2).foregroundStyle(.tertiary)
+                    Text("Why here: " + item.result.reasons.joined(separator: " · ")).font(.caption2).foregroundStyle(.secondary)
                 }
             }
             Spacer()
@@ -285,16 +290,18 @@ struct BriefView: View {
                 }
                 Button("Done") {
                     guard let account = account(for: message) else { return }
-                    Task { await state.executor.sweep(message, in: account) }
+                    let thread = item.thread
+                    Task { for m in thread { await state.executor.sweep(m, in: account) } }
                 }
                 .controlSize(.small)
                 .disabled(state.isBusy)
-                .help("Archive this message. Undo from Activity.")
+                .help(item.others.isEmpty ? "Archive this message. Undo from Activity."
+                                          : "Archive all \(item.thread.count) messages in this thread. Undo from Activity.")
                 Menu("Later") {
-                    Button("This evening") { snooze(message, hours: 6) }
-                    Button("Tomorrow") { snooze(message, days: 1) }
-                    Button("In 3 days") { snooze(message, days: 3) }
-                    Button("Next week") { snooze(message, days: 7) }
+                    Button("This evening") { snooze(item.thread, hours: 6) }
+                    Button("Tomorrow") { snooze(item.thread, days: 1) }
+                    Button("In 3 days") { snooze(item.thread, days: 3) }
+                    Button("Next week") { snooze(item.thread, days: 7) }
                 }
                 .controlSize(.small)
                 .fixedSize()
@@ -304,6 +311,23 @@ struct BriefView: View {
         .padding(12)
         .background(.background, in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(item.result.isOverdue ? Color.red.opacity(0.5) : Color.secondary.opacity(0.2)))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(accessibilitySummary(item))
+    }
+
+    /// What VoiceOver reads for a row: the same facts the colours and chips carry.
+    private func accessibilitySummary(_ item: Ranked) -> String {
+        let m = item.message
+        var parts: [String] = []
+        parts.append(m.isUnread ? "Unread" : "Read")
+        parts.append("from \(m.senderName.isEmpty ? m.senderAddress : m.senderName)")
+        parts.append(m.subject)
+        if let due = item.result.dueLabel { parts.append(item.result.isOverdue ? "overdue, \(due)" : "due \(due)") }
+        if m.actionType != .none { parts.append(m.actionType.label) }
+        if m.isQuick { parts.append("about two minutes") }
+        if !item.others.isEmpty { parts.append("\(item.thread.count) messages in this thread") }
+        if let summary = m.summary { parts.append(summary) }
+        return parts.joined(separator: ". ")
     }
 
     private func chip(_ text: String, color: Color) -> some View {
@@ -313,7 +337,7 @@ struct BriefView: View {
             .foregroundStyle(color == .secondary ? .secondary : color)
     }
 
-    private func snooze(_ message: MessageHeader, days: Int = 0, hours: Int = 0) {
+    private func snooze(_ messages: [MessageHeader], days: Int = 0, hours: Int = 0) {
         var until = Calendar.current.date(byAdding: .day, value: days, to: .now) ?? .now
         until = Calendar.current.date(byAdding: .hour, value: hours, to: until) ?? until
         if days > 0 {
@@ -322,7 +346,7 @@ struct BriefView: View {
             parts.hour = 9
             until = Calendar.current.date(from: parts) ?? until
         }
-        message.snoozedUntil = until
+        for message in messages { message.snoozedUntil = until }
         try? modelContext.save()
         tick = Date()
     }
@@ -346,5 +370,21 @@ struct BriefView: View {
         } description: {
             Text("Reading needs a model that runs on this Mac. Enable Apple Intelligence in System Settings, or run Ollama. See Settings for details.")
         }
+    }
+}
+
+
+extension Array where Element == BriefView.Ranked {
+    /// One row per conversation. The highest-ranked message keeps the row;
+    /// the rest ride along so Done and Later act on the whole thread.
+    func collapsedByThread() -> [BriefView.Ranked] {
+        var out: [BriefView.Ranked] = []
+        var index: [String: Int] = [:]
+        for item in self {
+            let key = ThreadKey.key(accountID: item.message.accountID, senderAddress: item.message.senderAddress, subject: item.message.subject)
+            if let i = index[key] { out[i].others.append(item.message) }
+            else { index[key] = out.count; out.append(item) }
+        }
+        return out
     }
 }

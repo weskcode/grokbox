@@ -109,10 +109,11 @@ struct SenderMessagesSheet: View {
     private func messageRow(_ message: MessageHeader) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Circle().fill(message.isUnread ? Color.accentColor : .clear).frame(width: 7, height: 7).padding(.top, 6)
+                .accessibilityLabel(message.isUnread ? "Unread" : "Read")
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 8) {
                     Text(message.subject).font(.body).lineLimit(1)
-                    if message.isFlagged { Image(systemName: "flag.fill").font(.caption).foregroundStyle(.orange) }
+                    if message.isFlagged { Image(systemName: "flag.fill").font(.caption).foregroundStyle(.orange).accessibilityLabel("Flagged") }
                     if message.isSweptLocally || !message.isInInbox {
                         Text("archived").font(.caption2).padding(.horizontal, 5).padding(.vertical, 1).background(.quaternary, in: Capsule())
                     }

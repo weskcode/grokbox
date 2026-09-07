@@ -93,7 +93,7 @@ struct SweepView: View {
                     }
                 } header: {
                     HStack(spacing: 8) {
-                        Image(systemName: group.category.icon)
+                        Image(systemName: group.category.icon).accessibilityHidden(true)
                         Text(group.category.label)
                         Text("→ \(group.folder)").foregroundStyle(.secondary)
                         Spacer()

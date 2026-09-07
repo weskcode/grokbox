@@ -7,6 +7,16 @@ All notable changes to Grokbox are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- Mailbox menu with keyboard shortcuts: Add Account ⌘N, Read New Mail ⌘R,
+  Index ⌘I, Tidy Up Now ⌘T, Where Things Stand ⌘⇧S, Stop ⌘., Settings ⌘,.
+  Help menu links to the privacy inventory, threat model and issue tracker.
+- Update Password on an account (sidebar context menu, or the button that
+  appears when a sync fails on sign-in) — no need to remove the account and
+  lose its history.
+- The Brief shows one row per conversation; Done and Later act on the whole
+  thread.
+- VoiceOver: rows in the Brief, Senders and Activity read as sentences; every
+  icon-only control has a label; the "why here" line meets contrast.
 - Plain IMAP servers are first-class: folders are created with the server's
   own hierarchy delimiter and namespace prefix, mailbox names in modified
   UTF-7 are decoded and encoded, the Sent folder is found by special-use flag
