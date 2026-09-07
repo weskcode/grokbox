@@ -61,7 +61,8 @@ public final class PlanExecutor {
 
     /// Applies every enabled item. When `recordRules` is set, each sender gets a
     /// `sweep` rule so future maintenance handles them without asking.
-    public func apply(_ plan: CleanupPlan, to account: MailAccount, recordRules: Bool = true, guarded: Bool = true) async {
+    public func apply(_ plan: CleanupPlan, to account: MailAccount, recordRules: Bool = true, guarded: Bool = true,
+                      policy: CleanupPolicy = .current) async {
         guard !phase.isRunning else { return }
         let items = plan.enabledItems
         guard !items.isEmpty else { return }
@@ -77,6 +78,26 @@ public final class PlanExecutor {
 
             let capabilities = await provider.capabilities
             let isGmail = capabilities.supportsGmailExtensions
+            let mailboxes = try await provider.discoverMailboxes()
+            // Trash is resolved once, before anything runs: a policy that
+            // cannot find the Trash must fail loudly rather than archive
+            // quietly and call it deletion.
+            var trashName: String?
+            if plan.enabledItems.contains(where: { $0.disposition == .trash }) {
+                guard let trash = mailboxes.trashMailbox else {
+                    phase = .failed("This server does not expose a Trash mailbox, so Grokbox cannot move mail there. Choose a different disposition in Settings.")
+                    return
+                }
+                trashName = trash.name
+            }
+            var archiveName: String?
+            if !isGmail, plan.enabledItems.contains(where: { $0.disposition == .archiveOnly }) {
+                guard let archive = mailboxes.archiveMailbox else {
+                    phase = .failed("This server has no Archive mailbox, so 'Archive only' cannot be applied. Choose 'File into folders' in Settings.")
+                    return
+                }
+                archiveName = archive.name
+            }
             // Folder names as this server spells them: its delimiter, its
             // namespace prefix, modified UTF-7. Gmail takes the logical name.
             var serverFolder: [String: String] = [:]
@@ -85,8 +106,7 @@ public final class PlanExecutor {
                     phase = .failed("This server does not support MOVE, so Grokbox cannot archive safely. Mark-read still works.")
                     return
                 }
-                let mailboxes = try await provider.discoverMailboxes()
-                for folder in Set(items.map(\.folder)) {
+                for folder in Set(items.filter { $0.disposition == .fileIntoFolders }.map(\.folder)) {
                     let name = mailboxes.serverName(forLogical: folder)
                     serverFolder[folder] = name
                     try await provider.ensureMailbox(name)
@@ -95,17 +115,20 @@ public final class PlanExecutor {
 
             var openMailbox: String?
             var openValidity: UInt32 = 0
+            var unsubscribed = Set<String>()
+            var unsubscribeCount = 0
             var done = 0
             var touched = 0
 
-            let keepTransactional = SweepGuard.keepTransactionalPreference
+            let keepTransactional = policy.guardTransactional
             var heldTotal = 0
 
             for item in items {
                 try Task.checkCancellation()
                 // Message-level safety net over the sender-level decision.
+                _ = keepTransactional
                 let verdict = guarded
-                    ? SweepGuard.check(facts(for: item.cluster.pendingUIDs, in: account), keepTransactional: keepTransactional)
+                    ? SweepGuard.check(facts(for: item.cluster.pendingUIDs, in: account), policy: policy)
                     : SweepGuard.Verdict(allowed: item.cluster.pendingUIDs, held: [])
                 let uids = verdict.allowed
                 heldTotal += verdict.held.count
@@ -126,19 +149,65 @@ public final class PlanExecutor {
                 }
 
                 if item.archive {
-                    if isGmail {
-                        let label = record(.label, for: item, uids: uids, account: account, labelName: item.folder, undoable: true, uidValidity: openValidity)
-                        await run(label) {
-                            try await provider.setGmailLabels(uids: uids, .add, labels: [item.folder])
+                    switch item.disposition {
+                    case .trash:
+                        // Deliberately a MOVE to the provider's Trash, never a
+                        // \\Deleted flag and never EXPUNGE. The provider empties
+                        // it on its own schedule; until then this is undoable.
+                        let target = trashName ?? "Trash"
+                        let action = record(.trash, for: item, uids: uids, account: account, labelName: target, undoable: false, uidValidity: openValidity)
+                        action.heldUIDs = verdict.held.map(\.uid)
+                        action.heldSummary = verdict.summary
+                        action.targetMailbox = target
+                        await run(action) {
+                            let moved = try await provider.move(uids: uids, to: target)
+                            if let newUIDs = moved.targetUIDs, newUIDs.count == uids.count {
+                                action.targetUIDs = newUIDs
+                                action.targetUIDValidity = moved.targetUIDValidity ?? 0
+                                action.isUndoable = true
+                            }
                         }
-                        let archive = record(.archive, for: item, uids: uids, account: account,  undoable: true, uidValidity: openValidity)
+                        if action.errorMessage == nil { markSwept(uids: uids, in: account, swept: true, address: item.cluster.address) }
+
+                    case .archiveOnly where isGmail:
+                        let archive = record(.archive, for: item, uids: uids, account: account, undoable: true, uidValidity: openValidity)
                         archive.heldUIDs = verdict.held.map(\.uid)
                         archive.heldSummary = verdict.summary
                         await run(archive) {
                             try await provider.setGmailLabels(uids: uids, .remove, labels: ["\\Inbox"])
                         }
                         if archive.errorMessage == nil { markSwept(uids: uids, in: account, swept: true, address: item.cluster.address) }
-                    } else {
+
+                    case .archiveOnly:
+                        let target = archiveName ?? "Archive"
+                        let archive = record(.archive, for: item, uids: uids, account: account, labelName: target, undoable: false, uidValidity: openValidity)
+                        archive.heldUIDs = verdict.held.map(\.uid)
+                        archive.heldSummary = verdict.summary
+                        archive.targetMailbox = target
+                        await run(archive) {
+                            let moved = try await provider.move(uids: uids, to: target)
+                            if let newUIDs = moved.targetUIDs, newUIDs.count == uids.count {
+                                archive.targetUIDs = newUIDs
+                                archive.targetUIDValidity = moved.targetUIDValidity ?? 0
+                                archive.isUndoable = true
+                            }
+                        }
+                        if archive.errorMessage == nil { markSwept(uids: uids, in: account, swept: true, address: item.cluster.address) }
+
+                    case .fileIntoFolders where isGmail:
+                        let label = record(.label, for: item, uids: uids, account: account, labelName: item.folder, undoable: true, uidValidity: openValidity)
+                        await run(label) {
+                            try await provider.setGmailLabels(uids: uids, .add, labels: [item.folder])
+                        }
+                        let archive = record(.archive, for: item, uids: uids, account: account, undoable: true, uidValidity: openValidity)
+                        archive.heldUIDs = verdict.held.map(\.uid)
+                        archive.heldSummary = verdict.summary
+                        await run(archive) {
+                            try await provider.setGmailLabels(uids: uids, .remove, labels: ["\\Inbox"])
+                        }
+                        if archive.errorMessage == nil { markSwept(uids: uids, in: account, swept: true, address: item.cluster.address) }
+
+                    case .fileIntoFolders:
                         // MOVE gives the messages new UIDs in the target. Servers with
                         // UIDPLUS report them (COPYUID), and that is what makes the
                         // move undoable; without it the action is recorded as final.
@@ -159,6 +228,25 @@ public final class PlanExecutor {
                     }
                 }
 
+                // The unsubscribe goes last, and only if the sweep itself
+                // worked: telling a sender to stop is not undoable, so it must
+                // never happen for mail that is still sitting in the inbox.
+                if item.unsubscribe, unsubscribed.insert(item.cluster.address).inserted {
+                    let action = record(.unsubscribe, for: item, uids: [], account: account,
+                                        labelName: item.cluster.address, undoable: false, uidValidity: 0)
+                    let outcome = await UnsubscribeService.unsubscribe(from: item.cluster)
+                    switch outcome {
+                    case .unsubscribed:
+                        unsubscribeCount += 1
+                    case .openInBrowser, .requiresEmail:
+                        // Automatic mode is one-click only. Anything needing a
+                        // browser or an email is left for the user to decide.
+                        action.errorMessage = "Needs a browser; left for you in Senders."
+                    case .failed(let why):
+                        action.errorMessage = why
+                    }
+                }
+
                 done += 1
                 touched += uids.count
                 phase = .applying(done: done, total: items.count)
@@ -167,7 +255,8 @@ public final class PlanExecutor {
 
             RuleStore.bumpApplied(for: items.map(\.cluster.address), in: modelContext)
             let heldNote = heldTotal > 0 ? ", held \(heldTotal) for you" : ""
-            phase = .finished("Swept \(touched.formatted()) messages from \(done) senders\(heldNote)")
+            let unsubNote = unsubscribeCount > 0 ? ", unsubscribed from \(unsubscribeCount)" : ""
+            phase = .finished("Swept \(touched.formatted()) messages from \(done) senders\(heldNote)\(unsubNote)")
         } catch is CancellationError {
             try? modelContext.save()
             phase = .idle
@@ -203,7 +292,9 @@ public final class PlanExecutor {
             defer { activeProvider = nil; Task { await provider.finish() } }
 
             switch action.kind {
-            case .archive where action.targetMailbox != nil && !action.targetUIDs.isEmpty:
+            case .unsubscribe:
+                throw IMAPError.commandFailed(command: "UNDO", response: "An unsubscribe cannot be taken back. Re-subscribe on the sender's own site if you want their mail again.")
+            case .trash, .archive where action.targetMailbox != nil && !action.targetUIDs.isEmpty:
                 // A MOVE on a plain server: bring the messages back from the
                 // folder they went to. The guard runs against *that* mailbox.
                 let target = action.targetMailbox!
@@ -309,9 +400,10 @@ public final class PlanExecutor {
         for start in stride(from: 0, to: uids.count, by: 400) {
             let chunk = Array(uids[start..<min(start + 400, uids.count)])
             var descriptor = FetchDescriptor<MessageHeader>(predicate: #Predicate { $0.accountID == accountID && chunk.contains($0.uid) })
-            descriptor.propertiesToFetch = [\.uid, \.subject, \.isFlagged, \.importanceRaw]
+            descriptor.propertiesToFetch = [\.uid, \.subject, \.isFlagged, \.importanceRaw, \.receivedAt]
             for message in (try? modelContext.fetch(descriptor)) ?? [] {
-                out.append(.init(uid: message.uid, subject: message.subject, isFlagged: message.isFlagged, importance: message.importance))
+                out.append(.init(uid: message.uid, subject: message.subject, isFlagged: message.isFlagged,
+                                 importance: message.importance, receivedAt: message.receivedAt))
             }
         }
         return out

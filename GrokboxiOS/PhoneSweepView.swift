@@ -12,14 +12,19 @@ struct PhoneSweepView: View {
     var body: some View {
         List {
             Section {
-                Text("Each sender is filed into the folder for its kind — never a generic bin. Flagged mail, mail the model says needs you, and receipts are held back. Nothing is deleted; every action can be undone from Activity.")
+                Text(CleanupPolicy.current.summary)
                     .font(.footnote).foregroundStyle(.secondary)
+                if let plan, !plan.autoUnsubscribeItems.isEmpty {
+                    Label("Will also unsubscribe from \(plan.autoUnsubscribeItems.count) sender\(plan.autoUnsubscribeItems.count == 1 ? "" : "s"). That cannot be undone.",
+                          systemImage: "hand.raised")
+                        .font(.footnote).foregroundStyle(.orange)
+                }
                 if state.executor.phase.isRunning {
                     PhoneStatusRow(label: state.executor.phase.label, fraction: nil, isRunning: true, isFailed: false, onStop: { state.executor.cancel() })
                 } else if let plan, !plan.isEmpty {
                     Button {
                         let toApply = plan
-                        Task { await state.executor.apply(toApply, to: account); self.plan = buildPlan() }
+                        Task { await state.executor.apply(toApply, to: account, policy: CleanupPolicy.current); self.plan = buildPlan() }
                     } label: {
                         Label("Archive \(plan.enabledMessageCount.formatted()) messages from \(plan.enabledItems.count) senders", systemImage: "wind")
                     }
@@ -55,7 +60,7 @@ struct PhoneSweepView: View {
     private func buildPlan() -> CleanupPlan {
         let assessed = SenderProfileBuilder.assessments(for: account, in: modelContext)
         let ruleMap = Dictionary(rules.map { ($0.address, $0.decision) }, uniquingKeysWith: { a, _ in a })
-        return CleanupPlan.suggested(from: assessed, rules: ruleMap)
+        return CleanupPlan.suggested(from: assessed, rules: ruleMap, policy: CleanupPolicy.current)
     }
 
     private func binding(for id: String) -> Binding<Bool> {

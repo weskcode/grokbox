@@ -59,6 +59,8 @@ struct PhoneActivityView: View {
         case .archive: "Archived \(a.messageCount)"
         case .markRead: "Marked \(a.messageCount) read"
         case .label: "Filed \(a.messageCount) → \(a.labelName ?? "folder")"
+        case .trash: "Moved \(a.messageCount) to Trash"
+        case .unsubscribe: "Unsubscribed from \(a.senderName)"
         }
     }
 }

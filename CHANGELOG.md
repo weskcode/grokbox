@@ -7,6 +7,12 @@ All notable changes to Grokbox are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- Cleanup settings: three named approaches (Gentle, Balanced, Thorough) plus
+  individual dials. Choose where swept mail goes — filed into folders,
+  archived, or moved to the provider's Trash — separately for promotions;
+  protect recent mail and the newest few from each sender; and let Grokbox
+  unsubscribe automatically from senders that clearly qualify. Every policy
+  states in a sentence what it will do, above the Sweep button.
 - UI tests for the phone app (tabs, swipe to Done, Undo, search, Sweep,
   Settings), run in CI on a simulator.
 - A rules-only demo reader (`--stub-model`) so demos, screenshots and tests

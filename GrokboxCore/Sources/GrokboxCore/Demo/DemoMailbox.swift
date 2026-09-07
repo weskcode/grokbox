@@ -164,6 +164,13 @@ public final class DemoMailbox: @unchecked Sendable {
         return assigned
     }
 
+    /// Deletes a mailbox from the demo server — used to simulate a provider
+    /// that does not expose one (a server with no Trash, for instance).
+    public func removeMailbox(_ name: String) {
+        lock.lock(); defer { lock.unlock() }
+        store[name] = nil
+    }
+
     public func create(_ mailbox: String) {
         lock.lock(); defer { lock.unlock() }
         if store[mailbox] == nil { store[mailbox] = [] }

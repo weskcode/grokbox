@@ -231,12 +231,19 @@ public enum ActionKind: String, Codable, Sendable, CaseIterable {
     case markRead
     /// Apply a label (Gmail) so swept mail stays findable.
     case label
+    /// Move to the server's Trash. Recoverable until the provider empties it;
+    /// Grokbox never expunges and never deletes a message itself.
+    case trash
+    /// An RFC 8058 one-click unsubscribe sent as part of a sweep.
+    case unsubscribe
 
     public var label: String {
         switch self {
         case .archive: "Archive"
         case .markRead: "Mark read"
         case .label: "Label"
+        case .trash: "Move to Trash"
+        case .unsubscribe: "Unsubscribe"
         }
     }
 }
