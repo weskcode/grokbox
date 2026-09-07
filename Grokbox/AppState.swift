@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(AppKit)
 import AppKit
+#endif
 import SwiftData
 import UserNotifications
 import GrokboxCore
@@ -194,6 +196,10 @@ final class AppState {
     /// available; otherwise takes the first that is.
     func refreshModels() async {
         var candidates = ModelRegistry.candidates()
+        #if os(iOS)
+        // Ollama is a loopback server on a Mac; a phone has no such thing.
+        candidates.removeAll { $0 is OllamaProvider }
+        #endif
         let ollamaModel = UserDefaults.standard.string(forKey: "grokbox.ollamaModel") ?? OllamaProvider.defaultModel
         candidates = candidates.map { $0 is OllamaProvider ? OllamaProvider(model: ollamaModel) : $0 }
 

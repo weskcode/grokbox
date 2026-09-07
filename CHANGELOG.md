@@ -7,6 +7,10 @@ All notable changes to Grokbox are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- An iPhone and iPad app, sharing the same engine and store layout: the Brief
+  with swipe-to-Done and swipe-to-Later, Senders with rules and unsubscribe,
+  Sweep with per-sender toggles, Activity with Undo, Settings with export.
+  Reads with Apple's on-device model; Ollama is a Mac-only option.
 - Mailbox menu with keyboard shortcuts: Add Account ⌘N, Read New Mail ⌘R,
   Index ⌘I, Tidy Up Now ⌘T, Where Things Stand ⌘⇧S, Stop ⌘., Settings ⌘,.
   Help menu links to the privacy inventory, threat model and issue tracker.

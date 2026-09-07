@@ -43,14 +43,7 @@ struct BriefView: View {
 
     // MARK: - Ranking
 
-    struct Ranked: Identifiable {
-        let message: MessageHeader
-        let result: PriorityScorer.Result
-        /// Other messages in the same conversation, folded under this one.
-        var others: [MessageHeader] = []
-        var id: PersistentIdentifier { message.persistentModelID }
-        var thread: [MessageHeader] { [message] + others }
-    }
+    typealias Ranked = BriefItem
 
     private var accountIDs: Set<UUID> { Set(accounts.map(\.id)) }
     private var isMulti: Bool { accounts.count > 1 }
@@ -62,17 +55,8 @@ struct BriefView: View {
     private var ranked: [Ranked] {
         let counts = contactCounts
         let now = tick
-        return classified
-            .filter { (isMulti ? accountIDs.contains($0.accountID) : true) && !$0.isSnoozed }
-            .map { message in
-                Ranked(message: message, result: PriorityScorer.score(.init(
-                    importance: message.importance, actionType: message.actionType, dueAt: message.dueAt,
-                    receivedAt: message.receivedAt, isUnread: message.isUnread, isFlagged: message.isFlagged,
-                    isQuick: message.isQuick, timesContacted: counts[message.senderAddress] ?? 0, now: now
-                )))
-            }
-            .sorted { $0.result.score != $1.result.score ? $0.result.score > $1.result.score : $0.message.receivedAt > $1.message.receivedAt }
-            .collapsedByThread()
+        let scoped = classified.filter { isMulti ? accountIDs.contains($0.accountID) : true }
+        return BriefRanking.rank(scoped, contactCounts: counts, now: now)
     }
 
     private var needsYou: [Ranked] { ranked.filter { $0.message.importance == .needsYou } }
@@ -315,20 +299,7 @@ struct BriefView: View {
         .accessibilityLabel(accessibilitySummary(item))
     }
 
-    /// What VoiceOver reads for a row: the same facts the colours and chips carry.
-    private func accessibilitySummary(_ item: Ranked) -> String {
-        let m = item.message
-        var parts: [String] = []
-        parts.append(m.isUnread ? "Unread" : "Read")
-        parts.append("from \(m.senderName.isEmpty ? m.senderAddress : m.senderName)")
-        parts.append(m.subject)
-        if let due = item.result.dueLabel { parts.append(item.result.isOverdue ? "overdue, \(due)" : "due \(due)") }
-        if m.actionType != .none { parts.append(m.actionType.label) }
-        if m.isQuick { parts.append("about two minutes") }
-        if !item.others.isEmpty { parts.append("\(item.thread.count) messages in this thread") }
-        if let summary = m.summary { parts.append(summary) }
-        return parts.joined(separator: ". ")
-    }
+    private func accessibilitySummary(_ item: Ranked) -> String { BriefRanking.spokenSummary(item) }
 
     private func chip(_ text: String, color: Color) -> some View {
         Text(text).font(.caption2.weight(.medium))
@@ -370,21 +341,5 @@ struct BriefView: View {
         } description: {
             Text("Reading needs a model that runs on this Mac. Enable Apple Intelligence in System Settings, or run Ollama. See Settings for details.")
         }
-    }
-}
-
-
-extension Array where Element == BriefView.Ranked {
-    /// One row per conversation. The highest-ranked message keeps the row;
-    /// the rest ride along so Done and Later act on the whole thread.
-    func collapsedByThread() -> [BriefView.Ranked] {
-        var out: [BriefView.Ranked] = []
-        var index: [String: Int] = [:]
-        for item in self {
-            let key = ThreadKey.key(accountID: item.message.accountID, senderAddress: item.message.senderAddress, subject: item.message.subject)
-            if let i = index[key] { out[i].others.append(item.message) }
-            else { index[key] = out.count; out.append(item) }
-        }
-        return out
     }
 }

@@ -150,6 +150,15 @@ Bridge** running, which requires a paid Proton plan.
 GPL-3.0-or-later. See [LICENSE](LICENSE).
 
 
+## On iPhone and iPad
+
+The same engine, the same store, the same rules. The phone is the Brief in
+your pocket: see what needs you, swipe it Done or Later, unsubscribe from the
+sender. Heavy work — deep indexing, thousand-message sweeps — is still a Mac
+job; iOS suspends apps in the background, so tidy-up runs while Grokbox is
+open. Summaries come from Apple's on-device model (Ollama is Mac-only).
+Build the `GrokboxiOS` scheme.
+
 ## Works with any IMAP server
 
 Gmail is handled natively (labels, All Mail). Everything else — iCloud,

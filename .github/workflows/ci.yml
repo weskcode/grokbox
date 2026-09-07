@@ -24,3 +24,8 @@ jobs:
           xcodegen generate
           xcodebuild -project Grokbox.xcodeproj -scheme Grokbox -configuration Debug \
             -derivedDataPath "$RUNNER_TEMP/dd" CODE_SIGNING_ALLOWED=NO build
+      - name: iOS build
+        run: |
+          xcodebuild -project Grokbox.xcodeproj -scheme GrokboxiOS -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/dd-ios" CODE_SIGNING_ALLOWED=NO build

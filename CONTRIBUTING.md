@@ -9,6 +9,12 @@ xcodegen generate
 xcodebuild -project Grokbox.xcodeproj -scheme Grokbox -configuration Debug -derivedDataPath /tmp/grokbox-dd build
 ```
 
+For the iPhone/iPad app:
+
+```bash
+xcodebuild -project Grokbox.xcodeproj -scheme GrokboxiOS -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath /tmp/grokbox-dd-ios CODE_SIGNING_ALLOWED=NO build
+```
+
 Build with a derived-data path outside any iCloud-synced folder; synced
 extended attributes break code signing.
 

@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: com.wesleykeetch
   deploymentTarget:
     macOS: "26.0"
+    iOS: "26.0"
   createIntermediateGroups: true
   groupSortPosition: top
 
@@ -38,4 +39,30 @@ targets:
         ENABLE_HARDENED_RUNTIME: YES
         GENERATE_INFOPLIST_FILE: NO
         COMBINE_HIDPI_IMAGES: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+
+  GrokboxiOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: GrokboxiOS
+      - path: Grokbox/AppState.swift
+      - path: Grokbox/AppSection.swift
+      - path: Grokbox/Log.swift
+      - path: Grokbox/LaunchOptions.swift
+      - path: Grokbox/Views/ConnectionErrorText.swift
+    dependencies:
+      - package: GrokboxCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.wesleykeetch.grokbox.ios
+        PRODUCT_NAME: Grokbox
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_NSHumanReadableCopyright: GPL-3.0-or-later
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGNING_ALLOWED: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
