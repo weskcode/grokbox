@@ -63,6 +63,11 @@ All notable changes to Grokbox are recorded here. The format follows
 - Continuous integration on GitHub Actions (macOS 26).
 
 ### Fixed
+- Removing an account left its sweep rules behind. Rules are global on
+  purpose, but a rule about a sender no remaining account receives from is
+  dead weight, and sweep rules from a removed demo mailbox stayed live against
+  a real one. They are dropped on removal, and Settings offers to clear any
+  that are already stranded.
 - The section switcher no longer draws a highlighted rectangle under the
   pointer. It was a segmented picker, whose segments light up individually on
   hover; it is now labelled buttons inside the toolbar's own glass capsule,

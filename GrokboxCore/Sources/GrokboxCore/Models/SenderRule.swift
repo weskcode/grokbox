@@ -120,6 +120,26 @@ public enum RuleStore {
         try? context.save()
     }
 
+    /// Rules whose sender appears in no account any more.
+    ///
+    /// Rules are global on purpose — a newsletter is a newsletter, whichever
+    /// mailbox it lands in — but a rule about a sender you can no longer
+    /// receive mail from is dead weight, and worse than that: rules from a
+    /// removed demo mailbox would still steer a real one.
+    public static func orphaned(in context: ModelContext) -> [SenderRule] {
+        let known = Set(((try? context.fetch(FetchDescriptor<SenderProfile>())) ?? []).map(\.address))
+        let rules = (try? context.fetch(FetchDescriptor<SenderRule>())) ?? []
+        return rules.filter { !known.contains($0.address) }
+    }
+
+    @discardableResult
+    public static func clearOrphaned(in context: ModelContext) -> Int {
+        let dead = orphaned(in: context)
+        for rule in dead { context.delete(rule) }
+        if !dead.isEmpty { try? context.save() }
+        return dead.count
+    }
+
     public static func bumpApplied(for addresses: [String], in context: ModelContext) {
         let wanted = Set(addresses)
         for rule in (try? context.fetch(FetchDescriptor<SenderRule>())) ?? [] where wanted.contains(rule.address) {

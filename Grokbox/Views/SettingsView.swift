@@ -19,6 +19,7 @@ struct SettingsView: View {
     @AppStorage("grokbox.notify") private var notify = false
 
     @State private var confirmingErase = false
+    private var orphanedRules: [SenderRule] { RuleStore.orphaned(in: modelContext) }
     @State private var exportDocument: ExportFile?
     @State private var showingExporter = false
     @State private var showingImporter = false
@@ -106,6 +107,14 @@ struct SettingsView: View {
             }
 
             Section("Rules (\(rules.count))") {
+                if !orphanedRules.isEmpty {
+                    HStack {
+                        Label("\(orphanedRules.count) rule\(orphanedRules.count == 1 ? "" : "s") for senders no account receives from", systemImage: "questionmark.folder")
+                            .font(.callout).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Remove them") { RuleStore.clearOrphaned(in: modelContext) }.controlSize(.small)
+                    }
+                }
                 if rules.isEmpty {
                     Text("No rules yet. Approving a sender in Sweep, or choosing Always sweep / Always keep in Senders, adds one.")
                         .font(.caption).foregroundStyle(.secondary)

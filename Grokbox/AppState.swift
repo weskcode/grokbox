@@ -353,6 +353,11 @@ final class AppState {
         try? context.delete(model: CleanupAction.self, where: actions)
         context.delete(account)
         try? context.save()
+        // A rule about a sender no remaining account receives from is dead.
+        // Without this, sweep rules from a removed demo mailbox stay live and
+        // apply to a real one.
+        let dropped = RuleStore.clearOrphaned(in: context)
+        if dropped > 0 { Log.note("removed \(account.displayName); dropped \(dropped) rule(s) with no sender left") }
     }
 
     /// Wipes every local record and Keychain item. The mailbox itself is untouched.
