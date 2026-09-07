@@ -72,6 +72,10 @@ rebase anything that has been merged, and never force-push a shared branch.
 Sign every commit, on every branch (`git commit -S`, with
 `commit.gpgsign true` set). Unsigned commits are not merged.
 
+## Releasing
+
+See [docs/RELEASING.md](docs/RELEASING.md). One command: `scripts/release.sh <version>`.
+
 ## Licence
 
 Contributions are accepted under GPL-3.0-or-later. Sign your commits
