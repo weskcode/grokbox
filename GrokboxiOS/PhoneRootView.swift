@@ -27,7 +27,7 @@ struct PhoneRootView: View {
                     Tab("Brief", systemImage: "sun.horizon", value: AppSection.brief) { NavigationStack { PhoneBriefView(accounts: scoped).toolbar { scopeMenu } } }
                     Tab("Senders", systemImage: "person.2", value: AppSection.senders) { NavigationStack { PhoneSendersView(account: scoped.first ?? accounts[0]).toolbar { scopeMenu } } }
                     Tab("Sweep", systemImage: "wind", value: AppSection.sweep) { NavigationStack { PhoneSweepView(account: scoped.first ?? accounts[0]).toolbar { scopeMenu } } }
-                    Tab("Activity", systemImage: "clock.arrow.circlepath", value: AppSection.activity) { NavigationStack { PhoneActivityView(account: scoped.first ?? accounts[0]).toolbar { scopeMenu } } }
+                    Tab("Activity", systemImage: "clock.arrow.circlepath", value: AppSection.activity) { NavigationStack { PhoneActivityView(accounts: scoped).toolbar { scopeMenu } } }
                     Tab("Settings", systemImage: "gearshape", value: AppSection.settings) { NavigationStack { PhoneSettingsView(accounts: accounts, addAccount: { addingAccount = true }) } }
                 }
             }
@@ -55,6 +55,7 @@ struct PhoneRootView: View {
                     .labelStyle(.titleAndIcon)
             }
             .accessibilityLabel("Account scope")
+            .accessibilityIdentifier("scopeMenu")
         }
     }
 

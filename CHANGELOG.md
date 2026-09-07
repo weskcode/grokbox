@@ -7,6 +7,10 @@ All notable changes to Grokbox are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- UI tests for the phone app (tabs, swipe to Done, Undo, search, Sweep,
+  Settings), run in CI on a simulator.
+- A rules-only demo reader (`--stub-model`) so demos, screenshots and tests
+  behave identically on machines where the on-device model cannot run.
 - An iPhone and iPad app, sharing the same engine and store layout: the Brief
   with swipe-to-Done and swipe-to-Later, Senders with rules and unsubscribe,
   Sweep with per-sender toggles, Activity with Undo, Settings with export.
@@ -40,6 +44,8 @@ All notable changes to Grokbox are recorded here. The format follows
 - Continuous integration on GitHub Actions (macOS 26).
 
 ### Fixed
+- A model that failed on every message was reported as "nothing new to
+  read". The tidy-up now says reading failed, and why, in plain words.
 - IMAP deadlines now tear the connection down, so a silent server can no
   longer stall the engine for the rest of the session.
 - Stop now cancels indexing, reading, sweeping and tidy-up, including a

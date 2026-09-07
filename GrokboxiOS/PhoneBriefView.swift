@@ -109,6 +109,7 @@ struct PhoneBriefView: View {
         .padding(.vertical, 2)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(BriefRanking.spokenSummary(item))
+        .accessibilityIdentifier("briefRow")
         .swipeActions(edge: .trailing) {
             Button {
                 guard let account = accounts.first(where: { $0.id == m.accountID }) else { return }

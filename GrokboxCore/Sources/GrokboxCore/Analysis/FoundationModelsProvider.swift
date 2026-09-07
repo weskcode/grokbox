@@ -29,7 +29,12 @@ public struct FoundationModelsProvider: TextModel {
         // A fresh session per message: the on-device context window is small,
         // and each email is independent of the last.
         let session = LanguageModelSession(instructions: ReaderPrompt.instructions)
-        let response = try await session.respond(to: request.rendered, generating: GeneratedRead.self)
+        let response: LanguageModelSession.Response<GeneratedRead>
+        do {
+            response = try await session.respond(to: request.rendered, generating: GeneratedRead.self)
+        } catch let error as LanguageModelSession.GenerationError {
+            throw ModelError.generation(Self.describe(error))
+        }
         let generated = response.content
         let due = generated.due.trimmingCharacters(in: .whitespacesAndNewlines)
         return ReadResult(
@@ -44,8 +49,30 @@ public struct FoundationModelsProvider: TextModel {
 
     public func categorize(_ request: CategorizeRequest) async throws -> CategorizeResult {
         let session = LanguageModelSession(instructions: ReaderPrompt.categorizeInstructions)
-        let response = try await session.respond(to: request.rendered, generating: GeneratedCategory.self)
+        let response: LanguageModelSession.Response<GeneratedCategory>
+        do {
+            response = try await session.respond(to: request.rendered, generating: GeneratedCategory.self)
+        } catch let error as LanguageModelSession.GenerationError {
+            throw ModelError.generation(Self.describe(error))
+        }
         return CategorizeResult(category: response.content.kind.category, reason: response.content.reason)
+    }
+
+    /// The framework's own descriptions are opaque ("error -1"). Say what
+    /// happened in words a person can act on.
+    private static func describe(_ error: LanguageModelSession.GenerationError) -> String {
+        switch error {
+        case .exceededContextWindowSize: "the message was too long for the on-device model"
+        case .assetsUnavailable: "the on-device model's assets are not available on this device (simulators usually cannot run it; a real device can)"
+        case .guardrailViolation: "the on-device model declined this message (safety guardrail)"
+        case .unsupportedGuide: "the on-device model rejected the output format"
+        case .unsupportedLanguageOrLocale: "the on-device model does not support this language"
+        case .decodingFailure: "the on-device model produced an unreadable answer"
+        case .rateLimited: "the on-device model is rate-limited right now"
+        case .concurrentRequests: "the on-device model was asked to do two things at once"
+        case .refusal: "the on-device model refused this message"
+        @unknown default: "the on-device model failed (\(error))"
+        }
     }
 
     private static func describe(_ reason: SystemLanguageModel.Availability.UnavailableReason) -> String {
@@ -59,6 +86,14 @@ public struct FoundationModelsProvider: TextModel {
         @unknown default:
             "The on-device model is unavailable."
         }
+    }
+}
+
+/// A model failure with a sentence attached.
+public enum ModelError: Error, LocalizedError {
+    case generation(String)
+    public var errorDescription: String? {
+        switch self { case .generation(let why): why }
     }
 }
 

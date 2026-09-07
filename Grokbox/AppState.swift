@@ -214,6 +214,10 @@ final class AppState {
         let preferred = UserDefaults.standard.string(forKey: "grokbox.preferredModel")
         let available = zip(candidates, statuses).filter { $0.1.1.isAvailable }.map(\.0)
         model = available.first { $0.name == preferred } ?? available.first
+        if LaunchOptions.current.stubModel {
+            model = DemoReaderModel()
+            Log.note("using the rules-only demo reader (--stub-model)")
+        }
     }
 
     // MARK: - Demo accounts

@@ -66,3 +66,20 @@ targets:
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGNING_ALLOWED: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    scheme:
+      testTargets:
+        - GrokboxiOSUITests
+
+  GrokboxiOSUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: GrokboxiOSUITests
+    dependencies:
+      - target: GrokboxiOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.wesleykeetch.grokbox.ios.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
+        TEST_TARGET_NAME: GrokboxiOS

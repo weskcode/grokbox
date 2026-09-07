@@ -21,6 +21,8 @@ struct LaunchOptions {
     var demoUndo = false
     var catchUp = false
     var selftest = false
+    /// Read with the rules-only demo reader instead of a model (screenshots, UI tests).
+    var stubModel = false
     /// Diagnostic: render only part of the UI. bare | sidebar | detail | full (default).
     var ui = "full"
     /// Diagnostic: menu-bar content variant. text | query | state | full (default).
@@ -40,6 +42,7 @@ struct LaunchOptions {
         options.demoUndo = args.contains("--demo-undo")
         options.catchUp = args.contains("--catch-up")
         options.selftest = args.contains("--selftest")
+        options.stubModel = args.contains("--stub-model")
         if let i = args.firstIndex(of: "--ui"), i + 1 < args.count { options.ui = args[i + 1] }
         if let i = args.firstIndex(of: "--mb"), i + 1 < args.count { options.menuBar = args[i + 1] }
         if let i = args.firstIndex(of: "--scene"), i + 1 < args.count { options.scene = args[i + 1] }

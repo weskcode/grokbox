@@ -24,7 +24,9 @@ extended attributes break code signing.
 cd GrokboxCore && swift test
 ```
 
-Around 110 tests in 30 suites, including an in-process IMAP server and a real
+UI tests for the phone app: add `-only-testing:GrokboxiOSUITests` to an `xcodebuild test` on the `GrokboxiOS` scheme. They launch with `--stub-model`, a rules-only reader, so they never depend on the on-device model.
+
+Around 130 tests in 40 suites, including an in-process IMAP server and a real
 TLS handshake with `imap.gmail.com` (no credentials are sent).
 
 ## Rules that are not negotiable

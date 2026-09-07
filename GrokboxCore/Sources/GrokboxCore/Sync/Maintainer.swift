@@ -99,6 +99,7 @@ public final class Maintainer {
 
         var sweptMessages = 0
         var readMessages = 0
+        var readFailures: [String] = []
 
         for account in accounts {
             phase = .indexing
@@ -118,15 +119,26 @@ public final class Maintainer {
             if let model {
                 phase = .reading
                 await engine.readNow(account: account, model: model, limit: settings.readLimit)
-                if case .finished(let message) = engine.phase, let count = Int(message.split(separator: " ").dropFirst().first ?? "") {
-                    readMessages += count
+                switch engine.phase {
+                case .finished(let message):
+                    if let count = Int(message.split(separator: " ").dropFirst().first ?? "") { readMessages += count }
+                case .failed(let why):
+                    // A broken model must not be reported as "nothing new to read".
+                    readFailures.append("\(account.displayName): \(why)")
+                default:
+                    break
                 }
             }
         }
 
         lastRunAt = Date()
-        let text = summary(swept: sweptMessages, read: readMessages, model: model)
-        phase = .finished(text)
+        var text = summary(swept: sweptMessages, read: readMessages, model: readFailures.isEmpty ? model : nil)
+        if !readFailures.isEmpty {
+            text += ". Reading failed — " + readFailures.joined(separator: "; ")
+            phase = .failed(text)
+        } else {
+            phase = .finished(text)
+        }
         onFinished?(text)
     }
 

@@ -29,3 +29,10 @@ jobs:
           xcodebuild -project Grokbox.xcodeproj -scheme GrokboxiOS -configuration Debug \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath "$RUNNER_TEMP/dd-ios" CODE_SIGNING_ALLOWED=NO build
+      - name: iOS UI tests
+        run: |
+          DEST=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; c=[v['udid'] for rt,vs in d.items() for v in vs if v['name'].startswith('iPhone')]; print(c[0] if c else '')")
+          test -n "$DEST" || { echo 'no iPhone simulator on this runner'; exit 1; }
+          xcodebuild test -project Grokbox.xcodeproj -scheme GrokboxiOS -configuration Debug \
+            -destination "platform=iOS Simulator,id=$DEST" -derivedDataPath "$RUNNER_TEMP/dd-ios" \
+            CODE_SIGNING_ALLOWED=NO -only-testing:GrokboxiOSUITests
