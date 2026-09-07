@@ -429,3 +429,29 @@ it. What is tested now is the property that actually protects an install: an
 unreadable store is moved aside rather than deleted, and the app still opens —
 verified against the real store on the developer's machine, which gained both
 new columns in place with 4,950 messages and 19 rules intact.
+
+---
+
+## ADR-0022 — Some mail is worth less as it ages, not more
+
+**Status:** accepted
+
+The scorer rewarded age: unread mail that needs a reply gained points for going
+unanswered, which is right for a colleague's question and exactly wrong for a
+one-time code. On the first real mailbox Grokbox ever indexed, the top two
+items in "Now" were a verification code and a password reset from three months
+earlier — both scored highly for being quick, unanswered and old.
+
+`EphemeralMail` names the four kinds whose value expires — one-time codes,
+reset links, security alerts, timed events — and how long each is worth
+anything. Past that, `PriorityScorer` subtracts rather than adds, drops any due
+label, and replaces the reasons with the honest one: "a code that has long
+since expired". The adjustment runs last, so nothing can append "quick,
+someone is waiting on a reply" after it and re-create the lie.
+
+Matching is by phrase and by word pair, because subjects put the brand in the
+middle: "Reset your **Coddy** password", "Your **X** verification code".
+
+The general rule this stands for: a ranking signal that only ever moves one way
+is a bug waiting for the right data. Age, unread state and reply-expectation
+all needed a category that inverts them.

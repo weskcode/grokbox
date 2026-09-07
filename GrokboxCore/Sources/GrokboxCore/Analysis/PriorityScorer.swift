@@ -113,9 +113,14 @@ public enum PriorityScorer {
         /// How many times the reader has written to this sender.
         public var timesContacted: Int
         public var now: Date
+        /// Needed to spot mail whose value expires — a one-time code, a reset
+        /// link. Empty is fine; it only ever removes urgency, never adds it.
+        public var subject: String
+        public var summary: String?
 
         public init(importance: Importance?, actionType: ActionType = .none, dueAt: Date? = nil, receivedAt: Date,
-                    isUnread: Bool = true, isFlagged: Bool = false, isQuick: Bool = false, timesContacted: Int = 0, now: Date = .now) {
+                    isUnread: Bool = true, isFlagged: Bool = false, isQuick: Bool = false, timesContacted: Int = 0, now: Date = .now,
+                    subject: String = "", summary: String? = nil) {
             self.importance = importance
             self.actionType = actionType
             self.dueAt = dueAt
@@ -125,6 +130,8 @@ public enum PriorityScorer {
             self.isQuick = isQuick
             self.timesContacted = timesContacted
             self.now = now
+            self.subject = subject
+            self.summary = summary
         }
     }
 
@@ -173,14 +180,31 @@ public enum PriorityScorer {
         if s.timesContacted >= 3 { score += 15; reasons.append("someone you talk to often") }
         else if s.timesContacted > 0 { score += 10; reasons.append("someone you have written to") }
 
-        // Unanswered mail gets heavier with age, up to a point — nagging, not screaming.
-        if s.isUnread, s.importance == .needsYou {
+        // Mail whose value expires goes the other way: a verification code from
+        // three months ago is not urgent, it is rubbish. The adjustment itself
+        // happens at the end, so nothing can append a reason after it.
+        let expired = EphemeralMail.hasExpired(subject: s.subject, summary: s.summary,
+                                               receivedAt: s.receivedAt, now: s.now, calendar: calendar)
+
+        // Unanswered mail gets heavier with age, up to a point — nagging, not
+        // screaming. Never for mail that has expired.
+        if s.isUnread, s.importance == .needsYou, expired == nil {
             let age = calendar.dateComponents([.day], from: s.receivedAt, to: s.now).day ?? 0
             if age >= 7 { score += 8; reasons.append("unanswered for a week") }
             else if age >= 3 { score += 5; reasons.append("unanswered for \(age) days") }
         }
 
         if s.isQuick { score += 5; reasons.append("quick") }
+
+        // Last word: a message whose value has expired is not urgent, whatever
+        // else was counted above. Its reason replaces the rest, because "quick,
+        // someone is waiting on a reply" is a lie about a dead code.
+        if let expired {
+            score -= 60
+            reasons = [expired.expiredReason]
+            dueLabel = nil
+            overdue = false
+        }
 
         return Result(score: score, reasons: reasons, dueLabel: dueLabel, isOverdue: overdue)
     }

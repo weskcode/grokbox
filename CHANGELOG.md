@@ -63,6 +63,13 @@ All notable changes to Grokbox are recorded here. The format follows
 - Continuous integration on GitHub Actions (macOS 26).
 
 ### Fixed
+- Mail whose value expires — verification codes, password resets, security
+  alerts, delivery notices — no longer climbs the Brief as it ages. A
+  three-month-old one-time code was ranking above a live question, because
+  unanswered mail is scored as more pressing over time and nobody had told the
+  scorer that some mail is worth nothing after a day. Found on a real mailbox.
+- Removing an account left its sweep rules behind, so rules from a deleted
+  demo mailbox could still apply to a real one.
 - The Sweep button promised a message count that ignored the policy's own
   guards. It now previews them, so the number shown is the number that moves,
   and says how many are being held back.
