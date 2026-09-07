@@ -56,6 +56,7 @@ targets:
       - path: Grokbox/GuardPreview.swift
       - path: Grokbox/Views/CredentialGuide.swift
       - path: Grokbox/Views/AccountOnboarding.swift
+      - path: Grokbox/Views/SectionSwitcher.swift
     dependencies:
       - package: GrokboxCore
     settings:

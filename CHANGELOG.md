@@ -63,6 +63,10 @@ All notable changes to Grokbox are recorded here. The format follows
 - Continuous integration on GitHub Actions (macOS 26).
 
 ### Fixed
+- The section switcher no longer draws a highlighted rectangle under the
+  pointer. It was a segmented picker, whose segments light up individually on
+  hover; it is now labelled buttons inside the toolbar's own glass capsule,
+  so the only thing that moves under the pointer is the pointer.
 - Mail whose value expires — verification codes, password resets, security
   alerts, delivery notices — no longer climbs the Brief as it ages. A
   three-month-old one-time code was ranking above a live question, because

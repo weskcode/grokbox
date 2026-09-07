@@ -180,14 +180,7 @@ struct RootView: View {
         }
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Picker("Section", selection: $section) {
-                    ForEach(AppSection.allCases) { section in
-                        Label(section.title, systemImage: section.icon).tag(section)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .accessibilityIdentifier("sectionPicker")
+                SectionSwitcher(section: $section)
             }
         }
     }
