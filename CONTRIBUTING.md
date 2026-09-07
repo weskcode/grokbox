@@ -46,6 +46,30 @@ Architectural decisions are recorded in `docs/DECISIONS.md` as ADRs. If a
 change contradicts one, add a new ADR that supersedes it rather than editing
 history.
 
+## Branching
+
+Three kinds of branch, and no others:
+
+- **`main`** is released. Every commit on it is a version someone could be
+  running. It only ever moves by a merge from `develop`.
+- **`develop`** is where finished work integrates and waits for a release. Cut
+  every branch from here, and merge every branch back here.
+- **`feature/<short-name>`** is where work happens — one branch per change,
+  named for the change (`feature/cleanup-policy`), deleted once merged.
+
+```bash
+git checkout develop && git pull
+git checkout -b feature/my-change
+# ... work, commit ...
+git push -u origin feature/my-change
+```
+
+Rebase a feature branch on `develop` to pick up other people's work; do not
+rebase anything that has been merged, and never force-push a shared branch.
+
+Sign every commit, on every branch (`git commit -S`, with
+`commit.gpgsign true` set). Unsigned commits are not merged.
+
 ## Licence
 
 Contributions are accepted under GPL-3.0-or-later. Sign your commits
