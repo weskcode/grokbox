@@ -94,7 +94,8 @@ public final class Maintainer {
 
     // MARK: - One pass
 
-    public func run(accounts: [MailAccount], model: (any TextModel)?, settings: Settings) async {
+    public func run(accounts: [MailAccount], model: (any TextModel)?, settings: Settings,
+                    policy: CleanupPolicy = .current) async {
         guard !phase.isRunning, !engine.phase.isRunning, !executor.phase.isRunning else { return }
 
         var sweptMessages = 0
@@ -110,9 +111,9 @@ public final class Maintainer {
             }
 
             phase = .sweeping
-            let plan = rulesPlan(for: account)
+            let plan = rulesPlan(for: account, policy: policy)
             if !plan.isEmpty {
-                await executor.apply(plan, to: account, recordRules: false)
+                await executor.apply(plan, to: account, recordRules: false, policy: policy)
                 sweptMessages += plan.enabledMessageCount
             }
 
@@ -149,8 +150,10 @@ public final class Maintainer {
         return parts.joined(separator: ", ").capitalizedFirst
     }
 
-    private func rulesPlan(for account: MailAccount) -> CleanupPlan {
-        CleanupPlan.fromRules(SenderProfileBuilder.assessments(for: account, in: modelContext), rules: RuleStore.all(in: modelContext))
+    private func rulesPlan(for account: MailAccount, policy: CleanupPolicy) -> CleanupPlan {
+        CleanupPlan.fromRules(SenderProfileBuilder.assessments(for: account, in: modelContext),
+                              rules: RuleStore.all(in: modelContext), policy: policy,
+                              overrides: RuleStore.overrides(in: modelContext))
     }
 
     // MARK: - Timer loop

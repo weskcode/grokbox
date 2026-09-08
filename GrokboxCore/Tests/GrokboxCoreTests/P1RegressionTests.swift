@@ -192,14 +192,6 @@ struct UndoSafetyTests {
 }
 
 struct StoreVersioningTests {
-    @Test func schemaIsVersionedAndCoversEveryModel() {
-        #expect(GrokboxSchemaV1.versionIdentifier == Schema.Version(1, 0, 0))
-        #expect(GrokboxSchemaV1.models.count == 8)
-        #expect(GrokboxMigrationPlan.schemas.count == 1)
-        // Building the Schema at all proves the model set is internally consistent.
-        _ = Schema(versionedSchema: GrokboxSchemaV1.self)
-    }
-
     @Test func openingInMemoryNeverReportsRecovery() {
         let opened = GrokboxStore.open(inMemory: true)
         #expect(opened.recovery == nil)

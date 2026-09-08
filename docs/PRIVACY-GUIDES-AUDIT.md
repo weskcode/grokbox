@@ -57,7 +57,7 @@ Stated by the project in `docs/THREAT-MODEL.md` in Privacy Guides' taxonomy; che
 | C8 | Privacy policy accurate and complete | PASS | `docs/PRIVACY.md` lists every endpoint found in C2 | Re-check on every PR that adds a request (CONTRIBUTING rule). |
 | D1 | TLS with validation, no remote downgrade | PASS | `IMAPConnection.swift` loopback-only exception | — |
 | D2 | Updates | PARTIAL | None; stated in SECURITY.md | Acceptable for a no-phone-home tool; consider a manual "check GitHub" link. |
-| D3 | Release verification | **FAIL** (pre-release) | No tags, checksums, signing | Roadmap in SECURITY.md items 2–4. |
+| D3 | Release verification | PARTIAL | `scripts/release.sh` builds, signs, notarises and emits a SHA-256, and refuses to ship without the sandbox entitlement. Signed tags are configured. **Blocked on a Developer ID Application certificate**, which needs Apple Developer Program membership — see `docs/RELEASING.md`. | Obtain the certificate, then run the script. |
 | D4 | Signed commits/tags | PASS | SSH-signed commits from the second commit on; `.allowed_signers` in repo | — |
 | D5 | Minimal, pinned dependencies | PASS | zero third-party | — |
 | D6 | Security contact | PASS | `SECURITY.md` | — |

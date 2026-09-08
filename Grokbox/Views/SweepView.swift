@@ -25,7 +25,10 @@ struct SweepView: View {
     private func buildPlan() -> CleanupPlan {
         let ruleMap = Dictionary(rules.map { ($0.address, $0.decision) }, uniquingKeysWith: { a, _ in a })
         let assessed = profiles.map(\.assessment).sorted { $0.score > $1.score }
-        return CleanupPlan.suggested(from: assessed, rules: ruleMap)
+        var plan = CleanupPlan.suggested(from: assessed, rules: ruleMap, policy: state.policy,
+                                         overrides: RuleStore.overrides(in: modelContext))
+        GuardPreview.apply(to: &plan, policy: state.policy, account: account, in: modelContext)
+        return plan
     }
 
     var body: some View {
@@ -43,6 +46,7 @@ struct SweepView: View {
         .onAppear { if plan == nil { plan = buildPlan() } }
         .onChange(of: profiles.map(\.updatedAt)) { plan = buildPlan() }
         .onChange(of: rules.count) { plan = buildPlan() }
+        .onChange(of: state.policy) { plan = buildPlan() }
         .sheet(item: $drillDown) { profile in
             SenderMessagesSheet(profile: profile, account: account, state: state)
         }
@@ -58,7 +62,7 @@ struct SweepView: View {
                         var toApply = plan
                         toApply.items = toApply.items.map { var i = $0; i.markRead = markRead; return i }
                         Task {
-                            await state.executor.apply(toApply, to: account)
+                            await state.executor.apply(toApply, to: account, policy: state.policy)
                             self.plan = buildPlan()
                         }
                     } label: {

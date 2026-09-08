@@ -26,7 +26,8 @@ public enum DigestBuilder {
             (message, PriorityScorer.score(.init(
                 importance: message.importance, actionType: message.actionType, dueAt: message.dueAt,
                 receivedAt: message.receivedAt, isUnread: message.isUnread, isFlagged: message.isFlagged,
-                isQuick: message.isQuick, timesContacted: contacts[message.senderAddress] ?? 0, now: now
+                isQuick: message.isQuick, timesContacted: contacts[message.senderAddress] ?? 0, now: now,
+                subject: message.subject, summary: message.summary
             )))
         }.sorted { $0.1.score != $1.1.score ? $0.1.score > $1.1.score : $0.0.receivedAt > $1.0.receivedAt }
         // One entry per conversation, the same way the Brief shows rows, so

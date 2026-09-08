@@ -177,6 +177,17 @@ extension Array where Element == IMAPMailbox {
         return personalNamespacePrefix + parts.joined(separator: hierarchyDelimiter)
     }
 
+    /// The Trash, by special-use flag or by the names providers use for it.
+    public var trashMailbox: IMAPMailbox? {
+        if let flagged = first(where: \.isTrash) { return flagged }
+        let known = ["trash", "deleted items", "deleted messages", "bin", "corbeille", "papierkorb",
+                     "papelera", "cestino", "prullenbak", "lixeira", "papperskorg", "kosz"]
+        return first { box in
+            let leaf = box.displayName.split(separator: Character(box.delimiter ?? "/")).last.map(String.init) ?? box.displayName
+            return known.contains(leaf.lowercased())
+        }
+    }
+
     /// Where archived mail goes on a non-Gmail server.
     public var archiveMailbox: IMAPMailbox? {
         first(where: \.isArchive)

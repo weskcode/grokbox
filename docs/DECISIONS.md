@@ -325,3 +325,133 @@ The corollary applies to Stop. `Task.checkCancellation()` between units of work
 is only reachable if the current unit returns; when it cannot, cancellation must
 disconnect. `SyncEngine`, `PlanExecutor` and `Maintainer` all cancel by
 disconnecting, not merely by cancelling a task.
+
+---
+
+## ADR-0019 — "Move to Trash" is allowed; deleting is still not
+
+**Status:** accepted. Amends ADR-0003, which said Grokbox never deletes.
+
+ADR-0003 is right about the thing that matters — an automated tool that
+destroys mail is a tool nobody can trust — but it was written as "never
+delete", and people legitimately want promotions *gone*, not filed. Refusing
+that outright pushes them back to selecting a thousand messages by hand in
+Gmail, which is the problem this app exists to solve.
+
+So the rule is now stated where the boundary actually is:
+
+**Grokbox never destroys a message.** It has no code path that sets `\Deleted`
+and no code path that issues `EXPUNGE`. It cannot empty a Trash and does not
+offer to.
+
+**Grokbox may move a message to the provider's own Trash**, when the user has
+chosen that in Settings, per category. That is a `MOVE`, recorded like any
+other action, and undoable by moving it back for as long as the provider keeps
+it — typically thirty days. The provider deletes it in the end, on their own
+schedule, under their own policy, exactly as it would if the user had pressed
+Delete themselves.
+
+Three things make this honest rather than a loophole:
+
+1. **It is never the default.** The default policy is Gentle, which files into
+   folders and touches nothing recent. Trash must be chosen.
+2. **The consequence is written where the choice is made** — `Disposition.warning`
+   is shown next to the picker, and the Sweep screen states the policy in full
+   before the button is pressed.
+3. **A server with no Trash refuses the sweep** rather than archiving and
+   calling it deletion (`PlanExecutor` resolves the Trash mailbox before it
+   runs anything).
+
+The corresponding line in CONTRIBUTING.md has been amended from "no message is
+ever deleted" to the accurate rule: no message is ever destroyed by Grokbox.
+
+---
+
+## ADR-0020 — Cleanup behaviour is a policy the user owns, not a heuristic
+
+**Status:** accepted
+
+Aggressiveness is not a thing software can infer. The same inbox wants
+different treatment depending on whether its owner is anxious about losing mail
+or drowning in it, and that changes over time.
+
+`CleanupPolicy` therefore holds every such decision in one place — disposition
+per category, unsubscribe automation and its conditions, how much recent mail is
+protected, how many of each sender's newest messages are kept, which guards are
+on — with three named presets (Gentle, Balanced, Thorough) as starting points
+rather than a wall of switches.
+
+Two rules keep it from becoming the "shiny dashboard of choices" that Privacy
+Guides rightly criticises:
+
+- **Every policy renders itself as a sentence** (`CleanupPolicy.summary`), shown
+  above the Sweep button. Nobody has to infer what their settings do.
+- **The safe end is the default.** A person who never opens Settings gets
+  Gentle: files into folders, keeps the last week and the newest two from every
+  sender, never unsubscribes on their behalf.
+
+Automatic unsubscribe is the one irreversible action, so it is gated hardest: a
+real RFC 8058 one-click endpoint, a bulk category, a minimum message count, a
+minimum unread ratio, and by default no evidence the user ever wrote back. It
+runs last, after the sweep succeeded, and is recorded as non-undoable with a
+plain sentence saying so.
+
+---
+
+## ADR-0021 — Versioned schemas need their own model types, so additive changes get none
+
+**Status:** accepted
+
+An attempt to add a `GrokboxSchemaV2` alongside V1 crashed the app on launch:
+
+```
+NSInvalidArgumentException: Duplicate version checksums detected.
+```
+
+Both versions pointed at the same live `@Model` types, so they described an
+identical shape and hashed identically; SwiftData rejects a migration stage
+between two versions it cannot tell apart. The V2 was a label, not a version,
+and the test that "proved" the migration was vacuous — it wrote the store using
+the current types under the V1 name, so no old shape was ever exercised.
+
+The rule that follows:
+
+- **Additive changes** (a new optional property with no default) need no new
+  version and no stage. SwiftData migrates them in place. Bump the version
+  identifier so the store records which shape wrote it, and stop there.
+- **A breaking change** (rename, retype, remove) needs a real second version,
+  which means copying the affected `@Model` types into an enum namespace for
+  the old version, so the two schemas genuinely differ. The stage goes between
+  those, and the test must write with the old namespace and read with the new.
+
+`GrokboxStore.swift` carries this as a comment where the next person will hit
+it. What is tested now is the property that actually protects an install: an
+unreadable store is moved aside rather than deleted, and the app still opens —
+verified against the real store on the developer's machine, which gained both
+new columns in place with 4,950 messages and 19 rules intact.
+
+---
+
+## ADR-0022 — Some mail is worth less as it ages, not more
+
+**Status:** accepted
+
+The scorer rewarded age: unread mail that needs a reply gained points for going
+unanswered, which is right for a colleague's question and exactly wrong for a
+one-time code. On the first real mailbox Grokbox ever indexed, the top two
+items in "Now" were a verification code and a password reset from three months
+earlier — both scored highly for being quick, unanswered and old.
+
+`EphemeralMail` names the four kinds whose value expires — one-time codes,
+reset links, security alerts, timed events — and how long each is worth
+anything. Past that, `PriorityScorer` subtracts rather than adds, drops any due
+label, and replaces the reasons with the honest one: "a code that has long
+since expired". The adjustment runs last, so nothing can append "quick,
+someone is waiting on a reply" after it and re-create the lie.
+
+Matching is by phrase and by word pair, because subjects put the brand in the
+middle: "Reset your **Coddy** password", "Your **X** verification code".
+
+The general rule this stands for: a ranking signal that only ever moves one way
+is a bug waiting for the right data. Age, unread state and reply-expectation
+all needed a category that inverts them.

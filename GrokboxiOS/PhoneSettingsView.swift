@@ -7,7 +7,6 @@ struct PhoneSettingsView: View {
     let addAccount: () -> Void
     @Environment(AppState.self) private var state
     @Environment(\.modelContext) private var modelContext
-    @AppStorage("grokbox.guardTransactional") private var guardTransactional = true
     @State private var confirmingErase = false
     @State private var exportURL: URL?
     @State private var removing: MailAccount?
@@ -39,9 +38,7 @@ struct PhoneSettingsView: View {
                 Text("Runs entirely on this device. Nothing about your mail leaves it.").font(.footnote).foregroundStyle(.secondary)
                 Button("Check again") { Task { await state.refreshModels() } }
             }
-            Section("Sweep guard") {
-                Toggle("Hold receipts, orders, appointments and security mail out of sweeps", isOn: $guardTransactional)
-            }
+            CleanupPolicyEditor(policy: Bindable(state).policy)
             Section("Your data") {
                 Text("Accounts (never passwords), rules, the action log and saved digests, as one JSON file.").font(.footnote).foregroundStyle(.secondary)
                 if let exportURL {

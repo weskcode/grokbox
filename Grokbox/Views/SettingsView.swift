@@ -17,9 +17,9 @@ struct SettingsView: View {
     @AppStorage("grokbox.readLimit") private var readLimit = 25
     @AppStorage("grokbox.indexDepth") private var indexDepth = 1_000
     @AppStorage("grokbox.notify") private var notify = false
-    @AppStorage("grokbox.guardTransactional") private var guardTransactional = true
 
     @State private var confirmingErase = false
+    private var orphanedRules: [SenderRule] { RuleStore.orphaned(in: modelContext) }
     @State private var exportDocument: ExportFile?
     @State private var showingExporter = false
     @State private var showingImporter = false
@@ -93,11 +93,7 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
 
-            Section("Sweep guard") {
-                Toggle("Hold receipts, orders, appointments and security mail out of sweeps", isOn: $guardTransactional)
-                Text("Flagged mail and anything the model marked as needing you are always held, regardless. Held messages stay in the inbox and are listed on the action in Activity.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
+            CleanupPolicyEditor(policy: Bindable(state).policy)
 
             Section("Budgets") {
                 Stepper("Read up to \(readLimit) messages per pass", value: $readLimit, in: 10...500, step: 10)
@@ -111,6 +107,14 @@ struct SettingsView: View {
             }
 
             Section("Rules (\(rules.count))") {
+                if !orphanedRules.isEmpty {
+                    HStack {
+                        Label("\(orphanedRules.count) rule\(orphanedRules.count == 1 ? "" : "s") for senders no account receives from", systemImage: "questionmark.folder")
+                            .font(.callout).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Remove them") { RuleStore.clearOrphaned(in: modelContext) }.controlSize(.small)
+                    }
+                }
                 if rules.isEmpty {
                     Text("No rules yet. Approving a sender in Sweep, or choosing Always sweep / Always keep in Senders, adds one.")
                         .font(.caption).foregroundStyle(.secondary)

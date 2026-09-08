@@ -159,6 +159,17 @@ job; iOS suspends apps in the background, so tidy-up runs while Grokbox is
 open. Summaries come from Apple's on-device model (Ollama is Mac-only).
 Build the `GrokboxiOS` scheme.
 
+## You decide how aggressive it is
+
+Three starting points — **Gentle**, **Balanced**, **Thorough** — and every dial
+behind them. Where swept mail goes (filed into folders, archived, or moved to
+your provider's Trash, separately for promotions), how much recent mail is
+protected, how many of each sender's newest messages are kept, and whether
+Grokbox may press a sender's own one-click unsubscribe for you. Every policy
+states in one sentence what it will do, above the button that does it. The
+default is Gentle, and Grokbox never destroys a message: it has no code path
+that deletes or expunges. See [ADR-0019](docs/DECISIONS.md).
+
 ## Works with any IMAP server
 
 Gmail is handled natively (labels, All Mail). Everything else — iCloud,
@@ -174,6 +185,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Two commands: `xcodegen generate`, then
 `xcodebuild`. Tests: `cd GrokboxCore && swift test`.
 
 ## Status
+
+Paused September 2026 — see [docs/RESUMING.md](docs/RESUMING.md) for where things
+stand and what to do next.
 
 Verified against three in-process demo mailboxes (personal, work, neglected —
 about 40,000 messages). **Not yet run against a live IMAP server.** Treat it as
