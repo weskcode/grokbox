@@ -1,15 +1,26 @@
 import Foundation
 import SwiftData
 
-/// Version 1 of the on-disk schema.
+/// The on-disk schema.
 ///
-/// Declaring the schema explicitly — rather than handing `ModelContainer` a
-/// bare list of types — is what makes a future model change a *migration*
-/// rather than a corrupt store. When a property is added or renamed, add a
-/// `GrokboxSchemaV2` and a stage in `GrokboxMigrationPlan`; SwiftData can then
-/// carry existing installs forward instead of failing to open.
+/// Every change so far has been *additive* — new optional properties with no
+/// default — which SwiftData migrates in place without a stage. The version
+/// identifier is bumped so the store records which shape wrote it.
+///
+/// **A breaking change needs more than a bump here.** A `VersionedSchema` is
+/// only meaningfully distinct if it declares its *own copies* of the model
+/// types; two versions that both point at the live types produce identical
+/// checksums, and SwiftData rejects a migration stage between them at launch
+/// with "Duplicate version checksums detected". So when a property is renamed,
+/// retyped or removed:
+///
+/// 1. Copy the affected `@Model` types into an enum namespace for the old
+///    version (`enum GrokboxSchemaV1 { @Model final class SenderRule { … } }`).
+/// 2. Add the new version pointing at the live types.
+/// 3. Add a `.custom` or `.lightweight` stage between them, and a test that
+///    writes with the old namespace and reads with the new one.
 public enum GrokboxSchemaV1: VersionedSchema {
-    public static var versionIdentifier: Schema.Version { Schema.Version(1, 0, 0) }
+    public static var versionIdentifier: Schema.Version { Schema.Version(1, 1, 0) }
     public static var models: [any PersistentModel.Type] {
         [MailAccount.self, MessageHeader.self, ContactedAddress.self, CleanupAction.self,
          SenderRule.self, MailboxSnapshot.self, SenderProfile.self, InboxDigest.self]
@@ -18,7 +29,8 @@ public enum GrokboxSchemaV1: VersionedSchema {
 
 public enum GrokboxMigrationPlan: SchemaMigrationPlan {
     public static var schemas: [any VersionedSchema.Type] { [GrokboxSchemaV1.self] }
-    /// Empty until a V2 exists. Each future stage goes here, in order.
+    /// Empty on purpose: additive changes need no stage. See the note above
+    /// before adding one.
     public static var stages: [MigrationStage] { [] }
 }
 

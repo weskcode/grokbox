@@ -250,6 +250,19 @@ struct SendersView: View {
                     Menu {
                         Button("Always sweep") { RuleStore.set(.sweep, for: a.cluster.address, in: modelContext) }
                         Button("Always keep") { RuleStore.set(.keep, for: a.cluster.address, in: modelContext) }
+                        Divider()
+                        Section("Where this sender's mail goes") {
+                            Button("Follow my policy") { RuleStore.setDisposition(nil, for: a.cluster.address, in: modelContext) }
+                            ForEach(CleanupPolicy.Disposition.allCases) { d in
+                                Button("Always \(d.label.lowercased())") { RuleStore.setDisposition(d, for: a.cluster.address, in: modelContext) }
+                            }
+                        }
+                        if a.cluster.hasUnsubscribeLink {
+                            Section("Unsubscribing") {
+                                Button("Never unsubscribe from this sender") { RuleStore.setAutoUnsubscribe(false, for: a.cluster.address, in: modelContext) }
+                                Button("Unsubscribe when sweeping") { RuleStore.setAutoUnsubscribe(true, for: a.cluster.address, in: modelContext) }
+                            }
+                        }
                         if ruleMap[a.cluster.address] != nil {
                             Divider()
                             Button("Clear rule") { RuleStore.clear(for: a.cluster.address, in: modelContext) }

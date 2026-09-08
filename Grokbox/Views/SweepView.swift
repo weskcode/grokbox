@@ -25,7 +25,8 @@ struct SweepView: View {
     private func buildPlan() -> CleanupPlan {
         let ruleMap = Dictionary(rules.map { ($0.address, $0.decision) }, uniquingKeysWith: { a, _ in a })
         let assessed = profiles.map(\.assessment).sorted { $0.score > $1.score }
-        var plan = CleanupPlan.suggested(from: assessed, rules: ruleMap, policy: state.policy)
+        var plan = CleanupPlan.suggested(from: assessed, rules: ruleMap, policy: state.policy,
+                                         overrides: RuleStore.overrides(in: modelContext))
         GuardPreview.apply(to: &plan, policy: state.policy, account: account, in: modelContext)
         return plan
     }

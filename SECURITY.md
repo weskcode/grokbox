@@ -37,9 +37,10 @@ otherwise.
 
 ## Known limitations (open)
 
-- **No release signing yet.** Until the first tagged release, build from
-  source. Signed tags, SHA-256 checksums and Developer ID notarisation are on
-  the roadmap below.
+- **No signed release yet.** `scripts/release.sh` performs the whole release —
+  build, sign, notarise, checksum — and refuses to produce one without the App
+  Sandbox entitlement. It is blocked on a Developer ID Application certificate;
+  see `docs/RELEASING.md`. Until then, build from source.
 - **No automatic updates.** Grokbox does not phone home, so it cannot tell you
   about a new version. Watch the repository's releases.
 

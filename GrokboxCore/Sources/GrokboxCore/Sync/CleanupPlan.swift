@@ -66,7 +66,8 @@ public struct CleanupPlan: Sendable {
     /// `sweep` rule for, minus anything they have a `keep` rule for.
     /// Largest senders first.
     public static func suggested(from assessments: [SenderAssessment], rules: [String: RuleDecision] = [:],
-                                 policy: CleanupPolicy = .current) -> CleanupPlan {
+                                 policy: CleanupPolicy = .current,
+                                 overrides: [String: SenderOverride] = [:]) -> CleanupPlan {
         let items = assessments
             .filter { !$0.cluster.pendingUIDs.isEmpty }
             .filter { rules[$0.cluster.address] != .keep }
@@ -75,11 +76,14 @@ public struct CleanupPlan: Sendable {
             .filter { !(policy.guardContacted && $0.cluster.everContacted) || rules[$0.cluster.address] == .sweep }
             .filter { $0.verdict == .bulk || rules[$0.cluster.address] == .sweep }
             .sorted { $0.cluster.messageCount > $1.cluster.messageCount }
-            .map { Item(cluster: $0.cluster,
-                        markRead: policy.markRead,
-                        isFromRule: rules[$0.cluster.address] == .sweep,
-                        disposition: policy.disposition(for: $0.cluster.category),
-                        unsubscribe: qualifiesForAutoUnsubscribe($0.cluster, policy: policy)) }
+            .map { assessment in
+                let override = overrides[assessment.cluster.address]
+                return Item(cluster: assessment.cluster,
+                            markRead: policy.markRead,
+                            isFromRule: rules[assessment.cluster.address] == .sweep,
+                            disposition: override?.disposition ?? policy.disposition(for: assessment.cluster.category),
+                            unsubscribe: unsubscribeDecision(assessment.cluster, policy: policy, override: override))
+            }
         return CleanupPlan(items: items)
     }
 
@@ -87,6 +91,16 @@ public struct CleanupPlan: Sendable {
     /// asking. Deliberately conservative: a real one-click endpoint, enough
     /// history to judge, mail you demonstrably do not read, and (by default)
     /// no evidence you ever wrote back.
+    /// A per-sender rule beats the policy in both directions: "never
+    /// unsubscribe from this one" holds even under Thorough, and "yes, this
+    /// one" works under Gentle. Anything else follows the policy.
+    static func unsubscribeDecision(_ cluster: SenderCluster, policy: CleanupPolicy, override: SenderOverride?) -> Bool {
+        if let explicit = override?.autoUnsubscribe {
+            return explicit && cluster.supportsOneClickUnsubscribe && cluster.unsubscribeURL != nil
+        }
+        return qualifiesForAutoUnsubscribe(cluster, policy: policy)
+    }
+
     public static func qualifiesForAutoUnsubscribe(_ cluster: SenderCluster, policy: CleanupPolicy) -> Bool {
         guard policy.unsubscribe == .automaticOneClick else { return false }
         guard cluster.supportsOneClickUnsubscribe, cluster.unsubscribeURL != nil else { return false }
@@ -100,12 +114,16 @@ public struct CleanupPlan: Sendable {
     /// Only senders the user has already approved. This is what maintenance
     /// applies unattended — new suggestions always wait for a human.
     public static func fromRules(_ assessments: [SenderAssessment], rules: [String: RuleDecision],
-                                 policy: CleanupPolicy = .current) -> CleanupPlan {
+                                 policy: CleanupPolicy = .current,
+                                 overrides: [String: SenderOverride] = [:]) -> CleanupPlan {
         let items = assessments
             .filter { !$0.cluster.pendingUIDs.isEmpty && rules[$0.cluster.address] == .sweep }
-            .map { Item(cluster: $0.cluster, markRead: policy.markRead, isFromRule: true,
-                        disposition: policy.disposition(for: $0.cluster.category),
-                        unsubscribe: qualifiesForAutoUnsubscribe($0.cluster, policy: policy)) }
+            .map { assessment in
+                let override = overrides[assessment.cluster.address]
+                return Item(cluster: assessment.cluster, markRead: policy.markRead, isFromRule: true,
+                            disposition: override?.disposition ?? policy.disposition(for: assessment.cluster.category),
+                            unsubscribe: unsubscribeDecision(assessment.cluster, policy: policy, override: override))
+            }
         return CleanupPlan(items: items)
     }
 

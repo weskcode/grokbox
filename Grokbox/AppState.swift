@@ -139,6 +139,26 @@ final class AppState {
             await modelProbe?.value
             Log.note("model for this run: \(model?.name ?? "none")")
         }
+        // Read-only passes. Deliberately separate from --run-all, which can
+        // apply approved rules: nothing here can modify a mailbox.
+        if let limit = options.indexLimit {
+            for account in accounts {
+                Log.note("index-only starting for \(account.displayName), limit \(limit)")
+                await engine.indexNow(account: account, mode: .full(limit: limit))
+                Log.note("index-only \(account.displayName) — \(engine.phase.label)")
+            }
+        }
+        if let limit = options.readLimit {
+            await modelProbe?.value
+            for account in accounts {
+                guard let model else { Log.note("read-only: no model available"); break }
+                Log.note("read-only starting for \(account.displayName), limit \(limit), model=\(model.name)")
+                await engine.readNow(account: account, model: model, limit: limit)
+                Log.note("read-only \(account.displayName) — \(engine.phase.label)")
+            }
+            refreshDigest(accounts)
+            Log.note("read-only digest refreshed")
+        }
         if options.runAll {
             Log.note("run-all starting for \(accounts.count) account(s), model=\(model?.name ?? "none")")
             await maintainer.run(accounts: accounts, model: model, settings: .load(), policy: policy)
@@ -333,6 +353,11 @@ final class AppState {
         try? context.delete(model: CleanupAction.self, where: actions)
         context.delete(account)
         try? context.save()
+        // A rule about a sender no remaining account receives from is dead.
+        // Without this, sweep rules from a removed demo mailbox stay live and
+        // apply to a real one.
+        let dropped = RuleStore.clearOrphaned(in: context)
+        if dropped > 0 { Log.note("removed \(account.displayName); dropped \(dropped) rule(s) with no sender left") }
     }
 
     /// Wipes every local record and Keychain item. The mailbox itself is untouched.

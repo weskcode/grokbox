@@ -152,7 +152,8 @@ public final class Maintainer {
 
     private func rulesPlan(for account: MailAccount, policy: CleanupPolicy) -> CleanupPlan {
         CleanupPlan.fromRules(SenderProfileBuilder.assessments(for: account, in: modelContext),
-                              rules: RuleStore.all(in: modelContext), policy: policy)
+                              rules: RuleStore.all(in: modelContext), policy: policy,
+                              overrides: RuleStore.overrides(in: modelContext))
     }
 
     // MARK: - Timer loop

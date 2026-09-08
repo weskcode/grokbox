@@ -25,7 +25,8 @@ public enum BriefRanking {
                 BriefItem(message: message, result: PriorityScorer.score(.init(
                     importance: message.importance, actionType: message.actionType, dueAt: message.dueAt,
                     receivedAt: message.receivedAt, isUnread: message.isUnread, isFlagged: message.isFlagged,
-                    isQuick: message.isQuick, timesContacted: contactCounts[message.senderAddress] ?? 0, now: now
+                    isQuick: message.isQuick, timesContacted: contactCounts[message.senderAddress] ?? 0, now: now,
+                    subject: message.subject, summary: message.summary
                 )))
             }
             .sorted { $0.result.score != $1.result.score ? $0.result.score > $1.result.score : $0.message.receivedAt > $1.message.receivedAt }

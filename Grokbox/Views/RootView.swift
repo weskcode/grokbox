@@ -14,6 +14,7 @@ struct RootView: View {
     @State private var selectedAccountID: UUID?
     @State private var section: AppSection = .brief
     @State private var passwordAccount: MailAccount?
+    @State private var onboardingAccount: MailAccount?
     @State private var isAddingAccount = false
 
     private var selectedAccount: MailAccount? {
@@ -59,6 +60,7 @@ struct RootView: View {
             logWindowFrame()
             await state.startIfNeeded()
             if let section = LaunchOptions.current.section { self.section = section }
+            if LaunchOptions.current.onboard, let first = accounts.first { onboardingAccount = first }
             chooseInitialSelection()
             Log.note("root task finished; section=\(section.rawValue) selected=\(selectedAccountID?.uuidString ?? "nil") accounts=\(accounts.count)")
         }
@@ -67,13 +69,21 @@ struct RootView: View {
         .sheet(item: $passwordAccount) { account in
             UpdatePasswordSheet(account: account, state: state)
         }
+        .sheet(item: $onboardingAccount) { account in
+            AccountOnboarding(account: account, state: state)
+        }
         .onChange(of: state.pendingCommand) { _, command in
             guard let command else { return }
             state.pendingCommand = nil
             perform(command)
         }
         .sheet(isPresented: $isAddingAccount) {
-            AddAccountSheet(state: state) { newAccount in selectedAccountID = newAccount.id }
+            AddAccountSheet(state: state) { newAccount in
+                selectedAccountID = newAccount.id
+                // Straight into "what now?" — an account added and nothing
+                // visible happening is the moment people give up.
+                onboardingAccount = newAccount
+            }
         }
     }
 
@@ -96,6 +106,11 @@ struct RootView: View {
                         Text(account.username)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        if account.lastSyncedAt == nil, account.lastSyncError == nil {
+                            Text("not set up yet").font(.caption2)
+                                .padding(.horizontal, 5).padding(.vertical, 1)
+                                .background(.tint.opacity(0.18), in: Capsule())
+                        }
                         if let error = account.lastSyncError {
                             Text(error).font(.caption2).foregroundStyle(.red).lineLimit(1)
                             if ConnectionErrorText.looksLikeAuthFailure(error), !account.kind.isDemo {
@@ -108,6 +123,7 @@ struct RootView: View {
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(accessibilityLabel(for: account))
                     .contextMenu {
+                        Button("Run Setup Again…") { onboardingAccount = account }
                         if !account.kind.isDemo {
                             Button("Update Password…") { passwordAccount = account }
                         }
@@ -146,6 +162,10 @@ struct RootView: View {
                 case .brief: BriefView(accounts: accounts, state: state)
                 default: allAccountsPlaceholder
                 }
+            } else if let account = selectedAccount, account.lastSyncedAt == nil {
+                // An account that has never synced has nothing to show and no
+                // obvious next move, so offer the one that matters.
+                getStarted(account)
             } else if let account = selectedAccount {
                 switch section {
                 case .brief: BriefView(accounts: [account], state: state)
@@ -160,14 +180,7 @@ struct RootView: View {
         }
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Picker("Section", selection: $section) {
-                    ForEach(AppSection.allCases) { section in
-                        Label(section.title, systemImage: section.icon).tag(section)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .accessibilityIdentifier("sectionPicker")
+                SectionSwitcher(section: $section)
             }
         }
     }
@@ -215,6 +228,31 @@ struct RootView: View {
         let frame = window.frame
         let top = (screen.frame.maxY - frame.maxY) * scale
         Log.note("window frame px x=\(Int(frame.minX * scale)) y=\(Int(top)) w=\(Int(frame.width * scale)) h=\(Int(frame.height * scale))")
+    }
+
+    /// The first thing a newly added account shows: not an empty screen.
+    private func getStarted(_ account: MailAccount) -> some View {
+        VStack(spacing: 16) {
+            Image(systemName: "sparkles").font(.system(size: 44)).foregroundStyle(.tint)
+            Text("\(account.displayName) is connected").font(.title2.weight(.semibold))
+            Text("Nothing has been read yet. Grokbox will look at your mail, work out who fills your inbox, and show you a plan — it changes nothing without your approval.")
+                .multilineTextAlignment(.center).foregroundStyle(.secondary)
+                .frame(maxWidth: 460).fixedSize(horizontal: false, vertical: true)
+            Button("Get started") { onboardingAccount = account }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .accessibilityIdentifier("getStarted")
+            if let error = account.lastSyncError {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout).foregroundStyle(.orange)
+                    .frame(maxWidth: 460).fixedSize(horizontal: false, vertical: true)
+                if ConnectionErrorText.looksLikeAuthFailure(error) {
+                    Button("Update password…") { passwordAccount = account }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(32)
     }
 
     private func accessibilityLabel(for account: MailAccount) -> String {

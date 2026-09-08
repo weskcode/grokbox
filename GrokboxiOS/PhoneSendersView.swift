@@ -82,6 +82,18 @@ struct PhoneSendersView: View {
             if p.hasUnsubscribeLink {
                 Button { Task { await unsubscribe(p) } } label: { Label("Unsubscribe", systemImage: "hand.raised") }
             }
+            Section("Where this sender's mail goes") {
+                Button("Follow my policy") { RuleStore.setDisposition(nil, for: p.address, in: modelContext) }
+                ForEach(CleanupPolicy.Disposition.allCases) { d in
+                    Button("Always \(d.label.lowercased())") { RuleStore.setDisposition(d, for: p.address, in: modelContext) }
+                }
+            }
+            if p.hasUnsubscribeLink {
+                Section("Unsubscribing") {
+                    Button("Never unsubscribe from this sender") { RuleStore.setAutoUnsubscribe(false, for: p.address, in: modelContext) }
+                    Button("Unsubscribe when sweeping") { RuleStore.setAutoUnsubscribe(true, for: p.address, in: modelContext) }
+                }
+            }
             if ruleMap[p.address] != nil {
                 Button("Clear rule") { RuleStore.clear(for: p.address, in: modelContext) }
             }

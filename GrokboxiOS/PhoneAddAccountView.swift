@@ -3,6 +3,7 @@ import SwiftData
 import GrokboxCore
 
 struct PhoneAddAccountView: View {
+    var onCreate: (MailAccount) -> Void = { _ in }
     @Environment(AppState.self) private var state
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -30,7 +31,7 @@ struct PhoneAddAccountView: View {
                     TextField("Label (optional)", text: $displayName)
                     TextField("Email address", text: $username).textInputAutocapitalization(.never).keyboardType(.emailAddress).autocorrectionDisabled()
                     SecureField("Password", text: $password)
-                    Text(kind.credentialHint).font(.footnote).foregroundStyle(.secondary)
+                    CredentialGuide(kind: kind, host: host)
                 }
                 if kind == .generic {
                     Section("Server") {
@@ -75,6 +76,7 @@ struct PhoneAddAccountView: View {
         do {
             try KeychainStore.save(password: cleanPassword, for: account.keychainAccount)
             modelContext.insert(account); try modelContext.save()
+            onCreate(account)
             dismiss()
         } catch { errorMessage = error.localizedDescription }
     }
