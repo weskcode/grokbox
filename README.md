@@ -186,6 +186,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Two commands: `xcodegen generate`, then
 
 ## Status
 
+Paused September 2026 — see [docs/RESUMING.md](docs/RESUMING.md) for where things
+stand and what to do next.
+
 Verified against three in-process demo mailboxes (personal, work, neglected —
 about 40,000 messages). **Not yet run against a live IMAP server.** Treat it as
 pre-release until that line changes.
