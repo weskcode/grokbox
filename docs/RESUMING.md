@@ -8,7 +8,7 @@ Paused 7 September 2026. Everything below was true when work stopped.
 |---|---|
 | `feature/cleanup-policy` | Everything from this stretch of work. Fully merged into `develop`. Safe to delete once you are happy. |
 | `develop` | Integration branch. Has all the work. **Start here.** |
-| `main` | Twelve commits behind `develop`, on purpose: nothing has been released yet, so `main` still points at the last stable point. Merge `develop` into it when you cut 0.5.0. |
+| `main` | Up to date with `develop`. Everything is merged and CI is green, but **nothing is tagged and nothing is released** — there are no tags, local or remote. Cutting 0.5.0 means tagging, not merging. |
 
 All commits are SSH-signed and show `G`. CI runs on all three branches and
 covers engine tests, the Mac build, the iOS build, and the iOS UI tests.
