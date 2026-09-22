@@ -57,6 +57,7 @@ targets:
       - path: Grokbox/Views/CredentialGuide.swift
       - path: Grokbox/Views/AccountOnboarding.swift
       - path: Grokbox/Views/SectionSwitcher.swift
+      - path: Grokbox/Views/LockView.swift
     dependencies:
       - package: GrokboxCore
     settings:
@@ -68,6 +69,7 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_NSHumanReadableCopyright: GPL-3.0-or-later
+        INFOPLIST_KEY_NSFaceIDUsageDescription: "Grokbox can require Face ID to open, if you turn that on in Settings."
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGNING_ALLOWED: NO

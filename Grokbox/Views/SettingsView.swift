@@ -186,6 +186,13 @@ struct SettingsView: View {
             }
             .task { loadJevKey() }
 
+            Section("App lock") {
+                Toggle("Require Face ID or Touch ID to open Grokbox", isOn: Bindable(state).biometricLockSettings.enabled)
+                Text("Asked for every time Grokbox opens, starting next launch. Falls back to your device password if biometrics are not enrolled. This locks the app's own window only — it does not encrypt anything further.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Section("Privacy") {
                 Text("Grokbox makes exactly three kinds of network connection by default: IMAP to your own mail server, a loopback call to Ollama if you use it, and — only when you click Unsubscribe — an HTTPS request to the address a sender put in their own headers. The one opt-in exception is the Jev cloud fallback above. See docs/PRIVACY.md in the source for the full inventory.")
                     .font(.caption).foregroundStyle(.secondary)

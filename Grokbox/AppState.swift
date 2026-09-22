@@ -34,6 +34,21 @@ final class AppState {
         }
     }
 
+    /// Whether the app requires Face ID/Touch ID before showing mail. Off by
+    /// default; see `BiometricAuthenticator`.
+    var biometricLockSettings: BiometricLockSettings = .current {
+        didSet {
+            guard oldValue != biometricLockSettings else { return }
+            BiometricLockSettings.current = biometricLockSettings
+        }
+    }
+
+    /// Whether this launch has passed the biometric gate — or never needed
+    /// to, if the lock was off when the app launched. Never persisted: a
+    /// session that started unlocked stays unlocked even if the setting is
+    /// turned on mid-session; only the next cold launch is actually gated.
+    var isUnlocked: Bool = !BiometricLockSettings.current.enabled
+
     /// Set once at launch if the index had to be rebuilt or cannot be written.
     /// Shown as a banner until dismissed — silently losing someone's index and
     /// saying nothing would be the worst possible behaviour here.

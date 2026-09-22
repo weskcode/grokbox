@@ -60,6 +60,11 @@ struct PhoneSettingsView: View {
                     .font(.footnote).foregroundStyle(.secondary)
             }
             .task { loadJevKey() }
+            Section("App lock") {
+                Toggle("Require Face ID or Touch ID to open Grokbox", isOn: Bindable(state).biometricLockSettings.enabled)
+                Text("Asked for every time Grokbox opens, starting next launch. Falls back to your device passcode if biometrics are not enrolled.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
             Section("Your data") {
                 Text("Accounts (never passwords), rules, the action log and saved digests, as one JSON file.").font(.footnote).foregroundStyle(.secondary)
                 if let exportURL {
