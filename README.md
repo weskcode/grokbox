@@ -11,9 +11,13 @@ time.
 ## In one paragraph
 
 Grokbox is a **macOS** app, **GPL-3.0**, with **no third-party code**, **no
-telemetry**, **no account**, and **no server of its own**. It talks to exactly
-three things: the IMAP servers you add, a language model running on this Mac,
-and — only when you click it — a sender's own unsubscribe URL. The full list is
+telemetry**, **no account**, and **no server of its own**. By default it talks
+to exactly three things: the IMAP servers you add, a language model running on
+this Mac, and — only when you click it — a sender's own unsubscribe URL. One
+optional exception exists: turn on and configure the Jev cloud fallback in
+Settings, and TypeSafe AI's Jev API can categorize senders your local model
+could not place, using your own API key — off unless you set it up (see
+[ADR-0023](docs/DECISIONS.md)). The full list is
 in [docs/PRIVACY.md](docs/PRIVACY.md); what that protects and does not protect
 is in [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md); how to report a problem is
 in [SECURITY.md](SECURITY.md). It is built by one person (Wesley Keetch) for
@@ -59,12 +63,15 @@ only the summary is kept.
 - **Send mail.** No SMTP.
 - **Act on a sender you have not approved.**
 - **Talk to anything but your mail server, Ollama on loopback, and — when you
-  click it — a sender's own unsubscribe URL.** Full inventory in
+  click it — a sender's own unsubscribe URL** — unless you opt into the Jev
+  cloud fallback in Settings, which is off by default. Full inventory in
   [docs/PRIVACY.md](docs/PRIVACY.md).
 
 ## Privacy
 
-- No network traffic except IMAP to your own mail server
+- No network traffic except IMAP to your own mail server, by default — the one
+  opt-in exception is the Jev cloud fallback (off by default, your own API
+  key); see [ADR-0023](docs/DECISIONS.md)
 - No telemetry, no analytics, no crash reporting, no accounts
 - No third-party dependencies — the IMAP client is written from scratch
 - Passwords live in the macOS Keychain

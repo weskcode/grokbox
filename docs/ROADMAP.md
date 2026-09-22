@@ -75,6 +75,14 @@ days." The local model turns that into a filter that runs in tier 1.
 See ADR-0002. Requires resolving the OAuth verification question first. Real
 payoff: `history.list` incremental sync and `batchModify`.
 
+## Opt-in exception — Jev cloud fallback (built)
+
+Off by default. See ADR-0023. Falls back to TypeSafe AI's Jev only for a
+sender the local model still could not place, only if the user turns it on
+in Settings and supplies their own API key. This is not part of the
+v0.6–v0.8 trajectory below — those stay local; this is the one deliberate,
+disclosed exception, not a change of direction.
+
 ## Not planned
 
 - **Sending mail.** Out of scope. Grokbox is a triage tool.

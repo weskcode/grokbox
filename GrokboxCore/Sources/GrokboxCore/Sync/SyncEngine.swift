@@ -491,7 +491,7 @@ public final class SyncEngine {
                 if done % 10 == 0 { try modelContext.save() }
             }
 
-            let sorted = await categorizeUnsorted(account: account, model: model, limit: 40)
+            let sorted = await categorizeUnsorted(account: account, model: model, cloudFallback: JevCategorizerFactory.current(), limit: 40)
 
             account.lastReadAt = Date()
             try modelContext.save()
@@ -507,7 +507,12 @@ public final class SyncEngine {
 
     /// Asks the model about senders the heuristics could not place. Capped;
     /// every call is one sender, never one message, so this stays cheap.
-    private func categorizeUnsorted(account: MailAccount, model: any TextModel, limit: Int) async -> Int {
+    ///
+    /// `cloudFallback` is consulted only when the local model also could not
+    /// place a sender — `nil` unless the user opted into Jev in Settings (see
+    /// `JevCategorizerFactory`, ADR-0023). Local-only behaviour is unchanged
+    /// when it is `nil`.
+    private func categorizeUnsorted(account: MailAccount, model: any TextModel, cloudFallback: RemoteCategorizer?, limit: Int) async -> Int {
         // Only senders the heuristics could not place at all. An unconfident but
         // evidence-based placement is still explainable; a model override is not.
         let unsorted = SenderProfileBuilder.profiles(for: account, in: modelContext)
@@ -522,7 +527,11 @@ public final class SyncEngine {
                 displayName: profile.displayName, address: profile.address, sampleSubjects: profile.sampleSubjects,
                 messageCount: profile.messageCount, unreadRatio: profile.unreadRatio, hasUnsubscribeLink: profile.hasUnsubscribeLink
             )
-            guard let result = try? await model.categorize(request), result.category != .unknown else { continue }
+            var result = try? await model.categorize(request)
+            if result == nil || result?.category == .unknown, let cloudFallback {
+                result = try? await cloudFallback.categorize(request)
+            }
+            guard let result, result.category != .unknown else { continue }
             SenderProfileBuilder.setModelCategory(result.category, evidence: result.reason, on: profile)
             done += 1
         }

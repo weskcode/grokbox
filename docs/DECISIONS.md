@@ -455,3 +455,40 @@ middle: "Reset your **Coddy** password", "Your **X** verification code".
 The general rule this stands for: a ranking signal that only ever moves one way
 is a bug waiting for the right data. Age, unread state and reply-expectation
 all needed a category that inverts them.
+
+---
+
+## ADR-0023 — An opt-in, off-by-default exception for sender categorization: Jev
+
+**Status:** accepted
+
+`TextModel` is documented as running only on this machine, and that stays
+true — this adds a second, narrower protocol instead of touching it.
+`RemoteCategorizer` has exactly one method, `categorize`, and exactly one
+conformer, `JevCategorizer`, which calls TypeSafe AI's Jev API
+(`api.typesafe.ai`) to answer the same "what kind of sender is this" question
+`SenderCategorizer` and the local model already answer for the cases they can
+place.
+
+It is off by default, requires the user's own API key (never bundled, never
+shared), and only ever runs as a fallback: after the local model has already
+tried and still returned `.unknown` for that sender. The payload is the
+smallest useful one — a sender's address and a handful of subject lines,
+never a message body — and the prompt tells Jev to treat that content as
+untrusted data, not instructions, the same defence a crafted subject line
+would need against any model reading it. A low-confidence or
+explicitly-uncertain answer is treated the same as no answer: the sender
+stays unsorted rather than getting a guessed category.
+
+This is a deliberate, disclosed exception to "nothing leaves this Mac", not a
+reinterpretation of it. `docs/PRIVACY.md` and `docs/THREAT-MODEL.md` name the
+new destination and exactly what it can see, and Settings shows the same
+disclosure next to the toggle. Turning it off, or never turning it on, leaves
+Grokbox exactly as local as it always was.
+
+**Not done here, and not planned:** using Jev, or any cloud model, for
+message reading, importance scoring, or any path that would see a message
+body; auto-acting on a Jev answer beyond the existing "just categorize the
+sender" path; a bundled or default API key.
+
+---

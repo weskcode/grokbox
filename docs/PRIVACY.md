@@ -9,13 +9,17 @@
 | **Your IMAP server** (e.g. `imap.gmail.com:993`) | Index, Read, Sweep, Tidy-up | IMAP commands. Credentials over TLS. Header and body reads are `PEEK`, so nothing is marked read by looking. | It is the product; remove the account. |
 | **`127.0.0.1:11434`** (Ollama) | Read, if you chose Ollama | Subject, sender, and up to 3,000 characters of body text per message | Choose Apple's model instead, or none. Loopback only — the code refuses any other host. |
 | **A sender's unsubscribe URL** | When you click Unsubscribe, or — only if you turn it on in Settings — automatically during a sweep for senders that meet the conditions you set | An RFC 8058 POST to the HTTPS URL the sender put in their own `List-Unsubscribe` header | Do not click it. |
+| **`api.typesafe.ai`** (Jev, TypeSafe AI) | Only if you turn on "Jev cloud fallback" in Settings and save your own API key — and then only for a sender the local model still could not categorize | The sender's address and a handful of their subject lines. Never a message body. | Off by default. Turn it off in Settings, or Erase everything, which also deletes the saved key. See ADR-0023. |
 
-That is the complete list. The demo mailboxes run entirely inside the app's
-process — there is no listening socket anywhere in the shipped app, and the
-sandbox has no `network.server` entitlement to allow one. There is no telemetry, no crash reporter, no update
-check, no analytics, no "anonymous usage statistics", no account with us. The
-app has one network entitlement, `network.client`, and the sandbox refuses
-anything else.
+That is the complete list of connections Grokbox makes without you turning
+anything on. The one opt-in exception is the Jev row above — a third-party
+API you must explicitly enable and supply your own key for; ADR-0023 explains
+why it exists and exactly what it is scoped to. The demo mailboxes run
+entirely inside the app's process — there is no listening socket anywhere in
+the shipped app, and the sandbox has no `network.server` entitlement to allow
+one. There is no telemetry, no crash reporter, no update check, no analytics,
+no "anonymous usage statistics", no account with us. The app has one network
+entitlement, `network.client`, and the sandbox refuses anything else.
 
 **Apple's on-device model** (Foundation Models framework) runs on the Neural
 Engine and, per Apple, does not send data off-device. Grokbox cannot verify
@@ -34,7 +38,8 @@ In the app's sandboxed container (`~/Library/Containers/com.wesleykeetch.grokbox
 - **Rules and the action log**: your decisions and what Grokbox did with them.
 
 In the macOS Keychain: your mail passwords, under service
-`com.wesleykeetch.grokbox.imap`.
+`com.wesleykeetch.grokbox.imap` — and, only if you set one up, your Jev API
+key, under its own service, `com.wesleykeetch.grokbox.jev`.
 
 ## What is never stored
 

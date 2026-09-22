@@ -25,6 +25,15 @@ final class AppState {
         }
     }
 
+    /// Whether the opt-in Jev cloud fallback is on. Off by default; see
+    /// ADR-0023. The API key itself is in `JevKeyStore`, not here.
+    var jevSettings: JevSettings = .current {
+        didSet {
+            guard oldValue != jevSettings else { return }
+            JevSettings.current = jevSettings
+        }
+    }
+
     /// Set once at launch if the index had to be rebuilt or cannot be written.
     /// Shown as a banner until dismissed — silently losing someone's index and
     /// saying nothing would be the worst possible behaviour here.
@@ -382,6 +391,8 @@ final class AppState {
         // decide what it does, or the next sweep runs under a policy the
         // person thought they had wiped.
         policy = .gentle
+        try? JevKeyStore.delete()
+        jevSettings = .disabled
         MailboxSnapshotDefaults.reset()
     }
 }
