@@ -8,7 +8,7 @@ import SwiftData
 /// importance call are kept here.
 @Model
 public final class MessageHeader {
-    #Index<MessageHeader>([\.accountID], [\.senderAddress], [\.receivedAt], [\.importanceRaw], [\.briefRank], [\.accountID, \.senderAddress])
+    #Index<MessageHeader>([\.accountID], [\.senderAddress], [\.receivedAt], [\.importanceRaw], [\.briefRank], [\.accountID, \.senderAddress], [\.subject])
 
     /// Plain column rather than a relationship: a to-many inverse on the account
     /// makes every insert touch a 40,000-element array. Cascade is done by hand

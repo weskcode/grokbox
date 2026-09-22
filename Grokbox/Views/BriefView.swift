@@ -55,9 +55,10 @@ struct BriefView: View {
 
     /// Filters over metadata already displayed in a row — subject, sender,
     /// summary — the same `.localizedCaseInsensitiveContains` idiom
-    /// `SendersView.swift` uses for sender search. No server-side SEARCH,
-    /// no new index; a full scan over already-loaded messages is fine at
-    /// current volumes.
+    /// `SendersView.swift` uses for sender search. No server-side SEARCH;
+    /// this filters `classified` in memory rather than issuing a SwiftData
+    /// `#Predicate` fetch on `subject`, so a full scan over already-loaded
+    /// messages is fine at current volumes even though `subject` is indexed.
     private var searched: [MessageHeader] {
         let scoped = classified.filter { isMulti ? accountIDs.contains($0.accountID) : true }
         guard !searchText.isEmpty else { return scoped }
