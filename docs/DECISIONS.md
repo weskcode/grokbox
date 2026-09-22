@@ -492,3 +492,39 @@ body; auto-acting on a Jev answer beyond the existing "just categorize the
 sender" path; a bundled or default API key.
 
 ---
+
+## ADR-0024 — Unsubscribe checklist: export, not automate
+
+**Status:** accepted
+
+Grokbox already computes an "Unsubscribe & sweep" recommendation per sender
+(`SenderCategory.swift`) and already acts on it itself, on request, through
+`UnsubscribeService`'s one-click RFC 8058 path. `UnsubscribeChecklistView`
+adds a second, narrower way to use that same recommendation: let the user
+review the recommended senders, approve or deselect any of them, and export
+the approved list — display name, address, unsubscribe URL, category — as a
+JSON file.
+
+The export exists to be handed to a browser-automation tool the user chooses
+and runs themselves, for senders whose unsubscribe flow needs more than a
+single POST (a confirmation page, a preference center) that
+`UnsubscribeService`'s one-click path does not attempt. Grokbox's own part
+ends at writing the file: this view makes no network connection, never calls
+`UnsubscribeService`, and never visits a link. Only senders with a resolved
+`https://`/`http://` `List-Unsubscribe` target are offered; `mailto:`-only
+senders are excluded, since there is nothing for a browser to open.
+
+This does not relax ADR-0007's "a bulk verdict alone is not consent": the
+recommendation is a starting selection, not an automatic one, and the user
+must review the list and press Export before anything is written, exactly as
+they must approve a sender before a sweep. What happens after the file leaves
+Grokbox is the user's own choice, on their own machine, with their own
+tooling — the same boundary Grokbox already draws at the unsubscribe URL
+click today, just usable for more senders at once.
+
+**Not done here, and not planned:** Grokbox visiting, POSTing to, or
+otherwise automating any URL from this export itself; a bundled or
+recommended automation tool; exporting anything beyond what
+`SenderCluster` already computes on-device.
+
+---
