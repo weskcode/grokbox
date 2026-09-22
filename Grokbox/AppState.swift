@@ -343,6 +343,13 @@ final class AppState {
         _ = try? DigestBuilder.build(for: accounts, in: context)
     }
 
+    /// Tidies up every account — the entry point for Shortcuts/Siri
+    /// (`TidyUpIntent`), which has no view and so no notion of "the selected
+    /// account" the way the menu bar's `.tidyUp` command has via `RootView`.
+    func tidyUpEverything() async {
+        await tidyUp(allAccounts)
+    }
+
     func refreshDigest(_ accounts: [MailAccount]) {
         _ = try? DigestBuilder.build(for: accounts, in: context)
     }

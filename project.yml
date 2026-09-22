@@ -58,6 +58,7 @@ targets:
       - path: Grokbox/Views/AccountOnboarding.swift
       - path: Grokbox/Views/SectionSwitcher.swift
       - path: Grokbox/Views/LockView.swift
+      - path: Grokbox/TidyUpIntent.swift
     dependencies:
       - package: GrokboxCore
     settings:
