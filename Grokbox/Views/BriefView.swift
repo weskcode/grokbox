@@ -19,6 +19,7 @@ struct BriefView: View {
     @State private var unreadUnclassified = 0
     @State private var showWorthKnowing = false
     @State private var tick = Date()
+    @State private var searchText = ""
 
     private static let nowLimit = 3
 
@@ -52,11 +53,24 @@ struct BriefView: View {
         Dictionary(contacts.map { ($0.address, $0.timesContacted) }, uniquingKeysWith: { a, _ in a })
     }
 
-    private var ranked: [Ranked] {
-        let counts = contactCounts
-        let now = tick
+    /// Filters over metadata already displayed in a row — subject, sender,
+    /// summary — the same `.localizedCaseInsensitiveContains` idiom
+    /// `SendersView.swift` uses for sender search. No server-side SEARCH,
+    /// no new index; a full scan over already-loaded messages is fine at
+    /// current volumes.
+    private var searched: [MessageHeader] {
         let scoped = classified.filter { isMulti ? accountIDs.contains($0.accountID) : true }
-        return BriefRanking.rank(scoped, contactCounts: counts, now: now)
+        guard !searchText.isEmpty else { return scoped }
+        return scoped.filter { message in
+            message.subject.localizedCaseInsensitiveContains(searchText)
+                || message.senderName.localizedCaseInsensitiveContains(searchText)
+                || message.senderAddress.localizedCaseInsensitiveContains(searchText)
+                || (message.summary?.localizedCaseInsensitiveContains(searchText) ?? false)
+        }
+    }
+
+    private var ranked: [Ranked] {
+        BriefRanking.rank(searched, contactCounts: contactCounts, now: tick)
     }
 
     private var needsYou: [Ranked] { ranked.filter { $0.message.importance == .needsYou } }
@@ -113,6 +127,7 @@ struct BriefView: View {
             .frame(maxWidth: 860, alignment: .leading)
         }
         .navigationTitle(isMulti ? "All Accounts" : accounts.first?.displayName ?? "Brief")
+        .searchable(text: $searchText, prompt: "Search subject or sender")
         .task(id: accounts.map(\.id)) { refreshCounts() }
         .onChange(of: state.engine.phase) { refreshCounts(); tick = Date() }
         .onChange(of: state.executor.phase) { refreshCounts(); tick = Date() }

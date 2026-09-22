@@ -16,6 +16,7 @@ struct SenderMessagesSheet: View {
     @Query private var rules: [SenderRule]
 
     @State private var outcome: UnsubscribeService.Outcome?
+    @State private var searchText = ""
 
     init(profile: SenderProfile, account: MailAccount?, state: AppState) {
         self.profile = profile
@@ -34,13 +35,29 @@ struct SenderMessagesSheet: View {
 
     private var rule: RuleDecision? { rules.first?.decision }
 
+    /// Subject/summary only — the sender is already fixed by this sheet.
+    /// A plain `TextField`, not `.searchable`: this view has no
+    /// `NavigationStack` when presented as a sheet, and `.searchable` is not
+    /// guaranteed to render without one.
+    private var shownMessages: [MessageHeader] {
+        guard !searchText.isEmpty else { return messages }
+        return messages.filter { message in
+            message.subject.localizedCaseInsensitiveContains(searchText)
+                || (message.summary?.localizedCaseInsensitiveContains(searchText) ?? false)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider()
             recommendationCard
             Divider()
-            List(messages) { message in messageRow(message) }
+            TextField("Search this sender's messages", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+                .padding(.horizontal, 16).padding(.vertical, 8)
+            Divider()
+            List(shownMessages) { message in messageRow(message) }
         }
         .frame(width: 680, height: 560)
     }
