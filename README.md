@@ -82,7 +82,7 @@ only the summary is kept.
 
 - macOS 26 or later (Apple Intelligence-capable Mac for the built-in model;
   any Apple Silicon Mac with Ollama otherwise)
-- Xcode 26 or later
+- Xcode 27
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`)
 
 ## Build
