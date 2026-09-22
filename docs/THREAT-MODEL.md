@@ -16,7 +16,9 @@ provides the first two and does not attempt the third.
   docs/PRIVACY.md and ADR-0023.
 - **Security** — TLS with certificate validation to every remote host, passwords
   in the macOS Keychain, an App Sandbox with a single entitlement
-  (`network.client`), no third-party code.
+  (`network.client`), no third-party code, no HTML rendering — tracking
+  pixels and remote images never load, because nothing ever parses a
+  message body as HTML.
 - **Anonymity** — not provided. Your IMAP server sees your IP address exactly as
   it does with any mail client. Grokbox does not route through Tor or a VPN and
   does not claim to.

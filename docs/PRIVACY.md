@@ -7,14 +7,17 @@
 | Destination | When | What | Can you turn it off? |
 |---|---|---|---|
 | **Your IMAP server** (e.g. `imap.gmail.com:993`) | Index, Read, Sweep, Tidy-up | IMAP commands. Credentials over TLS. Header and body reads are `PEEK`, so nothing is marked read by looking. | It is the product; remove the account. |
+| **`autoconfig.<your domain>`** and **`autoconfig.thunderbird.net`** (Mozilla's ISPDB) | Only when you press "Look up settings" while adding an account | Just the domain of the address you typed — never the full address | Type in server settings by hand instead. |
 | **`127.0.0.1:11434`** (Ollama) | Read, if you chose Ollama | Subject, sender, and up to 3,000 characters of body text per message | Choose Apple's model instead, or none. Loopback only — the code refuses any other host. |
 | **A sender's unsubscribe URL** | When you click Unsubscribe, or — only if you turn it on in Settings — automatically during a sweep for senders that meet the conditions you set | An RFC 8058 POST to the HTTPS URL the sender put in their own `List-Unsubscribe` header | Do not click it. |
 | **`api.typesafe.ai`** (Jev, TypeSafe AI) | Only if you turn on "Jev cloud fallback" in Settings and save your own API key — and then only for a sender the local model still could not categorize | The sender's address and a handful of their subject lines. Never a message body. | Off by default. Turn it off in Settings, or Erase everything, which also deletes the saved key. See ADR-0023. |
 
-That is the complete list of connections Grokbox makes without you turning
-anything on. The one opt-in exception is the Jev row above — a third-party
-API you must explicitly enable and supply your own key for; ADR-0023 explains
-why it exists and exactly what it is scoped to. The demo mailboxes run
+That is the complete list of connections Grokbox can make. Autoconfig only
+runs when you press "Look up settings" during account setup — a one-time,
+domain-only lookup, not an ongoing connection. The one opt-in exception is
+the Jev row above — a third-party API you must explicitly enable and supply
+your own key for; ADR-0023 explains why it exists and exactly what it is
+scoped to. The demo mailboxes run
 entirely inside the app's process — there is no listening socket anywhere in
 the shipped app, and the sandbox has no `network.server` entitlement to allow
 one. There is no telemetry, no crash reporter, no update check, no analytics,
@@ -57,12 +60,15 @@ key, under its own service, `com.wesleykeetch.grokbox.jev`.
 - **Send.** No SMTP anywhere.
 - **Act without approval.** Sweeps run only on senders you approved in the
   Sweep screen. Tidy-up applies existing rules and never creates new ones.
+- **Render HTML.** Bodies are stripped to plain text (`BodyExtractor.stripHTML`)
+  before anything touches a model or a screen. Tracking pixels and scripts
+  cannot run because nothing ever renders HTML — see `LinkHygiene.swift`.
 
 ## Verifying this yourself
 
 ```bash
 # Every outbound host the app can name:
-grep -rn "URL(string\|NWEndpoint.Host\|https://" GrokboxCore/Sources | grep -v "^.*//"
+grep -rn "URL(string\|NWEndpoint.Host\|https://" GrokboxCore/Sources
 
 # Prove there is no delete path:
 grep -rni "deleted\|expunge" GrokboxCore/Sources ; echo "(should print nothing)"
