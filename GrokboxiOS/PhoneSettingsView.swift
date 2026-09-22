@@ -12,6 +12,7 @@ struct PhoneSettingsView: View {
     @State private var removing: MailAccount?
     @State private var jevAPIKeyField = ""
     @State private var hasJevKey = false
+    @AppStorage("grokbox.notify") private var notify = false
 
     var body: some View {
         Form {
@@ -39,6 +40,10 @@ struct PhoneSettingsView: View {
                 }
                 Text("Runs entirely on this device. Nothing about your mail leaves it.").font(.footnote).foregroundStyle(.secondary)
                 Button("Check again") { Task { await state.refreshModels() } }
+            }
+            Section("Keep it clean") {
+                Toggle("Notify me when a tidy-up finds something that needs me", isOn: $notify)
+                    .onChange(of: notify) { _, on in if on { NotificationService.requestPermission() } }
             }
             CleanupPolicyEditor(policy: Bindable(state).policy)
             Section("Jev cloud fallback (optional)") {
