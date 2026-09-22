@@ -48,6 +48,51 @@ struct SenderOverrideTests {
         #expect(impossible.items.first?.unsubscribe == false)
     }
 
+    /// A custom folder beats the category default, without needing the user
+    /// to separately set a disposition.
+    @Test func customFolderBeatsTheCategoryDefault() {
+        let promo = assessed(cluster("deals@x.example", category: .promotion))
+        let news = assessed(cluster("news@x.example", category: .newsletter))
+        let plan = CleanupPlan.suggested(from: [promo, news], policy: .gentle,
+                                         overrides: ["deals@x.example": .init(decision: .sweep, customFolder: "Clients/VIP")])
+        let byAddress = Dictionary(uniqueKeysWithValues: plan.items.map { ($0.cluster.address, $0) })
+        #expect(byAddress["deals@x.example"]?.folder == "Clients/VIP")
+        #expect(byAddress["news@x.example"]?.folder == SenderCategory.newsletter.folderName, "everyone else keeps the category folder")
+    }
+
+    /// A folder pick can never be silently discarded by a trash/archive-only
+    /// disposition — setting one always implies filing into folders.
+    @Test func settingACustomFolderForcesFileIntoFolders() throws {
+        let container = ModelContainer.grokboxTestContainer()
+        let context = container.mainContext
+
+        RuleStore.setDisposition(.trash, for: "deals@x.example", in: context)
+        #expect(RuleStore.overrides(in: context)["deals@x.example"]?.disposition == .trash)
+
+        RuleStore.setCustomFolder("Clients/VIP", for: "deals@x.example", in: context)
+        let overrides = RuleStore.overrides(in: context)
+        #expect(overrides["deals@x.example"]?.customFolder == "Clients/VIP")
+        #expect(overrides["deals@x.example"]?.disposition == .fileIntoFolders, "a folder pick overrides trash/archive-only")
+
+        RuleStore.setCustomFolder(nil, for: "deals@x.example", in: context)
+        #expect(RuleStore.overrides(in: context)["deals@x.example"]?.customFolder == nil, "clearing returns to the category default")
+    }
+
+    /// `byFolder` groups by the resolved folder, so two different-category
+    /// senders sharing a custom folder land in one group.
+    @Test func byFolderGroupsDifferentCategoriesUnderASharedCustomFolder() throws {
+        let promo = assessed(cluster("deals@x.example", category: .promotion, messages: 5))
+        let news = assessed(cluster("news@x.example", category: .newsletter, messages: 3))
+        let plan = CleanupPlan.suggested(from: [promo, news], policy: .gentle,
+                                         overrides: [
+                                            "deals@x.example": .init(decision: .sweep, customFolder: "Clients/VIP"),
+                                            "news@x.example": .init(decision: .sweep, customFolder: "Clients/VIP")
+                                         ])
+        let group = try #require(plan.byFolder.first { $0.folder == "Clients/VIP" })
+        #expect(group.items.count == 2)
+        #expect(Set(group.items.map(\.cluster.address)) == ["deals@x.example", "news@x.example"])
+    }
+
     @Test func storeReadsAndWritesOverrides() throws {
         let container = ModelContainer.grokboxTestContainer()
         let context = container.mainContext

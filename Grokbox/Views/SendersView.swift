@@ -21,6 +21,7 @@ struct SendersView: View {
     @State private var showingOutcome = false
     @State private var showingUnsubscribeChecklist = false
     @State private var showingContacts = false
+    @State private var folderPickerAddress: String?
 
     init(account: MailAccount, state: AppState) {
         self.account = account
@@ -86,6 +87,11 @@ struct SendersView: View {
         }
         .sheet(isPresented: $showingContacts) {
             ContactsView()
+        }
+        .sheet(isPresented: Binding(get: { folderPickerAddress != nil }, set: { if !$0 { folderPickerAddress = nil } })) {
+            if let folderPickerAddress {
+                FolderPickerSheet(address: folderPickerAddress, account: account)
+            }
         }
         .alert("Unsubscribe", isPresented: $showingOutcome, presenting: unsubscribeOutcome) { item in
             if case .openInBrowser(let url) = item.outcome {
@@ -274,6 +280,7 @@ struct SendersView: View {
                             ForEach(CleanupPolicy.Disposition.allCases) { d in
                                 Button("Always \(d.label.lowercased())") { RuleStore.setDisposition(d, for: a.cluster.address, in: modelContext) }
                             }
+                            Button("Choose folder…") { folderPickerAddress = a.cluster.address }
                         }
                         if a.cluster.hasUnsubscribeLink {
                             Section("Unsubscribing") {

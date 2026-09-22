@@ -69,6 +69,19 @@ struct MailboxNamingTests {
         #expect(boxes.serverName(forLogical: "Grokbox/Nyhetsbrev – Föräldrar") == "Grokbox/Nyhetsbrev &IBM- F&APY-r&AOQ-ldrar")
     }
 
+    @Test func logicalNameRoundTripsThroughServerNameOnADotDelimitedNamespacedServer() {
+        let boxes = [box("INBOX", [], "."), box("INBOX.Archive.2024", [], "."), box("INBOX.Sent", ["\\Sent"], ".")]
+        #expect(boxes.logicalName(forServer: "INBOX.Archive.2024") == "Archive/2024")
+        #expect(boxes.serverName(forLogical: boxes.logicalName(forServer: "INBOX.Archive.2024")) == "INBOX.Archive.2024",
+                "picking an existing mailbox must not get double-prefixed on the next sweep")
+    }
+
+    @Test func logicalNameRoundTripsOnGmailWhereThereIsNoPrefix() {
+        let boxes = [box("INBOX"), box("Work/Clients"), box("[Gmail]/Sent Mail", ["\\Sent"])]
+        #expect(boxes.logicalName(forServer: "Work/Clients") == "Work/Clients")
+        #expect(boxes.serverName(forLogical: boxes.logicalName(forServer: "Work/Clients")) == "Work/Clients")
+    }
+
     @Test func sentIsFoundWithoutSpecialUse() {
         #expect([box("INBOX"), box("Sent Items")].sentMailbox?.name == "Sent Items")
         #expect([box("INBOX"), box("Envoyés")].sentMailbox?.name == "Envoyés")

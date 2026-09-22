@@ -177,6 +177,26 @@ extension Array where Element == IMAPMailbox {
         return personalNamespacePrefix + parts.joined(separator: hierarchyDelimiter)
     }
 
+    /// The inverse of `serverName(forLogical:)`: turns a raw server mailbox
+    /// name (e.g. from `discoverMailboxes()`) back into Grokbox's logical
+    /// form — personal-namespace prefix stripped, this server's delimiter
+    /// normalized to `/`, then UTF-7 decoded. Lets a folder picker store an
+    /// *existing* mailbox the user chose as a logical name, so it round-trips
+    /// correctly through `serverName(forLogical:)` on the next sweep instead
+    /// of being prefixed a second time.
+    public func logicalName(forServer name: String) -> String {
+        var raw = name
+        let prefix = personalNamespacePrefix
+        if !prefix.isEmpty, raw.uppercased().hasPrefix(prefix.uppercased()) {
+            raw = String(raw.dropFirst(prefix.count))
+        }
+        let delimiter = hierarchyDelimiter
+        if !delimiter.isEmpty, delimiter != "/" {
+            raw = raw.replacingOccurrences(of: delimiter, with: "/")
+        }
+        return IMAPUTF7.decode(raw)
+    }
+
     /// The Trash, by special-use flag or by the names providers use for it.
     public var trashMailbox: IMAPMailbox? {
         if let flagged = first(where: \.isTrash) { return flagged }

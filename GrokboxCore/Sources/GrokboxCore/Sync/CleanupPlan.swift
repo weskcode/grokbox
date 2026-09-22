@@ -30,11 +30,13 @@ public struct CleanupPlan: Sendable {
         /// known, the sender's pending mail otherwise.
         public var messageCount: Int { guardedCount ?? cluster.pendingUIDs.count }
 
-        /// Where the swept mail goes — the category's folder, never a generic bin.
-        public var folder: String { cluster.category.folderName }
+        /// Where the swept mail goes — the sender's custom folder if one is
+        /// set (see `RuleStore.setCustomFolder`), else the category's folder.
+        public var folder: String
 
         public init(cluster: SenderCluster, isEnabled: Bool = true, archive: Bool = true, markRead: Bool = true,
-                    isFromRule: Bool = false, disposition: CleanupPolicy.Disposition = .fileIntoFolders, unsubscribe: Bool = false) {
+                    isFromRule: Bool = false, disposition: CleanupPolicy.Disposition = .fileIntoFolders, unsubscribe: Bool = false,
+                    folder: String? = nil) {
             self.cluster = cluster
             self.isEnabled = isEnabled
             self.archive = archive
@@ -42,6 +44,7 @@ public struct CleanupPlan: Sendable {
             self.isFromRule = isFromRule
             self.disposition = disposition
             self.unsubscribe = unsubscribe
+            self.folder = folder ?? cluster.category.folderName
         }
     }
 
@@ -51,10 +54,20 @@ public struct CleanupPlan: Sendable {
     public static let sweptLabel = "Grokbox/Swept"
 
     /// Items grouped by folder, largest first — how Sweep presents them.
+    ///
+    /// Grouped by the resolved folder string, not category: a custom folder
+    /// (`RuleStore.setCustomFolder`) can put senders of different categories
+    /// in the same group. `category` is then the group's largest sender's
+    /// category — a representative for the icon/label, not a claim that
+    /// every item in the group shares it.
     public var byFolder: [(folder: String, category: SenderCategory, items: [Item])] {
-        let groups = Dictionary(grouping: items, by: \.cluster.category)
+        let groups = Dictionary(grouping: items, by: \.folder)
         return groups
-            .map { (folder: $0.key.folderName, category: $0.key, items: $0.value.sorted { $0.messageCount > $1.messageCount }) }
+            .map { folder, items in
+                let sorted = items.sorted { $0.messageCount > $1.messageCount }
+                let category = sorted.first?.cluster.category ?? .unknown
+                return (folder: folder, category: category, items: sorted)
+            }
             .sorted { $0.items.reduce(0) { $0 + $1.messageCount } > $1.items.reduce(0) { $0 + $1.messageCount } }
     }
 
@@ -82,7 +95,8 @@ public struct CleanupPlan: Sendable {
                             markRead: policy.markRead,
                             isFromRule: rules[assessment.cluster.address] == .sweep,
                             disposition: override?.disposition ?? policy.disposition(for: assessment.cluster.category),
-                            unsubscribe: unsubscribeDecision(assessment.cluster, policy: policy, override: override))
+                            unsubscribe: unsubscribeDecision(assessment.cluster, policy: policy, override: override),
+                            folder: override?.customFolder)
             }
         return CleanupPlan(items: items)
     }
@@ -122,7 +136,8 @@ public struct CleanupPlan: Sendable {
                 let override = overrides[assessment.cluster.address]
                 return Item(cluster: assessment.cluster, markRead: policy.markRead, isFromRule: true,
                             disposition: override?.disposition ?? policy.disposition(for: assessment.cluster.category),
-                            unsubscribe: unsubscribeDecision(assessment.cluster, policy: policy, override: override))
+                            unsubscribe: unsubscribeDecision(assessment.cluster, policy: policy, override: override),
+                            folder: override?.customFolder)
             }
         return CleanupPlan(items: items)
     }
