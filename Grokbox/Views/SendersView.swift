@@ -19,6 +19,7 @@ struct SendersView: View {
     @State private var categoryFilter: SenderCategory?
     @State private var unsubscribeOutcome: (sender: String, outcome: UnsubscribeService.Outcome)?
     @State private var showingOutcome = false
+    @State private var showingUnsubscribeChecklist = false
 
     init(account: MailAccount, state: AppState) {
         self.account = account
@@ -66,8 +67,17 @@ struct SendersView: View {
         }
         .navigationTitle(account.displayName)
         .searchable(text: $searchText, prompt: "Filter senders")
+        .toolbar {
+            ToolbarItem {
+                Button("Unsubscribe list…") { showingUnsubscribeChecklist = true }
+                    .help("Review and export senders recommended for unsubscribe & sweep")
+            }
+        }
         .sheet(item: $drillDown) { profile in
             SenderMessagesSheet(profile: profile, account: account, state: state)
+        }
+        .sheet(isPresented: $showingUnsubscribeChecklist) {
+            UnsubscribeChecklistView(account: account)
         }
         .alert("Unsubscribe", isPresented: $showingOutcome, presenting: unsubscribeOutcome) { item in
             if case .openInBrowser(let url) = item.outcome {
