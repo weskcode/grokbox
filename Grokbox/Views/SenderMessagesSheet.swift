@@ -17,6 +17,7 @@ struct SenderMessagesSheet: View {
 
     @State private var outcome: UnsubscribeService.Outcome?
     @State private var searchText = ""
+    @State private var reading: MessageHeader?
 
     init(profile: SenderProfile, account: MailAccount?, state: AppState) {
         self.profile = profile
@@ -60,6 +61,11 @@ struct SenderMessagesSheet: View {
             List(shownMessages) { message in messageRow(message) }
         }
         .frame(width: 680, height: 560)
+        .sheet(item: $reading) { message in
+            if let account {
+                MessageReaderSheet(message: message, account: account)
+            }
+        }
     }
 
     private var header: some View {
@@ -147,8 +153,13 @@ struct SenderMessagesSheet: View {
                 .font(.caption).foregroundStyle(.tertiary)
             }
             Spacer()
-            if let account, let url = account.webLink(for: message) {
-                Button("Open") { openURL(url) }.controlSize(.small)
+            HStack(spacing: 6) {
+                if account != nil {
+                    Button("Read") { reading = message }.controlSize(.small)
+                }
+                if let account, let url = account.webLink(for: message) {
+                    Button("Open") { openURL(url) }.controlSize(.small)
+                }
             }
         }
         .padding(.vertical, 2)
