@@ -20,6 +20,7 @@ struct SendersView: View {
     @State private var unsubscribeOutcome: (sender: String, outcome: UnsubscribeService.Outcome)?
     @State private var showingOutcome = false
     @State private var showingUnsubscribeChecklist = false
+    @State private var showingContacts = false
 
     init(account: MailAccount, state: AppState) {
         self.account = account
@@ -69,6 +70,10 @@ struct SendersView: View {
         .searchable(text: $searchText, prompt: "Filter senders")
         .toolbar {
             ToolbarItem {
+                Button("Contacts…") { showingContacts = true }
+                    .help("Who you have actually written to, ranked by how often")
+            }
+            ToolbarItem {
                 Button("Unsubscribe list…") { showingUnsubscribeChecklist = true }
                     .help("Review and export senders recommended for unsubscribe & sweep")
             }
@@ -78,6 +83,9 @@ struct SendersView: View {
         }
         .sheet(isPresented: $showingUnsubscribeChecklist) {
             UnsubscribeChecklistView(account: account)
+        }
+        .sheet(isPresented: $showingContacts) {
+            ContactsView()
         }
         .alert("Unsubscribe", isPresented: $showingOutcome, presenting: unsubscribeOutcome) { item in
             if case .openInBrowser(let url) = item.outcome {
