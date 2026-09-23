@@ -25,7 +25,7 @@ their own inboxes, and audited against the
 [Privacy Guides criteria](docs/PRIVACY-GUIDES-AUDIT.md) so you can check the
 claims rather than take them.
 
-## What it does (v0.4)
+## What it does (v0.5)
 
 - **Where things stand** — one button (⌘⇧S) at the top of the Brief: a
   plain-language summary of the inbox right now — what needs you, what is
@@ -94,7 +94,7 @@ open Grokbox.xcodeproj
 
 Then Cmd+R.
 
-The engine is a Swift package with its own fast test loop. 45 tests, including
+The engine is a Swift package with its own fast test loop. Its tests include
 an IMAP server on loopback that exercises the real client end to end, and a
 lifecycle test that runs index → sweep → undo → incremental sync → maintenance
 through the same engines the buttons call. When this Mac can run Apple's

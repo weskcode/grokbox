@@ -52,6 +52,16 @@ struct SweepView: View {
         }
     }
 
+    /// Gmail archives by label, which Grokbox can always put back. Other
+    /// servers move mail, and a move can only be undone if the server says
+    /// where the messages went.
+    private var undoPromise: String {
+        switch account.kind {
+        case .gmail, .demo: "Every action can be undone from Activity."
+        default: "Every action is listed in Activity, with Undo wherever this server reports where the mail went."
+        }
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
@@ -82,7 +92,7 @@ struct SweepView: View {
                                     isFailed: { if case .failed = state.executor.phase { true } else { false } }())
                 }
             }
-            Text("Each sender is filed into the folder for its kind — Promotions, Newsletters, Notifications — never a generic bin. Flagged mail, mail the model says needs you, and receipts are held back automatically. Nothing is deleted; every action can be undone from Activity. Approving a sender writes a rule so future mail is filed the same way.")
+            Text("Each sender is filed into the folder for its kind — Promotions, Newsletters, Notifications — never a generic bin. Flagged mail, mail the model says needs you, and receipts are held back automatically. Nothing is deleted. \(undoPromise) Approving a sender writes a rule so future mail is filed the same way.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 16).padding(.vertical, 12)
