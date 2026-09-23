@@ -8,3 +8,4 @@ xcuserdata/
 .swiftpm/
 .build/
 *.unreadable
+dist/
