@@ -55,22 +55,25 @@ Yes, on real mail. On 7 September it indexed a live Gmail account: 402
 messages, 49 senders, 11 contacts learned from Sent, and per-sender advice that
 held up.
 
-**The copy in `/Applications/Grokbox.app` is an old 0.4.0 build, ad-hoc
-signed**, not a release. It is sandboxed and still has that account
-set up, so anything you test through it is 0.4.0 behavior.
+**`/Applications/Grokbox.app` is the notarized 0.5.1 release**, installed
+on 23 September. The ad-hoc 0.4.0 build it replaced, and a copy of its store,
+are in `~/Grokbox-backup-2026-09-23`.
 
-**A sweep on real mail has still never run.** On 22 September the pending
-plan was 161 messages from 6 senders (it was 85 on 7 September). The owner
-is clicking through it by hand. Indexing and reading are read-only by
-construction, so nothing in that mailbox has been modified by the app yet.
-The sweep-safety fixes in batch A (Stop that really stops, rules written only
-after success, failures reported as failures) shipped in 0.5.1. The installed
-0.4.0 build doesn't have them, so install 0.5.1 before running that sweep.
+**The real Gmail account is no longer set up.** On 22 September at 11:30 a
+session launched the installed app with `--reset --demo`, which erased all
+local data, including that account and its Keychain password, and added the
+three demo mailboxes. The Gmail mailbox itself was not touched.
+
+**A sweep on real mail has still never run.** Before the reset, the pending
+plan was 161 messages from 6 senders (85 on 7 September). Indexing and
+reading are read-only by construction, so nothing in that mailbox has been
+modified by the app yet. The sweep-safety fixes from batch A are in 0.5.1.
 
 ## What's waiting on you
 
-1. **Install 0.5.1, then the real-mail sweep.** Pressing the button archives
-   those messages into `Grokbox/` folders and can be undone from Activity.
+1. **Re-add the Gmail account, then the real-mail sweep.** Add Account needs
+   a new App Password. After the first index, pressing Sweep archives the
+   planned messages into `Grokbox/` folders and can be undone from Activity.
    Until it runs, the product's core claim is unproven on a real server.
 2. **The rest of the hardening plan** (next section).
 3. **Housekeeping.** Delete the stray empty "New Shortcut 2" in the Shortcuts
@@ -145,6 +148,11 @@ Written down because each one cost hours.
   good. This clone's `gpg.ssh.allowedSignersFile` still points at an old
   `~/Documents/Developer/grokbox/.allowed_signers` path. Point it at the
   repo's `.allowed_signers` to fix it.
+- **`--reset` erases every account, its index and its Keychain password**,
+  which is how the real Gmail account was lost on 22 September. Every build
+  with the `com.wesleykeetch.grokbox` bundle ID, Debug builds included, shares
+  one sandbox container, so don't pass `--reset` while a real account is set
+  up.
 - **Several Claude sessions have run in this directory at once before.** One
   of them left the Jev categorizer as uncommitted, unreviewed changes. Check
   `git status` before starting and don't assume you're the only writer.
@@ -154,7 +162,7 @@ Written down because each one cost hours.
 ```bash
 cd GrokboxCore && swift test                 # 213 tests, ~50s
 scripts/release.sh 0.5.2                     # full release, refuses if unsafe
-open /Applications/Grokbox.app               # the installed (0.4.0) build
+open /Applications/Grokbox.app               # the installed 0.5.1 release
 ```
 
 Read-only flags for exercising a real mailbox with no path that can modify it:
