@@ -455,3 +455,76 @@ middle: "Reset your **Coddy** password", "Your **X** verification code".
 The general rule this stands for: a ranking signal that only ever moves one way
 is a bug waiting for the right data. Age, unread state and reply-expectation
 all needed a category that inverts them.
+
+---
+
+## ADR-0023 — An opt-in, off-by-default exception for sender categorization: Jev
+
+**Status:** accepted
+
+`TextModel` is documented as running only on this machine, and that stays
+true — this adds a second, narrower protocol instead of touching it.
+`RemoteCategorizer` has exactly one method, `categorize`, and exactly one
+conformer, `JevCategorizer`, which calls TypeSafe AI's Jev API
+(`api.typesafe.ai`) to answer the same "what kind of sender is this" question
+`SenderCategorizer` and the local model already answer for the cases they can
+place.
+
+It is off by default, requires the user's own API key (never bundled, never
+shared), and only ever runs as a fallback: after the local model has already
+tried and still returned `.unknown` for that sender. The payload is the
+smallest useful one — a sender's address and a handful of subject lines,
+never a message body — and the prompt tells Jev to treat that content as
+untrusted data, not instructions, the same defence a crafted subject line
+would need against any model reading it. A low-confidence or
+explicitly-uncertain answer is treated the same as no answer: the sender
+stays unsorted rather than getting a guessed category.
+
+This is a deliberate, disclosed exception to "nothing leaves this Mac", not a
+reinterpretation of it. `docs/PRIVACY.md` and `docs/THREAT-MODEL.md` name the
+new destination and exactly what it can see, and Settings shows the same
+disclosure next to the toggle. Turning it off, or never turning it on, leaves
+Grokbox exactly as local as it always was.
+
+**Not done here, and not planned:** using Jev, or any cloud model, for
+message reading, importance scoring, or any path that would see a message
+body; auto-acting on a Jev answer beyond the existing "just categorize the
+sender" path; a bundled or default API key.
+
+---
+
+## ADR-0024 — Unsubscribe checklist: export, not automate
+
+**Status:** accepted
+
+Grokbox already computes an "Unsubscribe & sweep" recommendation per sender
+(`SenderCategory.swift`) and already acts on it itself, on request, through
+`UnsubscribeService`'s one-click RFC 8058 path. `UnsubscribeChecklistView`
+adds a second, narrower way to use that same recommendation: let the user
+review the recommended senders, approve or deselect any of them, and export
+the approved list — display name, address, unsubscribe URL, category — as a
+JSON file.
+
+The export exists to be handed to a browser-automation tool the user chooses
+and runs themselves, for senders whose unsubscribe flow needs more than a
+single POST (a confirmation page, a preference center) that
+`UnsubscribeService`'s one-click path does not attempt. Grokbox's own part
+ends at writing the file: this view makes no network connection, never calls
+`UnsubscribeService`, and never visits a link. Only senders with a resolved
+`https://`/`http://` `List-Unsubscribe` target are offered; `mailto:`-only
+senders are excluded, since there is nothing for a browser to open.
+
+This does not relax ADR-0007's "a bulk verdict alone is not consent": the
+recommendation is a starting selection, not an automatic one, and the user
+must review the list and press Export before anything is written, exactly as
+they must approve a sender before a sweep. What happens after the file leaves
+Grokbox is the user's own choice, on their own machine, with their own
+tooling — the same boundary Grokbox already draws at the unsubscribe URL
+click today, just usable for more senders at once.
+
+**Not done here, and not planned:** Grokbox visiting, POSTing to, or
+otherwise automating any URL from this export itself; a bundled or
+recommended automation tool; exporting anything beyond what
+`SenderCluster` already computes on-device.
+
+---

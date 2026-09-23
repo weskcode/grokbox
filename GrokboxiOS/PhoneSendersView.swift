@@ -12,6 +12,8 @@ struct PhoneSendersView: View {
     @State private var filter = ""
     @State private var outcome: (sender: String, text: String, url: URL?)?
     @State private var showingOutcome = false
+    @State private var showingUnsubscribeChecklist = false
+    @State private var showingContacts = false
 
     init(account: MailAccount) {
         self.account = account
@@ -47,6 +49,22 @@ struct PhoneSendersView: View {
         .searchable(text: $filter, prompt: "Filter senders")
         .navigationTitle("Senders")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { showingContacts = true } label: { Image(systemName: "person.crop.circle") }
+                    .accessibilityLabel("Contacts")
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button { showingUnsubscribeChecklist = true } label: { Image(systemName: "hand.raised") }
+                    .accessibilityLabel("Unsubscribe list")
+            }
+        }
+        .sheet(isPresented: $showingUnsubscribeChecklist) {
+            PhoneUnsubscribeChecklistView(account: account)
+        }
+        .sheet(isPresented: $showingContacts) {
+            PhoneContactsView()
+        }
         .alert("Unsubscribe", isPresented: $showingOutcome, presenting: outcome) { item in
             if let url = item.url { Button("Open link") { openURL(url) } }
             Button("OK", role: .cancel) { }

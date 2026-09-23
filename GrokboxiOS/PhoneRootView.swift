@@ -21,7 +21,9 @@ struct PhoneRootView: View {
 
     var body: some View {
         Group {
-            if accounts.isEmpty {
+            if state.biometricLockSettings.enabled && !state.isUnlocked {
+                LockView(state: state)
+            } else if accounts.isEmpty {
                 welcome
             } else {
                 TabView(selection: $tab) {

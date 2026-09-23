@@ -123,3 +123,50 @@ struct SenderProfileTests {
         print("PERF 40k messages → 400 profiles: rebuild \(elapsed), re-rebuild \(again), UI query \(queryTime)")
     }
 }
+
+struct ContactDirectoryTests {
+    private func profile(accountID: UUID, address: String, displayName: String, messageCount: Int) -> SenderProfile {
+        let profile = SenderProfile(accountID: accountID, address: address)
+        profile.displayName = displayName
+        profile.messageCount = messageCount
+        return profile
+    }
+
+    @Test func sortsByTimesContactedDescending() {
+        let contacts = [
+            ContactedAddress(address: "quiet@x.example", lastContactedAt: .now),
+            ContactedAddress(address: "loud@x.example", lastContactedAt: .now)
+        ]
+        contacts[1].timesContacted = 9
+
+        let summaries = ContactDirectory.summaries(contacts: contacts, profiles: [])
+        #expect(summaries.map(\.address) == ["loud@x.example", "quiet@x.example"])
+    }
+
+    @Test func fallsBackToTheAddressWhenNoProfileMatches() {
+        let contacts = [ContactedAddress(address: "stranger@x.example", lastContactedAt: .now)]
+        let summaries = ContactDirectory.summaries(contacts: contacts, profiles: [])
+        #expect(summaries.first?.displayName == "stranger@x.example")
+        #expect(summaries.first?.messageCount == 0)
+    }
+
+    @Test func usesTheMatchingProfilesDisplayNameAndMessageCount() {
+        let contacts = [ContactedAddress(address: "known@x.example", lastContactedAt: .now)]
+        let profiles = [profile(accountID: UUID(), address: "known@x.example", displayName: "Known Sender", messageCount: 42)]
+        let summaries = ContactDirectory.summaries(contacts: contacts, profiles: profiles)
+        #expect(summaries.first?.displayName == "Known Sender")
+        #expect(summaries.first?.messageCount == 42)
+    }
+
+    /// The same address can have a `SenderProfile` per account. One contact
+    /// must still produce exactly one summary, not one per account.
+    @Test func oneSummaryPerContactEvenWithProfilesFromMultipleAccounts() {
+        let contacts = [ContactedAddress(address: "shared@x.example", lastContactedAt: .now)]
+        let profiles = [
+            profile(accountID: UUID(), address: "shared@x.example", displayName: "Personal", messageCount: 10),
+            profile(accountID: UUID(), address: "shared@x.example", displayName: "Work", messageCount: 5)
+        ]
+        let summaries = ContactDirectory.summaries(contacts: contacts, profiles: profiles)
+        #expect(summaries.count == 1)
+    }
+}

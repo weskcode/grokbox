@@ -25,6 +25,30 @@ final class AppState {
         }
     }
 
+    /// Whether the opt-in Jev cloud fallback is on. Off by default; see
+    /// ADR-0023. The API key itself is in `JevKeyStore`, not here.
+    var jevSettings: JevSettings = .current {
+        didSet {
+            guard oldValue != jevSettings else { return }
+            JevSettings.current = jevSettings
+        }
+    }
+
+    /// Whether the app requires Face ID/Touch ID before showing mail. Off by
+    /// default; see `BiometricAuthenticator`.
+    var biometricLockSettings: BiometricLockSettings = .current {
+        didSet {
+            guard oldValue != biometricLockSettings else { return }
+            BiometricLockSettings.current = biometricLockSettings
+        }
+    }
+
+    /// Whether this launch has passed the biometric gate — or never needed
+    /// to, if the lock was off when the app launched. Never persisted: a
+    /// session that started unlocked stays unlocked even if the setting is
+    /// turned on mid-session; only the next cold launch is actually gated.
+    var isUnlocked: Bool = !BiometricLockSettings.current.enabled
+
     /// Set once at launch if the index had to be rebuilt or cannot be written.
     /// Shown as a banner until dismissed — silently losing someone's index and
     /// saying nothing would be the worst possible behaviour here.
@@ -319,6 +343,13 @@ final class AppState {
         _ = try? DigestBuilder.build(for: accounts, in: context)
     }
 
+    /// Tidies up every account — the entry point for Shortcuts/Siri
+    /// (`TidyUpIntent`), which has no view and so no notion of "the selected
+    /// account" the way the menu bar's `.tidyUp` command has via `RootView`.
+    func tidyUpEverything() async {
+        await tidyUp(allAccounts)
+    }
+
     func refreshDigest(_ accounts: [MailAccount]) {
         _ = try? DigestBuilder.build(for: accounts, in: context)
     }
@@ -382,6 +413,8 @@ final class AppState {
         // decide what it does, or the next sweep runs under a policy the
         // person thought they had wiped.
         policy = .gentle
+        try? JevKeyStore.delete()
+        jevSettings = .disabled
         MailboxSnapshotDefaults.reset()
     }
 }

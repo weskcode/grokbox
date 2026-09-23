@@ -24,6 +24,12 @@ public final class SenderRule {
     /// means yes, if the sender has a one-click link.
     public var autoUnsubscribeOverride: Bool?
 
+    /// Where this sender's mail files, overriding the category's default
+    /// folder. Nil means "use the category's folder" — the common case.
+    /// Setting one always implies `.fileIntoFolders`; see
+    /// `RuleStore.setCustomFolder`, which is the only way this is written.
+    public var customFolder: String?
+
     public var decision: RuleDecision {
         get { RuleDecision(rawValue: decisionRaw) ?? .sweep }
         set { decisionRaw = newValue.rawValue }
@@ -37,7 +43,8 @@ public final class SenderRule {
     /// One line describing everything this rule does, for the UI.
     public var summary: String {
         var parts = [decision.label]
-        if let disposition { parts.append("→ \(disposition.label.lowercased())") }
+        if let customFolder { parts.append("→ \(customFolder)") }
+        else if let disposition { parts.append("→ \(disposition.label.lowercased())") }
         if autoUnsubscribeOverride == false { parts.append("never unsubscribe") }
         if autoUnsubscribeOverride == true { parts.append("unsubscribe when possible") }
         return parts.joined(separator: ", ")
@@ -74,8 +81,10 @@ public enum RuleStore {
     /// Every rule, whole — what the plan needs to honour per-sender overrides.
     public static func overrides(in context: ModelContext) -> [String: SenderOverride] {
         let rules = (try? context.fetch(FetchDescriptor<SenderRule>())) ?? []
-        return Dictionary(rules.map { ($0.address, SenderOverride(decision: $0.decision, disposition: $0.disposition, autoUnsubscribe: $0.autoUnsubscribeOverride)) },
-                          uniquingKeysWith: { a, _ in a })
+        return Dictionary(rules.map {
+            ($0.address, SenderOverride(decision: $0.decision, disposition: $0.disposition,
+                                        autoUnsubscribe: $0.autoUnsubscribeOverride, customFolder: $0.customFolder))
+        }, uniquingKeysWith: { a, _ in a })
     }
 
     /// Sets or clears the per-sender disposition without touching the
@@ -89,6 +98,17 @@ public enum RuleStore {
     public static func setAutoUnsubscribe(_ allowed: Bool?, for address: String, in context: ModelContext) {
         let rule = existingOrNew(address, in: context)
         rule.autoUnsubscribeOverride = allowed
+        try? context.save()
+    }
+
+    /// Sets or clears the per-sender custom folder. Setting one always forces
+    /// `disposition = .fileIntoFolders`, so a folder pick can never be
+    /// silently discarded by a trash/archive-only disposition — the same
+    /// reasoning `existingOrNew` applies to a disposition on its own.
+    public static func setCustomFolder(_ folder: String?, for address: String, in context: ModelContext) {
+        let rule = existingOrNew(address, in: context)
+        rule.customFolder = folder
+        if folder != nil { rule.disposition = .fileIntoFolders }
         try? context.save()
     }
 
@@ -155,10 +175,13 @@ public struct SenderOverride: Sendable, Equatable {
     public var decision: RuleDecision
     public var disposition: CleanupPolicy.Disposition?
     public var autoUnsubscribe: Bool?
+    public var customFolder: String?
 
-    public init(decision: RuleDecision, disposition: CleanupPolicy.Disposition? = nil, autoUnsubscribe: Bool? = nil) {
+    public init(decision: RuleDecision, disposition: CleanupPolicy.Disposition? = nil,
+               autoUnsubscribe: Bool? = nil, customFolder: String? = nil) {
         self.decision = decision
         self.disposition = disposition
         self.autoUnsubscribe = autoUnsubscribe
+        self.customFolder = customFolder
     }
 }

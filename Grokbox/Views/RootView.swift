@@ -24,11 +24,15 @@ struct RootView: View {
     private var isAllAccounts: Bool { selectedAccountID == Self.allAccountsID }
 
     var body: some View {
-        switch LaunchOptions.current.ui {
-        case "bare": Text("bare").task { Log.note("bare appeared") }
-        case "sidebar": sidebar.task { Log.note("sidebar-only appeared") }
-        case "detail": detail(state: state).task { Log.note("detail-only appeared") }
-        default: full
+        if state.biometricLockSettings.enabled && !state.isUnlocked {
+            LockView(state: state)
+        } else {
+            switch LaunchOptions.current.ui {
+            case "bare": Text("bare").task { Log.note("bare appeared") }
+            case "sidebar": sidebar.task { Log.note("sidebar-only appeared") }
+            case "detail": detail(state: state).task { Log.note("detail-only appeared") }
+            default: full
+            }
         }
     }
 
