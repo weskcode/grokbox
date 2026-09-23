@@ -105,7 +105,7 @@ struct SettingsView: View {
                     Text("Last 1,000").tag(1_000)
                     Text("Last 5,000").tag(5_000)
                 }
-                Text("The model is the slow part — roughly one to three seconds per message on-device. Reading is capped so a pass finishes in minutes, not hours. After the first pass, tidy-ups only fetch what is new.")
+                Text("The model is the slow part — roughly ten seconds per message on-device. Reading is capped so a pass finishes in minutes, not hours. After the first pass, tidy-ups only fetch what is new.")
                     .font(.caption).foregroundStyle(.secondary)
             }
 

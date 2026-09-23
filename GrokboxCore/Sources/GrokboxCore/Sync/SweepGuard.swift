@@ -21,8 +21,20 @@ public enum SweepGuard {
         public var summary: String? {
             guard !held.isEmpty else { return nil }
             let counts = Dictionary(grouping: held, by: \.reason).mapValues(\.count)
-            let parts = counts.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }.map { "\($0.value) \($0.key)" }
+            let parts = counts.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
+                .map { "\($0.value) \(SweepGuard.phrase(for: $0.key, count: $0.value))" }
             return "Held \(held.count): " + parts.joined(separator: ", ")
+        }
+    }
+
+    /// How a hold reason reads after its count. The reasons themselves are
+    /// stable keys; only this wording agrees with the number.
+    static func phrase(for reason: String, count: Int) -> String {
+        switch reason {
+        case "look transactional": count == 1 ? "looks transactional" : "look transactional"
+        case "need you": count == 1 ? "needs you" : "need you"
+        case "newest from this sender": "kept as the sender's newest"
+        default: reason
         }
     }
 

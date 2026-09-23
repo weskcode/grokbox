@@ -70,12 +70,23 @@ struct ActivityView: View {
                 .controlSize(.small)
                 .disabled(state.isBusy)
             } else if !action.isUndoable && !action.isUndone && action.errorMessage == nil {
-                Text("not undoable").font(.caption2).foregroundStyle(.tertiary)
-                    .help(action.kind == .archive ? "Moved on a non-Gmail server; find it in \(action.labelName ?? "Archive")." : "")
+                Text("Can't undo").font(.caption2).foregroundStyle(.tertiary)
+                    .help(cantUndoHelp(for: action))
             }
         }
         .padding(.vertical, 2)
         .strikethrough(action.isUndone, color: .secondary)
+    }
+
+    private func cantUndoHelp(for action: CleanupAction) -> String {
+        switch action.kind {
+        case .unsubscribe:
+            "An unsubscribe can't be taken back."
+        case .archive, .trash:
+            "The server didn't say where these messages went, so Grokbox can't move them back. They are in \(action.targetMailbox ?? action.labelName ?? "Archive")."
+        case .markRead, .label:
+            ""
+        }
     }
 
     private func icon(for action: CleanupAction) -> String {

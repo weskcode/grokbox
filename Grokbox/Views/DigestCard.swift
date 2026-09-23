@@ -95,6 +95,17 @@ struct DigestCard: View {
         .onChange(of: state.executor.phase) { _, phase in
             if case .finished = phase { refresh() }
         }
+        // "Today" counts in a summary from an earlier day are wrong, so a card
+        // shown after midnight, or reopened the next day, is rebuilt.
+        .onAppear { refreshIfFromAnotherDay() }
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in
+            refreshIfFromAnotherDay()
+        }
+    }
+
+    private func refreshIfFromAnotherDay() {
+        guard let latest, !Calendar.current.isDateInToday(latest.generatedAt), !state.isBusy else { return }
+        refresh()
     }
 
     private func refresh() {

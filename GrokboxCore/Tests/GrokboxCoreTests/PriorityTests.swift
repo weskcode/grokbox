@@ -101,7 +101,14 @@ struct SweepGuardTests {
         ], keepTransactional: true)
         #expect(verdict.allowed == [1, 7])
         #expect(verdict.held.map(\.uid) == [2, 3, 4, 5, 6])
-        #expect(verdict.summary == "Held 5: 3 look transactional, 1 flagged, 1 need you")
+        #expect(verdict.summary == "Held 5: 3 look transactional, 1 flagged, 1 needs you")
+    }
+
+    @Test func holdSummaryAgreesWithItsCount() {
+        let one = SweepGuard.check([fact(4, "Your order #88213 has shipped")], keepTransactional: true)
+        #expect(one.summary == "Held 1: 1 looks transactional")
+        let needs = SweepGuard.check([fact(3, "Can you sign this?", importance: .needsYou)], keepTransactional: true)
+        #expect(needs.summary == "Held 1: 1 needs you")
     }
 
     @Test func transactionalGuardCanBeTurnedOff() {

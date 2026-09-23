@@ -103,8 +103,19 @@ final class AppState {
         executor = PlanExecutor(modelContext: context)
         maintainer = Maintainer(modelContext: context, engine: engine, executor: executor)
         maintainer.onFinished = { [weak self] summary in
-            self?.notifyIfWorthwhile(summary: summary)
+            guard let self else { return }
+            self.notifyIfWorthwhile(summary: summary)
+            // Timed passes call the maintainer directly, not tidyUp, so the
+            // summary is rebuilt here or it would go stale between them.
+            self.refreshDigest(self.allAccounts)
         }
+    }
+
+    /// What every Stop button calls. Stopping only the engine or only the
+    /// executor would let a tidy-up carry on to its next step, so this always
+    /// stops the pass as well as whatever it is running.
+    func stop() {
+        maintainer.cancel()
     }
 
     var isBusy: Bool {

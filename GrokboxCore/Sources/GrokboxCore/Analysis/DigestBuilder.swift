@@ -77,8 +77,14 @@ public enum DigestBuilder {
         digest.pendingBulkMessages = pendingBulk.reduce(0) { $0 + $1.pendingCount }
         digest.unsubscribeCandidates = profiles.filter { $0.recommendation == .unsubscribeAndSweep }.count
 
+        // The index can hold just the newest part of a mailbox (Settings'
+        // index depth), so compare it with what the server last reported.
+        let indexed = (try? context.fetchCount(FetchDescriptor<MessageHeader>(predicate: #Predicate { ids.contains($0.accountID) }))) ?? 0
+        let onServer = ((try? context.fetch(FetchDescriptor<MailboxSnapshot>(predicate: #Predicate { ids.contains($0.accountID) }))) ?? [])
+            .reduce(0) { $0 + $1.messageCountOnServer }
+
         digest.headline = headline(digest)
-        digest.narrative = narrative(digest, accountCount: accounts.count)
+        digest.narrative = narrative(digest, accountCount: accounts.count, indexed: indexed, onServer: onServer)
 
         context.insert(digest)
         // Keep a bounded history per scope.
@@ -101,7 +107,9 @@ public enum DigestBuilder {
 
     static func headline(_ d: InboxDigest) -> String {
         if d.needsYou == 0 {
-            return d.unreadUnclassified > 0 ? "Nothing is waiting on you — \(d.unreadUnclassified.formatted()) unread not yet read by the model." : "Nothing is waiting on you."
+            guard d.unreadUnclassified > 0 else { return "Nothing is waiting on you." }
+            // Only what the model has read can be judged, so say "so far".
+            return "Nothing needs you so far. \(d.unreadUnclassified.formatted()) unread \(d.unreadUnclassified == 1 ? "is" : "are") still waiting to be read."
         }
         var parts: [String] = ["\(d.needsYou) thing\(d.needsYou == 1 ? "" : "s") need\(d.needsYou == 1 ? "s" : "") you"]
         if d.overdue > 0 { parts.append("\(d.overdue) overdue") }
@@ -110,10 +118,15 @@ public enum DigestBuilder {
         return parts.joined(separator: " · ") + "."
     }
 
-    static func narrative(_ d: InboxDigest, accountCount: Int) -> String {
+    static func narrative(_ d: InboxDigest, accountCount: Int, indexed: Int = 0, onServer: Int = 0) -> String {
         var sentences: [String] = []
         let scope = accountCount > 1 ? "Across \(accountCount) inboxes" : "This inbox"
-        sentences.append("\(scope): \(d.inboxNow.formatted()) message\(d.inboxNow == 1 ? "" : "s") in the inbox right now.")
+        if onServer > indexed {
+            // Only part of the mailbox is indexed; the count is of that part.
+            sentences.append("\(scope): \(d.inboxNow.formatted()) in the inbox among the newest \(indexed.formatted()) messages indexed, of \(onServer.formatted()) on the server.")
+        } else {
+            sentences.append("\(scope): \(d.inboxNow.formatted()) message\(d.inboxNow == 1 ? "" : "s") in the inbox right now.")
+        }
         if d.worthKnowing > 0 {
             sentences.append("\(d.worthKnowing) more \(d.worthKnowing == 1 ? "is" : "are") worth knowing but need nothing from you.")
         }
@@ -127,7 +140,7 @@ public enum DigestBuilder {
             sentences.append("\(d.unsubscribeCandidates) sender\(d.unsubscribeCandidates == 1 ? "" : "s") you never open still \(d.unsubscribeCandidates == 1 ? "has" : "have") an unsubscribe link.")
         }
         if d.unreadUnclassified > 0 {
-            sentences.append("\(d.unreadUnclassified.formatted()) unread \(d.unreadUnclassified == 1 ? "has" : "have") not been read by the model yet — press Read new mail.")
+            sentences.append("\(d.unreadUnclassified.formatted()) unread \(d.unreadUnclassified == 1 ? "has" : "have") not been read by the model yet. Press Read new mail.")
         }
         return sentences.joined(separator: " ")
     }

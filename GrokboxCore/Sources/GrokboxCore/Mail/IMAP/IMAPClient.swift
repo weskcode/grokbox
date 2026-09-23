@@ -90,6 +90,40 @@ public struct MoveResult: Sendable, Equatable {
     }
 }
 
+/// A write that did not finish cleanly. Writes go out in chunks, one command
+/// each. The chunks before the failure changed the mailbox, and the caller
+/// needs to know which, or its log and undo will describe the wrong messages.
+/// A refusal (NO/BAD) means the failing chunk did nothing. A lost connection
+/// or a timeout leaves that chunk unknown: the server may have applied it
+/// before the reply was lost.
+public struct PartialWriteError: LocalizedError {
+    /// The UIDs the server confirmed before the failure.
+    public var applied: [UInt32]
+    /// The UIDs in the command that was cut off, if it was cut off rather
+    /// than refused. They may or may not have changed.
+    public var unsure: [UInt32]
+    public var reason: String
+    /// For a MOVE: what the confirmed chunks produced in the target.
+    public var moved: MoveResult?
+
+    public init(applied: [UInt32], unsure: [UInt32] = [], reason: String, moved: MoveResult? = nil) {
+        self.applied = applied; self.unsure = unsure; self.reason = reason; self.moved = moved
+    }
+
+    public var errorDescription: String? { reason }
+}
+
+extension IMAPError {
+    /// The server answered and said no, so the command changed nothing. Every
+    /// other failure happened on the way, and the server may have acted.
+    public var isRefusal: Bool {
+        switch self {
+        case .commandFailed, .mailboxChanged: true
+        default: false
+        }
+    }
+}
+
 /// What EXAMINE/SELECT reported about a mailbox.
 public struct MailboxStatus: Sendable {
     public var exists: Int
@@ -153,6 +187,15 @@ public actor IMAPClient {
 
     public func logout() async {
         if isLoggedIn { _ = try? await execute("LOGOUT") }
+        isLoggedIn = false
+        await connection.disconnect()
+    }
+
+    /// Drops the connection without a LOGOUT. For Stop: a LOGOUT sent while a
+    /// command is still waiting for its reply shares the socket with it, and
+    /// its reader can consume that reply, so the command would appear to fail
+    /// after the server had carried it out.
+    public func abort() async {
         isLoggedIn = false
         await connection.disconnect()
     }
@@ -287,18 +330,27 @@ public actor IMAPClient {
         var newUIDs: [UInt32] = []
         var validity: UInt32?
         var complete = true
-        for chunk in Self.uidSets(uids) {
-            let result = try await execute("UID MOVE \(chunk) \(Self.quoted(mailbox))")
-            guard result.isOK else {
-                throw IMAPError.commandFailed(command: "UID MOVE", response: result.completionDetail)
-            }
-            // COPYUID may arrive on the tagged OK or as an untagged OK.
-            let candidates = [result.completion] + result.untagged.map(\.text)
-            if let parsed = candidates.lazy.compactMap(IMAPResponseParser.parseCopyUID).first {
-                validity = parsed.validity
-                newUIDs.append(contentsOf: parsed.destination)
-            } else {
-                complete = false
+        var applied: [UInt32] = []
+        for chunk in Self.uidChunks(uids) {
+            do {
+                let result = try await execute("UID MOVE \(Self.uidSet(chunk)) \(Self.quoted(mailbox))")
+                guard result.isOK else {
+                    throw IMAPError.commandFailed(command: "UID MOVE", response: result.completionDetail)
+                }
+                // COPYUID may arrive on the tagged OK or as an untagged OK.
+                let candidates = [result.completion] + result.untagged.map(\.text)
+                if let parsed = candidates.lazy.compactMap(IMAPResponseParser.parseCopyUID).first {
+                    validity = parsed.validity
+                    newUIDs.append(contentsOf: parsed.destination)
+                } else {
+                    complete = false
+                }
+                applied.append(contentsOf: chunk)
+            } catch {
+                let refused = (error as? IMAPError)?.isRefusal == true
+                if refused, applied.isEmpty { throw error }
+                throw PartialWriteError(applied: applied, unsure: refused ? [] : chunk, reason: error.localizedDescription,
+                                        moved: MoveResult(targetUIDValidity: validity, targetUIDs: complete ? newUIDs : nil))
             }
         }
         return MoveResult(targetUIDValidity: validity, targetUIDs: complete ? newUIDs : nil)
@@ -315,10 +367,18 @@ public actor IMAPClient {
     private func storeAttribute(uids: [UInt32], _ attribute: String, values: [String]) async throws {
         guard !uids.isEmpty, !values.isEmpty else { return }
         let list = "(\(values.joined(separator: " ")))"
-        for chunk in Self.uidSets(uids) {
-            let result = try await execute("UID STORE \(chunk) \(attribute) \(list)")
-            guard result.isOK else {
-                throw IMAPError.commandFailed(command: "UID STORE", response: result.completionDetail)
+        var applied: [UInt32] = []
+        for chunk in Self.uidChunks(uids) {
+            do {
+                let result = try await execute("UID STORE \(Self.uidSet(chunk)) \(attribute) \(list)")
+                guard result.isOK else {
+                    throw IMAPError.commandFailed(command: "UID STORE", response: result.completionDetail)
+                }
+                applied.append(contentsOf: chunk)
+            } catch {
+                let refused = (error as? IMAPError)?.isRefusal == true
+                if refused, applied.isEmpty { throw error }
+                throw PartialWriteError(applied: applied, unsure: refused ? [] : chunk, reason: error.localizedDescription)
             }
         }
     }
@@ -369,26 +429,32 @@ public actor IMAPClient {
     /// Renders UIDs as compact IMAP sequence sets (`1:5,9,12:14`), chunked so
     /// no single command line grows unreasonably.
     static func uidSets(_ uids: [UInt32], chunk: Int = 500) -> [String] {
+        uidChunks(uids, chunk: chunk).map(uidSet)
+    }
+
+    /// The UIDs, deduplicated and sorted, in chunks of at most `chunk`. Each
+    /// chunk is one command, so it is also the unit a partial failure reports.
+    static func uidChunks(_ uids: [UInt32], chunk: Int = 500) -> [[UInt32]] {
         let sorted = Array(Set(uids)).sorted()
-        var sets: [String] = []
-        for start in stride(from: 0, to: sorted.count, by: chunk) {
-            let slice = Array(sorted[start..<min(start + chunk, sorted.count)])
-            var parts: [String] = []
-            var rangeStart = slice[0]
-            var previous = slice[0]
-            for uid in slice.dropFirst() {
-                if uid == previous + 1 {
-                    previous = uid
-                    continue
-                }
-                parts.append(rangeStart == previous ? "\(rangeStart)" : "\(rangeStart):\(previous)")
-                rangeStart = uid
+        return stride(from: 0, to: sorted.count, by: chunk).map { Array(sorted[$0..<min($0 + chunk, sorted.count)]) }
+    }
+
+    /// One sorted, non-empty chunk as a compact sequence set.
+    static func uidSet(_ slice: [UInt32]) -> String {
+        var parts: [String] = []
+        var rangeStart = slice[0]
+        var previous = slice[0]
+        for uid in slice.dropFirst() {
+            if uid == previous + 1 {
                 previous = uid
+                continue
             }
             parts.append(rangeStart == previous ? "\(rangeStart)" : "\(rangeStart):\(previous)")
-            sets.append(parts.joined(separator: ","))
+            rangeStart = uid
+            previous = uid
         }
-        return sets
+        parts.append(rangeStart == previous ? "\(rangeStart)" : "\(rangeStart):\(previous)")
+        return parts.joined(separator: ",")
     }
 }
 

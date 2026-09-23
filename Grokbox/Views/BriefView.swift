@@ -157,7 +157,7 @@ struct BriefView: View {
             HStack(spacing: 12) {
                 if state.engine.phase.isRunning {
                     EngineStatusBar(label: state.engine.phase.label, fraction: state.engine.phase.fraction,
-                                    isRunning: true, isFailed: false, onStop: { state.engine.cancel() })
+                                    isRunning: true, isFailed: false, onStop: { state.stop() })
                 } else {
                     Button {
                         Task { await state.readAll(accounts) }
@@ -291,12 +291,13 @@ struct BriefView: View {
                 Button("Done") {
                     guard let account = account(for: message) else { return }
                     let thread = item.thread
-                    Task { for m in thread { await state.executor.sweep(m, in: account) } }
+                    Task { await state.executor.sweep(thread, in: account) }
                 }
                 .controlSize(.small)
                 .disabled(state.isBusy)
-                .help(item.others.isEmpty ? "Archive this message. Undo from Activity."
-                                          : "Archive all \(item.thread.count) messages in this thread. Undo from Activity.")
+                .help((item.others.isEmpty ? "Archive this message. " : "Archive all \(item.thread.count) messages in this thread. ")
+                      + (account(for: message).map { [.gmail, .demo].contains($0.kind) } ?? true
+                         ? "Undo from Activity." : "Activity shows whether this server lets it be undone."))
                 Menu("Later") {
                     Button("This evening") { snooze(item.thread, hours: 6) }
                     Button("Tomorrow") { snooze(item.thread, days: 1) }
