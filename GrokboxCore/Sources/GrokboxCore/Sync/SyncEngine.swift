@@ -93,6 +93,9 @@ public final class SyncEngine {
         self.modelContext = modelContext
     }
 
+    /// The phase stays as it is until the run has actually unwound; the run
+    /// sets `.idle` itself. Going idle here would let a second pass start
+    /// while the first is still finishing its last model call.
     public func cancel() {
         currentTask?.cancel()
         currentTask = nil
@@ -100,7 +103,6 @@ public final class SyncEngine {
             activeProvider = nil
             Task { await provider.finish() }
         }
-        phase = .idle
     }
 
     // MARK: - Index
@@ -120,7 +122,7 @@ public final class SyncEngine {
         let task = Task { await self.runIndex(account: account, mode: mode) }
         currentTask = task
         await task.value
-        currentTask = nil
+        if currentTask == task { currentTask = nil }
     }
 
     private func runIndex(account: MailAccount, mode: IndexMode) async {
@@ -163,6 +165,11 @@ public final class SyncEngine {
             try modelContext.save()
             phase = .finished(indexed == 0 ? "Nothing new" : "Indexed \(indexed.formatted()) messages")
         } catch is CancellationError {
+            try? modelContext.save()
+            phase = .idle
+        } catch where Task.isCancelled {
+            // Stop disconnects the socket, so the command in flight fails with
+            // a connection error. That is the Stop, not a sync failure.
             try? modelContext.save()
             phase = .idle
         } catch {
@@ -390,7 +397,7 @@ public final class SyncEngine {
         let task = Task { await self.runRead(account: account, model: model, limit: limit, scope: scope) }
         currentTask = task
         await task.value
-        currentTask = nil
+        if currentTask == task { currentTask = nil }
     }
 
     private func runRead(account: MailAccount, model: any TextModel, limit: Int, scope: ReadScope) async {
@@ -497,6 +504,9 @@ public final class SyncEngine {
             try modelContext.save()
             phase = .finished("Read \(done) messages with \(model.name)" + (sorted > 0 ? ", sorted \(sorted) senders" : ""))
         } catch is CancellationError {
+            try? modelContext.save()
+            phase = .idle
+        } catch where Task.isCancelled {
             try? modelContext.save()
             phase = .idle
         } catch {
