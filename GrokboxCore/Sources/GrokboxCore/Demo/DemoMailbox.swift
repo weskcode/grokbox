@@ -44,6 +44,13 @@ public final class DemoMailbox: @unchecked Sendable {
     }
     private var writeHook: (@Sendable (Write) async throws -> Void)?
 
+    /// Test hook, nil in the app: runs before the provider opens a mailbox.
+    var beforeOpen: (@Sendable (String) async throws -> Void)? {
+        get { lock.lock(); defer { lock.unlock() }; return openHook }
+        set { lock.lock(); openHook = newValue; lock.unlock() }
+    }
+    private var openHook: (@Sendable (String) async throws -> Void)?
+
     public init(persona: DemoPersona, flavor: Flavor = .gmail) {
         self.persona = persona
         self.flavor = flavor
@@ -244,8 +251,14 @@ public struct DemoMailProvider: MailProvider {
 
     public func discoverMailboxes() async throws -> [IMAPMailbox] { mailbox.listMailboxes().filter(\.isSelectable) }
 
-    public func openReadOnly(_ name: String) async throws -> MailboxStatus { try open(name) }
-    public func openReadWrite(_ name: String) async throws -> MailboxStatus { try open(name) }
+    public func openReadOnly(_ name: String) async throws -> MailboxStatus {
+        try await mailbox.beforeOpen?(name)
+        return try open(name)
+    }
+    public func openReadWrite(_ name: String) async throws -> MailboxStatus {
+        try await mailbox.beforeOpen?(name)
+        return try open(name)
+    }
 
     private func open(_ name: String) throws -> MailboxStatus {
         guard mailbox.exists(name) else { throw IMAPError.commandFailed(command: "SELECT \(name)", response: "[NONEXISTENT] Unknown mailbox") }
@@ -294,6 +307,8 @@ public struct DemoMailProvider: MailProvider {
     public func ensureMailbox(_ name: String) async throws { mailbox.create(name) }
 
     public func finish() async { selected.current = nil }
+
+    public func abort() async { selected.current = nil }
 }
 
 /// Where the app keeps its live demo mailboxes, keyed by account.

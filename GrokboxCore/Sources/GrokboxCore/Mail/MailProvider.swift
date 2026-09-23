@@ -26,7 +26,11 @@ public protocol MailProvider: Sendable {
     func move(uids: [UInt32], to mailbox: String) async throws -> MoveResult
     func ensureMailbox(_ name: String) async throws
 
+    /// Logs out and closes the connection. Only once nothing is in flight.
     func finish() async
+    /// Closes the connection at once, without a LOGOUT, cutting off any
+    /// command in flight. What Stop uses.
+    func abort() async
 }
 
 /// IMAP-backed provider.
@@ -128,6 +132,10 @@ public struct IMAPMailProvider: MailProvider {
 
     public func finish() async {
         await client.logout()
+    }
+
+    public func abort() async {
+        await client.abort()
     }
 }
 

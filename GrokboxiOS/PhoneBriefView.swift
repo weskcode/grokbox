@@ -64,7 +64,7 @@ struct PhoneBriefView: View {
                 if state.engine.phase.isRunning || state.maintainer.phase.isRunning {
                     PhoneStatusRow(label: state.engine.phase.isRunning ? state.engine.phase.label : state.maintainer.phase.label,
                                    fraction: state.engine.phase.fraction, isRunning: true, isFailed: false,
-                                   onStop: { state.engine.cancel(); state.maintainer.cancel() })
+                                   onStop: { state.stop() })
                 } else if case .failed(let why) = state.engine.phase {
                     PhoneStatusRow(label: why, fraction: nil, isRunning: false, isFailed: true)
                 }
@@ -127,7 +127,7 @@ struct PhoneBriefView: View {
             Button {
                 guard let account = accounts.first(where: { $0.id == m.accountID }) else { return }
                 let thread = item.thread
-                Task { for message in thread { await state.executor.sweep(message, in: account) } }
+                Task { await state.executor.sweep(thread, in: account) }
             } label: { Label("Done", systemImage: "archivebox") }
             .tint(.green)
         }

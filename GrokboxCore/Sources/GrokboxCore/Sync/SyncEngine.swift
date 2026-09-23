@@ -101,7 +101,9 @@ public final class SyncEngine {
         currentTask = nil
         if let provider = activeProvider {
             activeProvider = nil
-            Task { await provider.finish() }
+            // Reads change nothing, so cutting one off is safe, and a LOGOUT
+            // would share the socket with the read still waiting for a reply.
+            Task { await provider.abort() }
         }
     }
 
@@ -132,6 +134,8 @@ public final class SyncEngine {
             let provider = try await MailProviderFactory.connect(to: account)
             activeProvider = provider
             defer { activeProvider = nil; Task { await provider.finish() } }
+            // Stop pressed while connecting had no connection to cut.
+            try Task.checkCancellation()
 
             phase = .discovering
             let mailboxes = try await provider.discoverMailboxes()
@@ -444,6 +448,8 @@ public final class SyncEngine {
             let provider = try await MailProviderFactory.connect(to: account)
             activeProvider = provider
             defer { activeProvider = nil; Task { await provider.finish() } }
+            // Stop pressed while connecting had no connection to cut.
+            try Task.checkCancellation()
 
             var done = 0
             var consecutiveModelFailures = 0
@@ -499,6 +505,7 @@ public final class SyncEngine {
             }
 
             let sorted = await categorizeUnsorted(account: account, model: model, cloudFallback: JevCategorizerFactory.current(), limit: 40)
+            try Task.checkCancellation()
 
             account.lastReadAt = Date()
             try modelContext.save()

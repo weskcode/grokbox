@@ -50,19 +50,34 @@ public final class PlanExecutor {
     public private(set) var phase: Phase = .idle
     public private(set) var lastOutcome = Outcome()
     private var activeProvider: (any MailProvider)?
+    /// The generation the connected run started under.
+    private var activeRun = 0
     /// Bumped by `cancel()`. A run compares it with the value it started
     /// under, so a Stop reaches the run it was meant for even when nothing in
     /// that run is a cancellable task, and never reaches a later one.
     private var generation = 0
+    /// Set by `run` when a write failed on the way rather than being refused:
+    /// the connection is gone, and every later write would fail the same way.
+    private var lostConnection: (any Error)?
 
-    /// Stops a sweep or an undo in progress. Disconnecting is the part that
-    /// matters for a wedged server: the check between senders can only be
-    /// reached if the current IMAP command returns.
+    /// How long Stop lets a write that is already on the wire finish.
+    static let stopGrace: Duration = .seconds(5)
+
+    /// Stops a sweep or an undo in progress. The run stops at its next check,
+    /// between writes, and logs out itself. Nothing is sent on the connection
+    /// here: a LOGOUT while a write waits for its reply can consume that reply,
+    /// and a move the server made would be recorded as a failure. Only a write
+    /// still hanging after `stopGrace`, on a server that has gone quiet, gets
+    /// its connection cut.
     public func cancel() {
         generation += 1
-        if let provider = activeProvider {
-            activeProvider = nil
-            Task { await provider.finish() }
+        guard activeProvider != nil else { return }
+        let stopped = generation
+        Task { [weak self] in
+            try? await Task.sleep(for: Self.stopGrace)
+            guard let self, let provider = self.activeProvider, self.activeRun < stopped else { return }
+            self.activeProvider = nil
+            await provider.abort()
         }
     }
     private let modelContext: ModelContext
@@ -78,10 +93,11 @@ public final class PlanExecutor {
     public func apply(_ plan: CleanupPlan, to account: MailAccount, recordRules: Bool = true, guarded: Bool = true,
                       policy: CleanupPolicy = .current) async {
         guard !phase.isRunning else { return }
+        lastOutcome = Outcome()
+        lostConnection = nil
         let items = plan.enabledItems
         guard !items.isEmpty else { return }
         let token = generation
-        lastOutcome = Outcome()
         // A sender's rule is written only once that sender's mail has actually
         // been dealt with. Written up front, a sweep that failed or was stopped
         // would still leave rules behind, and the next tidy-up would sweep the
@@ -94,7 +110,10 @@ public final class PlanExecutor {
         do {
             let provider = try await MailProviderFactory.connect(to: account)
             activeProvider = provider
+            activeRun = token
             defer { activeProvider = nil; Task { await provider.finish() } }
+            // Stop pressed while connecting: nothing may be created or moved.
+            try checkStopped(token)
 
             let capabilities = await provider.capabilities
             let isGmail = capabilities.supportsGmailExtensions
@@ -127,6 +146,7 @@ public final class PlanExecutor {
                     return
                 }
                 for folder in Set(items.filter { $0.disposition == .fileIntoFolders }.map(\.folder)) {
+                    try checkStopped(token)
                     let name = mailboxes.serverName(forLogical: folder)
                     serverFolder[folder] = name
                     try await provider.ensureMailbox(name)
@@ -282,7 +302,10 @@ public final class PlanExecutor {
                 lastOutcome = Outcome(messages: touched, senders: done, failedSenders: failedSenders)
                 phase = .applying(done: done + failedSenders, total: items.count)
                 try modelContext.save()
+                if let lostConnection { throw lostConnection }
             }
+            // A Stop that landed during the last sender still counts as a Stop.
+            try checkStopped(token)
 
             RuleStore.bumpApplied(for: succeeded, in: modelContext)
             let heldNote = heldTotal > 0 ? ", held \(heldTotal) for you" : ""
@@ -293,7 +316,8 @@ public final class PlanExecutor {
             } else {
                 phase = .finished(swept)
             }
-        } catch is CancellationError {
+        } catch where error is CancellationError || isStopped(token) {
+            // Includes a write cut off by Stop's grace period: that is the Stop.
             try? modelContext.save()
             lastOutcome.stopped = true
             let o = lastOutcome
@@ -307,16 +331,23 @@ public final class PlanExecutor {
     /// Archives one message from the Brief. Does not write a sender rule — a
     /// single "done" is not a decision about the sender.
     public func sweep(_ message: MessageHeader, in account: MailAccount) async {
-        let cluster = SenderCluster(
-            address: message.senderAddress, displayName: message.senderName.isEmpty ? message.senderAddress : message.senderName,
-            domain: message.senderDomain, mailbox: message.mailbox,
-            uids: [message.uid], unreadUIDs: message.isUnread ? [message.uid] : [],
-            messageCount: 1, unreadCount: message.isUnread ? 1 : 0, flaggedCount: 0, sweptCount: 0,
-            newest: message.receivedAt, oldest: message.receivedAt,
-            hasUnsubscribeLink: false, unsubscribeValue: nil, supportsOneClickUnsubscribe: false,
-            everContacted: false, sampleSubjects: [message.subject]
-        )
-        await apply(CleanupPlan(items: [.init(cluster: cluster)]), to: account, recordRules: false, guarded: false)
+        await sweep([message], in: account)
+    }
+
+    /// Archives a Brief thread as one run, so a single Stop ends all of it.
+    public func sweep(_ messages: [MessageHeader], in account: MailAccount) async {
+        let items = messages.map { message in
+            CleanupPlan.Item(cluster: SenderCluster(
+                address: message.senderAddress, displayName: message.senderName.isEmpty ? message.senderAddress : message.senderName,
+                domain: message.senderDomain, mailbox: message.mailbox,
+                uids: [message.uid], unreadUIDs: message.isUnread ? [message.uid] : [],
+                messageCount: 1, unreadCount: message.isUnread ? 1 : 0, flaggedCount: 0, sweptCount: 0,
+                newest: message.receivedAt, oldest: message.receivedAt,
+                hasUnsubscribeLink: false, unsubscribeValue: nil, supportsOneClickUnsubscribe: false,
+                everContacted: false, sampleSubjects: [message.subject]
+            ))
+        }
+        await apply(CleanupPlan(items: items), to: account, recordRules: false, guarded: false)
     }
 
     // MARK: - Undo
@@ -429,18 +460,41 @@ public final class PlanExecutor {
     /// result for a move and nil for a flag or label change.
     private func run(_ action: CleanupAction, _ operation: () async throws -> MoveResult?) async -> [UInt32] {
         let requested = action.uids
+        // A flag or label change can be reversed whether or not it landed, so
+        // it is undoable from the moment it is sent; if the app dies before
+        // the reply, Undo is still there. A move (it has a target) can only
+        // be reversed once the server says where the messages went.
+        let reversibleIfUnsure = action.targetMailbox == nil
+        action.isUndoable = reversibleIfUnsure
+        try? modelContext.save()
         do {
             settle(action, confirmed: requested, moved: try await operation())
             return requested
         } catch let partial as PartialWriteError {
             settle(action, confirmed: partial.applied, moved: partial.moved)
-            action.errorMessage = "Only \(partial.applied.count) of \(requested.count) went through. \(partial.reason)"
+            if partial.unsure.isEmpty {
+                action.errorMessage = "Only \(partial.applied.count) of \(requested.count) went through. \(partial.reason)"
+            } else {
+                action.uids = partial.applied + partial.unsure
+                action.errorMessage = Self.unsure(partial.reason)
+                action.isUndoable = reversibleIfUnsure
+                lostConnection = partial
+            }
             return partial.applied
-        } catch {
+        } catch let error as IMAPError where error.isRefusal {
             action.errorMessage = error.localizedDescription
             action.isUndoable = false
             return []
+        } catch {
+            action.errorMessage = Self.unsure(error.localizedDescription)
+            action.isUndoable = reversibleIfUnsure
+            lostConnection = error
+            return []
         }
+    }
+
+    static func unsure(_ reason: String) -> String {
+        "The connection was lost before the server confirmed this, so it may or may not have happened. \(reason)"
     }
 
     /// Narrows the record to what the server confirmed. A flag or label change

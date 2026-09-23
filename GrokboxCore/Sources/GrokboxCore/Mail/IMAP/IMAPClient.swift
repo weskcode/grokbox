@@ -90,23 +90,38 @@ public struct MoveResult: Sendable, Equatable {
     }
 }
 
-/// A write that went through for some UIDs and then failed. Writes go out in
-/// chunks, one command each, and a server can refuse or drop the connection
-/// between them; the chunks before that point did change the mailbox, and the
-/// caller needs to know which, or its log and undo will describe the wrong
-/// messages.
+/// A write that did not finish cleanly. Writes go out in chunks, one command
+/// each. The chunks before the failure changed the mailbox, and the caller
+/// needs to know which, or its log and undo will describe the wrong messages.
+/// A refusal (NO/BAD) means the failing chunk did nothing. A lost connection
+/// or a timeout leaves that chunk unknown: the server may have applied it
+/// before the reply was lost.
 public struct PartialWriteError: LocalizedError {
     /// The UIDs the server confirmed before the failure.
     public var applied: [UInt32]
+    /// The UIDs in the command that was cut off, if it was cut off rather
+    /// than refused. They may or may not have changed.
+    public var unsure: [UInt32]
     public var reason: String
     /// For a MOVE: what the confirmed chunks produced in the target.
     public var moved: MoveResult?
 
-    public init(applied: [UInt32], reason: String, moved: MoveResult? = nil) {
-        self.applied = applied; self.reason = reason; self.moved = moved
+    public init(applied: [UInt32], unsure: [UInt32] = [], reason: String, moved: MoveResult? = nil) {
+        self.applied = applied; self.unsure = unsure; self.reason = reason; self.moved = moved
     }
 
     public var errorDescription: String? { reason }
+}
+
+extension IMAPError {
+    /// The server answered and said no, so the command changed nothing. Every
+    /// other failure happened on the way, and the server may have acted.
+    public var isRefusal: Bool {
+        switch self {
+        case .commandFailed, .mailboxChanged: true
+        default: false
+        }
+    }
 }
 
 /// What EXAMINE/SELECT reported about a mailbox.
@@ -172,6 +187,15 @@ public actor IMAPClient {
 
     public func logout() async {
         if isLoggedIn { _ = try? await execute("LOGOUT") }
+        isLoggedIn = false
+        await connection.disconnect()
+    }
+
+    /// Drops the connection without a LOGOUT. For Stop: a LOGOUT sent while a
+    /// command is still waiting for its reply shares the socket with it, and
+    /// its reader can consume that reply, so the command would appear to fail
+    /// after the server had carried it out.
+    public func abort() async {
         isLoggedIn = false
         await connection.disconnect()
     }
@@ -323,8 +347,9 @@ public actor IMAPClient {
                 }
                 applied.append(contentsOf: chunk)
             } catch {
-                guard !applied.isEmpty else { throw error }
-                throw PartialWriteError(applied: applied, reason: error.localizedDescription,
+                let refused = (error as? IMAPError)?.isRefusal == true
+                if refused, applied.isEmpty { throw error }
+                throw PartialWriteError(applied: applied, unsure: refused ? [] : chunk, reason: error.localizedDescription,
                                         moved: MoveResult(targetUIDValidity: validity, targetUIDs: complete ? newUIDs : nil))
             }
         }
@@ -351,8 +376,9 @@ public actor IMAPClient {
                 }
                 applied.append(contentsOf: chunk)
             } catch {
-                guard !applied.isEmpty else { throw error }
-                throw PartialWriteError(applied: applied, reason: error.localizedDescription)
+                let refused = (error as? IMAPError)?.isRefusal == true
+                if refused, applied.isEmpty { throw error }
+                throw PartialWriteError(applied: applied, unsure: refused ? [] : chunk, reason: error.localizedDescription)
             }
         }
     }
