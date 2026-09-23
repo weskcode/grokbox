@@ -107,7 +107,7 @@ struct SendersView: View {
         HStack(spacing: 12) {
             if state.engine.phase.isRunning {
                 EngineStatusBar(label: state.engine.phase.label, fraction: state.engine.phase.fraction,
-                                isRunning: true, isFailed: false, onStop: { state.engine.cancel() })
+                                isRunning: true, isFailed: false, onStop: { state.stop() })
             } else {
                 Button {
                     state.engine.index(account: account, messageLimit: messageLimit)

@@ -102,6 +102,9 @@ public final class Maintainer {
         guard !phase.isRunning, !engine.phase.isRunning, !executor.phase.isRunning else { return }
         let token = generation
         let stopped = { Task.isCancelled || token != self.generation }
+        // Ends a stopped pass. The phase is only touched if no newer pass has
+        // started since.
+        let end = { if token == self.generation { self.phase = .idle } }
 
         var sweptMessages = 0
         var readMessages = 0
@@ -109,10 +112,12 @@ public final class Maintainer {
         var sweepFailures: [String] = []
 
         for account in accounts {
-            guard !stopped() else { return }
+            guard !stopped() else { return end() }
             phase = .indexing
             await engine.indexNow(account: account, mode: .incremental(fallbackLimit: settings.indexDepth))
-            guard !stopped() else { return }
+            // A run that ends idle was stopped, possibly by a Stop button that
+            // only knows about the engine. Either way the pass ends here.
+            guard !stopped(), engine.phase != .idle else { return end() }
             if case .failed(let message) = engine.phase {
                 phase = .failed("\(account.displayName): \(message)")
                 return
@@ -122,7 +127,7 @@ public final class Maintainer {
             let plan = rulesPlan(for: account, policy: policy)
             if !plan.isEmpty {
                 await executor.apply(plan, to: account, recordRules: false, policy: policy)
-                guard !stopped() else { return }
+                guard !stopped(), !executor.lastOutcome.stopped else { return end() }
                 // What the server confirmed, not what the plan asked for.
                 sweptMessages += executor.lastOutcome.messages
                 if case .failed(let why) = executor.phase {
@@ -133,7 +138,7 @@ public final class Maintainer {
             if let model {
                 phase = .reading
                 await engine.readNow(account: account, model: model, limit: settings.readLimit)
-                guard !stopped() else { return }
+                guard !stopped(), engine.phase != .idle else { return end() }
                 switch engine.phase {
                 case .finished(let message):
                     if let count = Int(message.split(separator: " ").dropFirst().first ?? "") { readMessages += count }

@@ -15,11 +15,11 @@ private actor WriteCounter {
 @MainActor
 @Suite(.serialized)
 struct SweepSafetyTests {
-    private func setUp(persona: DemoPersona = .neglected) async throws
+    private func setUp(persona: DemoPersona = .neglected, flavor: DemoMailbox.Flavor = .gmail) async throws
         -> (ModelContainer, MailAccount, DemoMailbox, CleanupPlan) {
         let container = ModelContainer.grokboxTestContainer()
         let context = container.mainContext
-        let mailbox = DemoMailbox(persona: persona)
+        let mailbox = DemoMailbox(persona: persona, flavor: flavor)
         let account = MailAccount(displayName: "Demo", username: mailbox.username, host: "127.0.0.1", port: 0, kind: .demo, security: .none)
         context.insert(account); try context.save()
         DemoRegistry.shared.register(mailbox, for: account.id)
@@ -116,8 +116,10 @@ struct SweepSafetyTests {
     }
 
     /// The record is saved before the command goes out. Until the server
-    /// confirms, it must say so rather than look like a finished action.
-    @Test func anActionInFlightIsRecordedAsInterruptedAndNotUndoable() async throws {
+    /// confirms, it must say so rather than look like a finished action. A
+    /// label change stays undoable meanwhile, because putting it back is safe
+    /// whether or not it landed; a move does not (see the next test).
+    @Test func aLabelInFlightIsRecordedAsInterruptedButUndoable() async throws {
         let (container, account, mailbox, plan) = try await setUp()
         defer { DemoRegistry.shared.remove(account.id) }
         let seen = WriteCounter()
@@ -136,9 +138,88 @@ struct SweepSafetyTests {
         await executor.apply(plan, to: account, recordRules: false, guarded: false)
 
         #expect(snapshot.error == PlanExecutor.interrupted)
-        #expect(snapshot.undoable == false)
+        #expect(snapshot.undoable == true)
         let settled = try container.mainContext.fetch(FetchDescriptor<CleanupAction>())
-        #expect(settled.allSatisfy { $0.errorMessage == nil && $0.isUndoable }, "confirmation clears both")
+        #expect(settled.allSatisfy { $0.errorMessage == nil && $0.isUndoable }, "confirmation clears the interruption")
+    }
+
+    @Test func aMoveInFlightIsNotUndoableUntilTheServerSaysWhereItWent() async throws {
+        let (container, account, mailbox, plan) = try await setUp(flavor: .generic(delimiter: "/", inboxPrefix: false))
+        defer { DemoRegistry.shared.remove(account.id) }
+        final class Snapshot: @unchecked Sendable { var error: String?; var undoable = true }
+        let snapshot = Snapshot()
+        let seen = WriteCounter()
+        mailbox.beforeWrite = { write in
+            guard write.operation == "MOVE", await seen.next() == 1 else { return }
+            await MainActor.run {
+                let action = try? container.mainContext.fetch(FetchDescriptor<CleanupAction>()).first { $0.targetMailbox != nil }
+                snapshot.error = action?.errorMessage
+                snapshot.undoable = action?.isUndoable ?? true
+            }
+        }
+        await PlanExecutor(modelContext: container.mainContext).apply(plan, to: account, recordRules: false, guarded: false)
+
+        #expect(snapshot.error == PlanExecutor.interrupted)
+        #expect(snapshot.undoable == false)
+    }
+
+    /// A write that fails on the way (not refused) may have happened. It is
+    /// logged as unknown, a label change keeps its Undo, the local index is
+    /// not marked swept, and the run stops instead of failing sender after
+    /// sender on a dead connection.
+    @Test func aLostConnectionIsLoggedAsUnknownAndEndsTheRun() async throws {
+        let (container, account, mailbox, plan) = try await setUp()
+        defer { DemoRegistry.shared.remove(account.id) }
+        let context = container.mainContext
+        let first = plan.items[0].cluster.address
+        mailbox.beforeWrite = { _ in throw IMAPError.connectionClosed }
+
+        let executor = PlanExecutor(modelContext: context)
+        await executor.apply(plan, to: account, recordRules: true, guarded: false)
+
+        guard case .failed = executor.phase else { Issue.record("expected failure, got \(executor.phase.label)"); return }
+        let actions = try context.fetch(FetchDescriptor<CleanupAction>())
+        #expect(Set(actions.map(\.senderAddress)) == [first], "later senders were not attempted")
+        let label = try #require(actions.first { $0.kind == .label })
+        #expect(label.errorMessage?.contains("may or may not have happened") == true)
+        #expect(label.isUndoable, "a label change can always be put back")
+        #expect(RuleStore.all(in: context).isEmpty)
+        let accountID = account.id
+        let swept = try context.fetchCount(FetchDescriptor<MessageHeader>(predicate: #Predicate { $0.accountID == accountID && $0.isSweptLocally }))
+        #expect(swept == 0)
+    }
+
+    /// A write cut short after some chunks: the record narrows to what the
+    /// server confirmed, only those are marked swept, and the rest stay put.
+    @Test func aPartialArchiveRecordsOnlyWhatWentThrough() async throws {
+        let (container, account, mailbox, basePlan) = try await setUp()
+        defer { DemoRegistry.shared.remove(account.id) }
+        let context = container.mainContext
+        var plan = basePlan
+        plan.items = [basePlan.items.first { $0.cluster.pendingUIDs.count >= 2 }].compactMap { $0 }
+        try #require(!plan.items.isEmpty)
+        plan.items[0].disposition = .archiveOnly
+        let uids = plan.items[0].cluster.pendingUIDs.sorted()
+        let applied = Array(uids.prefix(uids.count / 2))
+        mailbox.beforeWrite = { write in
+            if write.operation == "-X-GM-LABELS" {
+                throw PartialWriteError(applied: applied, reason: "NO test refusal")
+            }
+        }
+
+        let executor = PlanExecutor(modelContext: context)
+        await executor.apply(plan, to: account, recordRules: true, guarded: false)
+
+        let archive = try #require(try context.fetch(FetchDescriptor<CleanupAction>()).first { $0.kind == .archive })
+        #expect(archive.uids == applied)
+        #expect(archive.errorMessage?.hasPrefix("Only \(applied.count) of \(uids.count) went through") == true)
+        #expect(archive.isUndoable, "what did go through can be put back")
+        let accountID = account.id
+        let swept = Set(try context.fetch(FetchDescriptor<MessageHeader>(predicate: #Predicate { $0.accountID == accountID && $0.isSweptLocally })).map(\.uid))
+        #expect(swept == Set(applied))
+        #expect(executor.lastOutcome.messages == applied.count)
+        #expect(executor.lastOutcome.failedSenders == 1)
+        #expect(RuleStore.all(in: context).isEmpty)
     }
 
     /// Stop during the rules sweep of an automatic pass ends the pass there:
@@ -161,12 +242,57 @@ struct SweepSafetyTests {
         }
 
         let model = StubModel()
-        await maintainer.run(accounts: [account], model: model, settings: .defaults)
+        await maintainer.run(accounts: [account], model: model, settings: .defaults, policy: .balanced)
 
         #expect(maintainer.phase == .idle)
         #expect(reported.texts.isEmpty, "a stopped pass is not a finished one")
         #expect(await writes.count == 1)
         #expect(await model.requests.isEmpty, "nothing was read after Stop")
+    }
+
+    /// A Stop button that only knows the engine (the Brief's, while a tidy-up
+    /// is indexing) must still end the pass before it sweeps.
+    @Test func stoppingTheIndexStepOfATidyUpSweepsNothing() async throws {
+        let (container, account, mailbox, plan) = try await setUp()
+        defer { DemoRegistry.shared.remove(account.id) }
+        let context = container.mainContext
+        for item in plan.items { RuleStore.set(.sweep, for: item.cluster.address, in: context) }
+
+        let engine = SyncEngine(modelContext: context)
+        let maintainer = Maintainer(modelContext: context, engine: engine, executor: PlanExecutor(modelContext: context))
+        let writes = WriteCounter()
+        mailbox.beforeWrite = { _ in _ = await writes.next() }
+        mailbox.beforeOpen = { _ in await MainActor.run { engine.cancel() } }
+
+        let model = StubModel()
+        await maintainer.run(accounts: [account], model: model, settings: .defaults, policy: .balanced)
+
+        #expect(await writes.count == 0, "no rule was applied after Stop")
+        #expect(await model.requests.isEmpty)
+        #expect(maintainer.phase == .idle)
+    }
+
+    /// The same for the Sweep screen's Stop, which only knows the executor:
+    /// the pass must not go on to read or to the next account.
+    @Test func stoppingTheSweepStepOfATidyUpEndsThePass() async throws {
+        let (container, account, mailbox, plan) = try await setUp()
+        defer { DemoRegistry.shared.remove(account.id) }
+        let context = container.mainContext
+        for item in plan.items { RuleStore.set(.sweep, for: item.cluster.address, in: context) }
+
+        let executor = PlanExecutor(modelContext: context)
+        let maintainer = Maintainer(modelContext: context, engine: SyncEngine(modelContext: context), executor: executor)
+        let writes = WriteCounter()
+        mailbox.beforeWrite = { _ in
+            if await writes.next() == 1 { await MainActor.run { executor.cancel() } }
+        }
+
+        let model = StubModel()
+        await maintainer.run(accounts: [account], model: model, settings: .defaults, policy: .balanced)
+
+        #expect(await writes.count == 1)
+        #expect(await model.requests.isEmpty, "nothing was read after Stop")
+        #expect(maintainer.phase == .idle)
     }
 
     /// RFC 8058 promises the one-click POST only for the URL on the message
