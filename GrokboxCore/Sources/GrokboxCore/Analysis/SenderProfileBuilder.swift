@@ -20,6 +20,7 @@ public enum SenderProfileBuilder {
         var oldest = Date.distantFuture
         var unsubscribeValue: String?
         var oneClick = false
+        var unsubscribeDate = Date.distantPast
         var samples: [(Date, String)] = []
     }
 
@@ -49,8 +50,20 @@ public enum SenderProfileBuilder {
             if message.isInInbox && !message.isSweptLocally { agg.pendingUIDs.append(message.uid) }
             if message.receivedAt > agg.newest { agg.newest = message.receivedAt }
             if message.receivedAt < agg.oldest { agg.oldest = message.receivedAt }
-            if agg.unsubscribeValue == nil, let value = message.listUnsubscribe, !value.isEmpty { agg.unsubscribeValue = value }
-            if message.listUnsubscribePost?.localizedCaseInsensitiveContains("One-Click") == true { agg.oneClick = true }
+            // The URL and the one-click flag come from the same message: RFC 8058
+            // promises a POST only to the URL that message carried. Prefer a
+            // one-click message, then the newest.
+            if let value = message.listUnsubscribe, !value.isEmpty {
+                let oneClick = message.supportsOneClickUnsubscribe
+                let better = agg.unsubscribeValue == nil
+                    || (oneClick && !agg.oneClick)
+                    || (oneClick == agg.oneClick && message.receivedAt > agg.unsubscribeDate)
+                if better {
+                    agg.unsubscribeValue = value
+                    agg.oneClick = oneClick
+                    agg.unsubscribeDate = message.receivedAt
+                }
+            }
             // Keep the three newest subjects without sorting everything.
             if agg.samples.count < 3 {
                 agg.samples.append((message.receivedAt, message.subject))
