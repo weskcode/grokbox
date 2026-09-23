@@ -29,6 +29,28 @@ public final class DemoMailbox: @unchecked Sendable {
     private let lock = NSLock()
     private var store: [String: [DemoMailServer.Message]]
 
+    /// One write the provider is about to make, as seen by `beforeWrite`.
+    struct Write: Sendable {
+        var operation: String
+        var uids: [UInt32]
+        var values: [String]
+    }
+
+    /// Test hook, nil in the app: runs before every write the provider makes
+    /// and can fail it, or do something in between such as pressing Stop.
+    var beforeWrite: (@Sendable (Write) async throws -> Void)? {
+        get { lock.lock(); defer { lock.unlock() }; return writeHook }
+        set { lock.lock(); writeHook = newValue; lock.unlock() }
+    }
+    private var writeHook: (@Sendable (Write) async throws -> Void)?
+
+    /// Test hook, nil in the app: runs before the provider opens a mailbox.
+    var beforeOpen: (@Sendable (String) async throws -> Void)? {
+        get { lock.lock(); defer { lock.unlock() }; return openHook }
+        set { lock.lock(); openHook = newValue; lock.unlock() }
+    }
+    private var openHook: (@Sendable (String) async throws -> Void)?
+
     public init(persona: DemoPersona, flavor: Flavor = .gmail) {
         self.persona = persona
         self.flavor = flavor
@@ -229,8 +251,14 @@ public struct DemoMailProvider: MailProvider {
 
     public func discoverMailboxes() async throws -> [IMAPMailbox] { mailbox.listMailboxes().filter(\.isSelectable) }
 
-    public func openReadOnly(_ name: String) async throws -> MailboxStatus { try open(name) }
-    public func openReadWrite(_ name: String) async throws -> MailboxStatus { try open(name) }
+    public func openReadOnly(_ name: String) async throws -> MailboxStatus {
+        try await mailbox.beforeOpen?(name)
+        return try open(name)
+    }
+    public func openReadWrite(_ name: String) async throws -> MailboxStatus {
+        try await mailbox.beforeOpen?(name)
+        return try open(name)
+    }
 
     private func open(_ name: String) throws -> MailboxStatus {
         guard mailbox.exists(name) else { throw IMAPError.commandFailed(command: "SELECT \(name)", response: "[NONEXISTENT] Unknown mailbox") }
@@ -260,15 +288,18 @@ public struct DemoMailProvider: MailProvider {
     }
 
     public func setFlags(uids: [UInt32], _ change: IMAPClient.FlagChange, flags: [String]) async throws {
+        try await mailbox.beforeWrite?(.init(operation: "\(change.sign)FLAGS", uids: uids, values: flags))
         mailbox.store(in: try requireSelected(), uids: Set(uids), add: change == .add, flags: flags)
     }
 
     public func setGmailLabels(uids: [UInt32], _ change: IMAPClient.FlagChange, labels: [String]) async throws {
+        try await mailbox.beforeWrite?(.init(operation: "\(change.sign)X-GM-LABELS", uids: uids, values: labels))
         mailbox.store(in: try requireSelected(), uids: Set(uids), add: change == .add, labels: labels)
     }
 
     @discardableResult
     public func move(uids: [UInt32], to target: String) async throws -> MoveResult {
+        try await mailbox.beforeWrite?(.init(operation: "MOVE", uids: uids, values: [target]))
         let assigned = mailbox.move(from: try requireSelected(), uids: Set(uids), to: target)
         return MoveResult(targetUIDValidity: mailbox.uidValidity, targetUIDs: assigned)
     }
@@ -276,6 +307,8 @@ public struct DemoMailProvider: MailProvider {
     public func ensureMailbox(_ name: String) async throws { mailbox.create(name) }
 
     public func finish() async { selected.current = nil }
+
+    public func abort() async { selected.current = nil }
 }
 
 /// Where the app keeps its live demo mailboxes, keyed by account.

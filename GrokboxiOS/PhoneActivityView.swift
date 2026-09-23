@@ -47,7 +47,9 @@ struct PhoneActivityView: View {
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier(action.isUndone ? "activityRowUndone" : "activityRow")
         .swipeActions {
-            if action.isUndoable && !action.isUndone && action.errorMessage == nil,
+            // A partial sweep carries an error and is still undoable for the
+            // messages that did move, so the error alone must not hide Undo.
+            if action.isUndoable && !action.isUndone,
                let account = accounts.first(where: { $0.id == action.accountID }) {
                 Button { Task { await state.executor.undo(action, on: account) } } label: { Label("Undo", systemImage: "arrow.uturn.backward") }.tint(.blue)
             }

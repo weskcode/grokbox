@@ -95,6 +95,10 @@ public enum SenderClusterBuilder {
 
         return byAddress.map { address, group in
             let sorted = group.sorted { $0.receivedAt > $1.receivedAt }
+            // Same pairing as SenderProfileBuilder: URL and one-click flag from
+            // one message, a one-click one if there is any, else the newest.
+            let unsubscribeSource = sorted.first { $0.hasUnsubscribeLink && $0.supportsOneClickUnsubscribe }
+                ?? sorted.first(where: \.hasUnsubscribeLink)
             let pending = group.filter { !$0.isSweptLocally && $0.isInInbox }
             return SenderCluster(
                 address: address,
@@ -110,8 +114,8 @@ public enum SenderClusterBuilder {
                 newest: sorted.first?.receivedAt ?? .distantPast,
                 oldest: sorted.last?.receivedAt ?? .distantPast,
                 hasUnsubscribeLink: group.contains(where: \.hasUnsubscribeLink),
-                unsubscribeValue: group.first(where: \.hasUnsubscribeLink)?.listUnsubscribe,
-                supportsOneClickUnsubscribe: group.contains(where: \.supportsOneClickUnsubscribe),
+                unsubscribeValue: unsubscribeSource?.listUnsubscribe,
+                supportsOneClickUnsubscribe: unsubscribeSource?.supportsOneClickUnsubscribe ?? false,
                 everContacted: contactedAddresses.contains(address),
                 sampleSubjects: Array(sorted.prefix(3).map(\.subject))
             )

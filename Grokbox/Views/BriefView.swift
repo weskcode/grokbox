@@ -157,7 +157,7 @@ struct BriefView: View {
             HStack(spacing: 12) {
                 if state.engine.phase.isRunning {
                     EngineStatusBar(label: state.engine.phase.label, fraction: state.engine.phase.fraction,
-                                    isRunning: true, isFailed: false, onStop: { state.engine.cancel() })
+                                    isRunning: true, isFailed: false, onStop: { state.stop() })
                 } else {
                     Button {
                         Task { await state.readAll(accounts) }
@@ -291,7 +291,7 @@ struct BriefView: View {
                 Button("Done") {
                     guard let account = account(for: message) else { return }
                     let thread = item.thread
-                    Task { for m in thread { await state.executor.sweep(m, in: account) } }
+                    Task { await state.executor.sweep(thread, in: account) }
                 }
                 .controlSize(.small)
                 .disabled(state.isBusy)

@@ -31,7 +31,7 @@ struct PhoneSendersView: View {
             Section {
                 if state.engine.phase.isRunning {
                     PhoneStatusRow(label: state.engine.phase.label, fraction: state.engine.phase.fraction, isRunning: true, isFailed: false,
-                                   onStop: { state.engine.cancel() })
+                                   onStop: { state.stop() })
                 } else {
                     HStack {
                         Button { state.engine.index(account: account, messageLimit: 1_000) } label: { Label("Index last 1,000", systemImage: "arrow.clockwise") }

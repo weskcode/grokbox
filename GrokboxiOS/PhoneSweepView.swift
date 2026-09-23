@@ -34,7 +34,7 @@ struct PhoneSweepView: View {
                         .font(.footnote).foregroundStyle(.orange)
                 }
                 if state.executor.phase.isRunning {
-                    PhoneStatusRow(label: state.executor.phase.label, fraction: nil, isRunning: true, isFailed: false, onStop: { state.executor.cancel() })
+                    PhoneStatusRow(label: state.executor.phase.label, fraction: nil, isRunning: true, isFailed: false, onStop: { state.stop() })
                 } else if let plan, !plan.isEmpty {
                     Button {
                         let toApply = plan

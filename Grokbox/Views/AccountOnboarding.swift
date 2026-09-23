@@ -90,7 +90,7 @@ struct AccountOnboarding: View {
     private var footer: some View {
         HStack {
             if step == .running, state.isBusy {
-                Button("Stop") { state.engine.cancel() }
+                Button("Stop") { state.stop() }
             }
             Spacer()
             switch step {
