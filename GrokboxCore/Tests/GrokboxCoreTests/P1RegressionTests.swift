@@ -189,6 +189,32 @@ struct UndoSafetyTests {
         await executor.undo(action, on: account)
         #expect(action.isUndone, "phase was \(executor.phase.label)")
     }
+
+    /// A trash that never recorded where the messages went has nothing to move
+    /// back. Undo used to force-unwrap the missing folder and crash.
+    @Test func undoOfATrashWithNoDestinationFailsInsteadOfCrashing() async throws {
+        let (container, context, account, archived, mailbox) = sweptState(validity: 1_000)
+        defer { DemoRegistry.shared.remove(account.id) }
+        _ = container   // held for the duration of the test
+        let trash = CleanupAction(
+            accountID: account.id, kind: .trash, senderAddress: archived.senderAddress,
+            senderName: archived.senderName, mailbox: DemoMailbox.allMail, uids: archived.uids,
+            isUndoable: true, uidValidity: 1_000)
+        context.insert(trash)
+        try context.save()
+        #expect(trash.targetMailbox == nil)
+
+        let executor = PlanExecutor(modelContext: context)
+        await executor.undo(trash, on: account)
+
+        guard case .failed(let message) = executor.phase else {
+            Issue.record("undo should have failed; phase was \(executor.phase.label)"); return
+        }
+        #expect(message.localizedCaseInsensitiveContains("no record of where"))
+        #expect(!trash.isUndone)
+        let untouched = mailbox.messages(in: DemoMailbox.allMail).first { $0.uid == archived.uids[0] }!
+        #expect(!untouched.labels.contains("\\Inbox"), "the mailbox was not touched")
+    }
 }
 
 struct StoreVersioningTests {

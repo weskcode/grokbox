@@ -363,10 +363,14 @@ public final class PlanExecutor {
             switch action.kind {
             case .unsubscribe:
                 throw IMAPError.commandFailed(command: "UNDO", response: "An unsubscribe cannot be taken back. Re-subscribe on the sender's own site if you want their mail again.")
-            case .trash, .archive where action.targetMailbox != nil && !action.targetUIDs.isEmpty:
+            case .trash,
+                 .archive where action.targetMailbox != nil && !action.targetUIDs.isEmpty:
                 // A MOVE on a plain server: bring the messages back from the
                 // folder they went to. The guard runs against *that* mailbox.
-                let target = action.targetMailbox!
+                // A trash is always a MOVE, so it lands here whatever it recorded.
+                guard let target = action.targetMailbox, !action.targetUIDs.isEmpty else {
+                    throw IMAPError.commandFailed(command: "UNDO", response: "Grokbox has no record of where these messages went, so it can't bring them back.")
+                }
                 let status = try await provider.openReadWrite(target)
                 if let live = status.uidValidity, action.targetUIDValidity != 0, live != action.targetUIDValidity {
                     throw IMAPError.mailboxChanged
