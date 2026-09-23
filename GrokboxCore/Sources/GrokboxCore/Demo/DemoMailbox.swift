@@ -29,6 +29,21 @@ public final class DemoMailbox: @unchecked Sendable {
     private let lock = NSLock()
     private var store: [String: [DemoMailServer.Message]]
 
+    /// One write the provider is about to make, as seen by `beforeWrite`.
+    struct Write: Sendable {
+        var operation: String
+        var uids: [UInt32]
+        var values: [String]
+    }
+
+    /// Test hook, nil in the app: runs before every write the provider makes
+    /// and can fail it, or do something in between such as pressing Stop.
+    var beforeWrite: (@Sendable (Write) async throws -> Void)? {
+        get { lock.lock(); defer { lock.unlock() }; return writeHook }
+        set { lock.lock(); writeHook = newValue; lock.unlock() }
+    }
+    private var writeHook: (@Sendable (Write) async throws -> Void)?
+
     public init(persona: DemoPersona, flavor: Flavor = .gmail) {
         self.persona = persona
         self.flavor = flavor
@@ -260,15 +275,18 @@ public struct DemoMailProvider: MailProvider {
     }
 
     public func setFlags(uids: [UInt32], _ change: IMAPClient.FlagChange, flags: [String]) async throws {
+        try await mailbox.beforeWrite?(.init(operation: "\(change.sign)FLAGS", uids: uids, values: flags))
         mailbox.store(in: try requireSelected(), uids: Set(uids), add: change == .add, flags: flags)
     }
 
     public func setGmailLabels(uids: [UInt32], _ change: IMAPClient.FlagChange, labels: [String]) async throws {
+        try await mailbox.beforeWrite?(.init(operation: "\(change.sign)X-GM-LABELS", uids: uids, values: labels))
         mailbox.store(in: try requireSelected(), uids: Set(uids), add: change == .add, labels: labels)
     }
 
     @discardableResult
     public func move(uids: [UInt32], to target: String) async throws -> MoveResult {
+        try await mailbox.beforeWrite?(.init(operation: "MOVE", uids: uids, values: [target]))
         let assigned = mailbox.move(from: try requireSelected(), uids: Set(uids), to: target)
         return MoveResult(targetUIDValidity: mailbox.uidValidity, targetUIDs: assigned)
     }

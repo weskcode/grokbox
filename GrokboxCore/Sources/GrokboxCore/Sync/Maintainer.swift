@@ -64,12 +64,15 @@ public final class Maintainer {
     }
 
     public private(set) var phase: Phase = .idle
-    private var runTask: Task<Void, Never>?
+    /// Bumped by `cancel()`; a pass checks it between steps. Stopping the
+    /// engines alone is not enough, because each step returns normally once
+    /// its engine stops and the pass would carry on into the next one: a Stop
+    /// during indexing would still apply the user's sweep rules.
+    private var generation = 0
 
     /// Stops the pass that is running and the engines underneath it.
     public func cancel() {
-        runTask?.cancel()
-        runTask = nil
+        generation += 1
         engine.cancel()
         executor.cancel()
         phase = .idle
@@ -97,14 +100,19 @@ public final class Maintainer {
     public func run(accounts: [MailAccount], model: (any TextModel)?, settings: Settings,
                     policy: CleanupPolicy = .current) async {
         guard !phase.isRunning, !engine.phase.isRunning, !executor.phase.isRunning else { return }
+        let token = generation
+        let stopped = { Task.isCancelled || token != self.generation }
 
         var sweptMessages = 0
         var readMessages = 0
         var readFailures: [String] = []
+        var sweepFailures: [String] = []
 
         for account in accounts {
+            guard !stopped() else { return }
             phase = .indexing
             await engine.indexNow(account: account, mode: .incremental(fallbackLimit: settings.indexDepth))
+            guard !stopped() else { return }
             if case .failed(let message) = engine.phase {
                 phase = .failed("\(account.displayName): \(message)")
                 return
@@ -114,12 +122,18 @@ public final class Maintainer {
             let plan = rulesPlan(for: account, policy: policy)
             if !plan.isEmpty {
                 await executor.apply(plan, to: account, recordRules: false, policy: policy)
-                sweptMessages += plan.enabledMessageCount
+                guard !stopped() else { return }
+                // What the server confirmed, not what the plan asked for.
+                sweptMessages += executor.lastOutcome.messages
+                if case .failed(let why) = executor.phase {
+                    sweepFailures.append("\(account.displayName): \(why)")
+                }
             }
 
             if let model {
                 phase = .reading
                 await engine.readNow(account: account, model: model, limit: settings.readLimit)
+                guard !stopped() else { return }
                 switch engine.phase {
                 case .finished(let message):
                     if let count = Int(message.split(separator: " ").dropFirst().first ?? "") { readMessages += count }
@@ -134,8 +148,13 @@ public final class Maintainer {
 
         lastRunAt = Date()
         var text = summary(swept: sweptMessages, read: readMessages, model: readFailures.isEmpty ? model : nil)
+        if !sweepFailures.isEmpty {
+            text += ". Sweeping failed: " + sweepFailures.joined(separator: "; ")
+        }
         if !readFailures.isEmpty {
             text += ". Reading failed — " + readFailures.joined(separator: "; ")
+        }
+        if !sweepFailures.isEmpty || !readFailures.isEmpty {
             phase = .failed(text)
         } else {
             phase = .finished(text)
