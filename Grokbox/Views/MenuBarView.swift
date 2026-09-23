@@ -8,10 +8,13 @@ struct MenuBarView: View {
     @Environment(AppState.self) private var state
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \MailAccount.createdAt) private var accounts: [MailAccount]
-    @Query(filter: #Predicate<InboxDigest> { $0.scopeKey == "all" }, sort: \InboxDigest.generatedAt, order: .reverse)
+    @Query(sort: \InboxDigest.generatedAt, order: .reverse)
     private var digests: [InboxDigest]
 
-    private var latest: InboxDigest? { digests.first }
+    /// The builder keys a one-account summary by that account, not "all".
+    private var scopeKey: String { accounts.count == 1 ? accounts[0].id.uuidString : "all" }
+
+    private var latest: InboxDigest? { digests.first { $0.scopeKey == scopeKey } }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -62,5 +65,10 @@ struct MenuBarView: View {
         }
         .padding(14)
         .frame(width: 340)
+        .onAppear {
+            // Same rule as the Brief's card: a summary from another day is rebuilt.
+            guard let latest, !Calendar.current.isDateInToday(latest.generatedAt), !state.isBusy else { return }
+            state.refreshDigest(accounts)
+        }
     }
 }
