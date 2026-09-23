@@ -66,7 +66,8 @@ struct SweepView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
                 if state.executor.phase.isRunning {
-                    EngineStatusBar(label: state.executor.phase.label, fraction: nil, isRunning: true, isFailed: false)
+                    EngineStatusBar(label: state.executor.phase.label, fraction: nil, isRunning: true, isFailed: false,
+                                    onStop: { state.stop() })
                 } else if let plan {
                     Button {
                         var toApply = plan

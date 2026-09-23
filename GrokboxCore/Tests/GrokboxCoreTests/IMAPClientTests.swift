@@ -162,3 +162,65 @@ struct IMAPClientTests {
         }
     }
 }
+
+// MARK: - Writes that fail partway
+
+/// Writes go out 500 UIDs per command. When a later command fails, the earlier
+/// ones did change the mailbox, and the caller has to be told which.
+extension IMAPClientTests {
+    private func partialScript(_ first: (String, String), _ second: (String, String)) -> FakeIMAPServer.Script {
+        [first, second] + GmailFixture.script
+    }
+
+    @Test func aStoreThatFailsPartwayReportsWhatWentThrough() async throws {
+        let server = try FakeIMAPServer(script: partialScript(
+            ("UID STORE 1:500 ", "{tag} OK Success\r\n"),
+            ("UID STORE 501 ", "{tag} NO test refusal\r\n")))
+        try await server.start()
+        defer { server.stop() }
+        let client = try await connectedClient(server)
+
+        do {
+            try await client.store(uids: Array(1...501), .add, flags: ["\\Seen"])
+            Issue.record("expected a partial failure")
+        } catch let partial as PartialWriteError {
+            #expect(partial.applied == Array(1...500))
+            #expect(partial.reason.contains("test refusal"))
+        }
+        await client.logout()
+    }
+
+    @Test func aStoreThatFailsOnItsFirstCommandIsAnOrdinaryFailure() async throws {
+        let server = try FakeIMAPServer(script: partialScript(
+            ("UID STORE 1:500 ", "{tag} NO test refusal\r\n"),
+            ("UID STORE 501 ", "{tag} OK Success\r\n")))
+        try await server.start()
+        defer { server.stop() }
+        let client = try await connectedClient(server)
+
+        await #expect(throws: IMAPError.self) {
+            try await client.store(uids: Array(1...501), .add, flags: ["\\Seen"])
+        }
+        #expect(!server.commands.contains { $0.hasPrefix("UID STORE 501 ") }, "stops at the first refusal")
+        await client.logout()
+    }
+
+    @Test func aMoveThatFailsPartwayKeepsTheNewUIDsItWasGiven() async throws {
+        let server = try FakeIMAPServer(script: partialScript(
+            ("UID MOVE 1:500 ", "{tag} OK [COPYUID 7 1:500 1001:1500] Moved\r\n"),
+            ("UID MOVE 501 ", "{tag} NO test refusal\r\n")))
+        try await server.start()
+        defer { server.stop() }
+        let client = try await connectedClient(server)
+
+        do {
+            try await client.move(uids: Array(1...501), to: "Grokbox/Promotions")
+            Issue.record("expected a partial failure")
+        } catch let partial as PartialWriteError {
+            #expect(partial.applied == Array(1...500))
+            #expect(partial.moved?.targetUIDs == Array(1001...1500))
+            #expect(partial.moved?.targetUIDValidity == 7)
+        }
+        await client.logout()
+    }
+}

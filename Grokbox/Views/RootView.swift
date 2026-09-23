@@ -271,7 +271,7 @@ struct RootView: View {
         case .settings: section = .settings
         case .addAccount: isAddingAccount = true
         case .stop:
-            state.engine.cancel(); state.executor.cancel(); state.maintainer.cancel()
+            state.stop()
         case .readNewMail:
             let targets = selectedAccount.map { [$0] } ?? accounts
             Task { await state.readAll(targets) }

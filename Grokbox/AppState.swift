@@ -111,6 +111,13 @@ final class AppState {
         }
     }
 
+    /// What every Stop button calls. Stopping only the engine or only the
+    /// executor would let a tidy-up carry on to its next step, so this always
+    /// stops the pass as well as whatever it is running.
+    func stop() {
+        maintainer.cancel()
+    }
+
     var isBusy: Bool {
         engine.phase.isRunning || executor.phase.isRunning || maintainer.phase.isRunning
     }

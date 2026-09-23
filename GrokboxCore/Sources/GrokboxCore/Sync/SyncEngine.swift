@@ -93,14 +93,18 @@ public final class SyncEngine {
         self.modelContext = modelContext
     }
 
+    /// The phase stays as it is until the run has actually unwound; the run
+    /// sets `.idle` itself. Going idle here would let a second pass start
+    /// while the first is still finishing its last model call.
     public func cancel() {
         currentTask?.cancel()
         currentTask = nil
         if let provider = activeProvider {
             activeProvider = nil
-            Task { await provider.finish() }
+            // Reads change nothing, so cutting one off is safe, and a LOGOUT
+            // would share the socket with the read still waiting for a reply.
+            Task { await provider.abort() }
         }
-        phase = .idle
     }
 
     // MARK: - Index
@@ -120,7 +124,7 @@ public final class SyncEngine {
         let task = Task { await self.runIndex(account: account, mode: mode) }
         currentTask = task
         await task.value
-        currentTask = nil
+        if currentTask == task { currentTask = nil }
     }
 
     private func runIndex(account: MailAccount, mode: IndexMode) async {
@@ -130,6 +134,8 @@ public final class SyncEngine {
             let provider = try await MailProviderFactory.connect(to: account)
             activeProvider = provider
             defer { activeProvider = nil; Task { await provider.finish() } }
+            // Stop pressed while connecting had no connection to cut.
+            try Task.checkCancellation()
 
             phase = .discovering
             let mailboxes = try await provider.discoverMailboxes()
@@ -163,6 +169,11 @@ public final class SyncEngine {
             try modelContext.save()
             phase = .finished(indexed == 0 ? "Nothing new" : "Indexed \(indexed.formatted()) messages")
         } catch is CancellationError {
+            try? modelContext.save()
+            phase = .idle
+        } catch where Task.isCancelled {
+            // Stop disconnects the socket, so the command in flight fails with
+            // a connection error. That is the Stop, not a sync failure.
             try? modelContext.save()
             phase = .idle
         } catch {
@@ -390,7 +401,7 @@ public final class SyncEngine {
         let task = Task { await self.runRead(account: account, model: model, limit: limit, scope: scope) }
         currentTask = task
         await task.value
-        currentTask = nil
+        if currentTask == task { currentTask = nil }
     }
 
     private func runRead(account: MailAccount, model: any TextModel, limit: Int, scope: ReadScope) async {
@@ -437,6 +448,8 @@ public final class SyncEngine {
             let provider = try await MailProviderFactory.connect(to: account)
             activeProvider = provider
             defer { activeProvider = nil; Task { await provider.finish() } }
+            // Stop pressed while connecting had no connection to cut.
+            try Task.checkCancellation()
 
             var done = 0
             var consecutiveModelFailures = 0
@@ -492,11 +505,15 @@ public final class SyncEngine {
             }
 
             let sorted = await categorizeUnsorted(account: account, model: model, cloudFallback: JevCategorizerFactory.current(), limit: 40)
+            try Task.checkCancellation()
 
             account.lastReadAt = Date()
             try modelContext.save()
             phase = .finished("Read \(done) messages with \(model.name)" + (sorted > 0 ? ", sorted \(sorted) senders" : ""))
         } catch is CancellationError {
+            try? modelContext.save()
+            phase = .idle
+        } catch where Task.isCancelled {
             try? modelContext.save()
             phase = .idle
         } catch {
