@@ -1,23 +1,30 @@
 # Picking this back up
 
-Last updated 23 September 2026, the day after 0.5.0 shipped, once the first
-two batches of hardening work were merged into `develop`. Everything below was
-checked against the repository on that date.
+Last updated 23 September 2026, after 0.5.1 shipped with the first two
+batches of hardening work. Everything below was checked against the
+repository on that date.
 
 ## Where the code is
 
 | Branch | What it is |
 |---|---|
-| `main` | Released. Tagged `v0.5.0` at `34a97d1` (SSH-signed tag). Ahead of `develop` only by merge commits and `docs/release-notes-0.5.0.md`; no code differs. |
-| `develop` | Integration branch. Has 0.5.0 plus hardening batches A and B (PRs #1 and #2), which are not released yet. **Start new work here.** |
-| `feature/hardening` | Batch A, sweep safety (PR #1). Merged into `develop`. Safe to delete. |
-| `feature/brief-accuracy` | Batch B, Brief accuracy (PR #2). Merged into `develop`. Safe to delete. |
-| `feature/cleanup-policy` | Fully merged into `develop` and `main`. The local copy (`ebef28e`) is 15 commits ahead of its stale `origin` copy (`b963a61`); both are merged. Safe to delete locally and on `origin`. |
-| `feature/sender-overrides` | Fully merged into `develop`. Safe to delete locally and on `origin`. |
+| `main` | Released. Tagged `v0.5.1` at `5a80395` (SSH-signed tag). |
+| `develop` | Integration branch, the same code as `main`. **Start new work here.** |
+
+The four merged feature branches (`feature/hardening`, `feature/brief-accuracy`,
+`feature/cleanup-policy`, `feature/sender-overrides`) were deleted locally and
+on `origin` on 23 September. Every commit on them is in `develop`.
 
 All commits are SSH-signed. CI runs on `main`, `develop` and feature branches
 and covers engine tests, the Mac build, the iOS build, and the iOS UI tests.
-CI was green on both PRs before they were merged.
+CI was green on both PRs before they were merged, and on `main` before 0.5.1
+was tagged.
+
+## What shipped in 0.5.1
+
+Published at <https://github.com/weskcode/grokbox/releases/tag/v0.5.1>,
+signed and notarized. Hardening batches A (sweep safety, PR #1) and B (Brief
+accuracy and copy, PR #2). Notes are in `docs/release-notes-0.5.1.md`.
 
 ## What shipped in 0.5.0
 
@@ -40,8 +47,7 @@ paid (team `HD39MR492X`), the certificate is in the keychain, and the
 `grokbox` notarytool profile is stored. `scripts/release.sh <version>` does
 the whole thing. See `docs/RELEASING.md`.
 
-The built archive and checksum sit in `dist/`, which is untracked and not in
-`.gitignore`.
+The built archives and checksums sit in `dist/`, which is in `.gitignore`.
 
 ## Does it work?
 
@@ -50,7 +56,7 @@ messages, 49 senders, 11 contacts learned from Sent, and per-sender advice that
 held up.
 
 **The copy in `/Applications/Grokbox.app` is an old 0.4.0 build, ad-hoc
-signed**, not the 0.5.0 release. It is sandboxed and still has that account
+signed**, not a release. It is sandboxed and still has that account
 set up, so anything you test through it is 0.4.0 behavior.
 
 **A sweep on real mail has still never run.** On 22 September the pending
@@ -58,21 +64,17 @@ plan was 161 messages from 6 senders (it was 85 on 7 September). The owner
 is clicking through it by hand. Indexing and reading are read-only by
 construction, so nothing in that mailbox has been modified by the app yet.
 The sweep-safety fixes in batch A (Stop that really stops, rules written only
-after success, failures reported as failures) are on `develop` only. Neither
-the installed 0.4.0 build nor the 0.5.0 release has them.
+after success, failures reported as failures) shipped in 0.5.1. The installed
+0.4.0 build doesn't have them, so install 0.5.1 before running that sweep.
 
 ## What's waiting on you
 
-1. **The real-mail sweep.** Pressing the button archives those messages into
-   `Grokbox/` folders and can be undone from Activity. Until it runs, the
-   product's core claim is unproven on a real server.
-2. **Whether to cut 0.5.1** with batches A and B, so the sweep fixes reach
-   the app. `scripts/release.sh 0.5.1` does it once `develop` is merged into
-   `main`.
-3. **The rest of the hardening plan** (next section).
-4. **Housekeeping.** Delete the four merged branches above. Delete the stray
-   empty "New Shortcut 2" in the Shortcuts app, left over from testing the
-   intent.
+1. **Install 0.5.1, then the real-mail sweep.** Pressing the button archives
+   those messages into `Grokbox/` folders and can be undone from Activity.
+   Until it runs, the product's core claim is unproven on a real server.
+2. **The rest of the hardening plan** (next section).
+3. **Housekeeping.** Delete the stray empty "New Shortcut 2" in the Shortcuts
+   app, left over from testing the intent.
 
 ## The hardening plan
 
@@ -81,12 +83,15 @@ On 23 September all 112 findings in `audit/issues.md` were re-checked against
 contradiction is settled; `IMAPDeadlineTests` passes. The open ones were
 grouped into batches:
 
-- **A, sweep safety.** Done (PR #1): GB-028, 032, 058, 075, 076, 078, 079,
+- **A, sweep safety.** Shipped in 0.5.1 (PR #1): GB-028, 032, 058, 075, 076, 078, 079,
   081, 106, plus an unsubscribe that could follow a failed archive. Left
   over from its review: partial archives are not counted in "swept today";
   Stop while connecting shows "Connecting…" until the connect times out; the
-  "Tidy up now" Shortcut returns quietly if a pass is already running.
-- **B, Brief accuracy and copy.** Done (PR #2): GB-008, 021, 023, 024, 025,
+  "Tidy up now" Shortcut returns quietly if a pass is already running;
+  `PlanExecutor.undo` has a compiler warning about a `where` clause that
+  only guards `.archive` (harmless today, since trash actions always record
+  their target folder).
+- **B, Brief accuracy and copy.** Shipped in 0.5.1 (PR #2): GB-008, 021, 023, 024, 025,
   029, 033, 034, 067, 072, and Thread 2's copy fixes.
 - **C, accessibility.** Not started: GB-006, 035, 036, 037, 040, 041, 091,
   then Thread 2's `--demo` pass with `macos-jev-tester`. The contrast items
@@ -148,7 +153,7 @@ Written down because each one cost hours.
 
 ```bash
 cd GrokboxCore && swift test                 # 213 tests, ~50s
-scripts/release.sh 0.5.1                     # full release, refuses if unsafe
+scripts/release.sh 0.5.2                     # full release, refuses if unsafe
 open /Applications/Grokbox.app               # the installed (0.4.0) build
 ```
 
