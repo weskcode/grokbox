@@ -81,8 +81,11 @@ public enum ModelAvailability: Sendable, Equatable {
 
 /// A local text model that can read one email and say what it is.
 ///
-/// Every conforming type runs on this machine. There is no remote option and
-/// there will not be one — see docs/PRIVACY.md.
+/// Every conforming type runs on this machine — this protocol has no remote
+/// conformer and never will. The one opt-in exception to Grokbox's local-only
+/// reading is `RemoteCategorizer` (`JevCategorizer.swift`): a distinct,
+/// narrower protocol used only as a fallback for sender categorization, off
+/// unless the user turns it on — see docs/PRIVACY.md and ADR-0023.
 public protocol TextModel: Sendable {
     var name: String { get }
     func availability() async -> ModelAvailability

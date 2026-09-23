@@ -25,6 +25,9 @@ struct SettingsView: View {
     @State private var showingImporter = false
     @State private var transferMessage: String?
 
+    @State private var jevAPIKeyField = ""
+    @State private var hasJevKey = false
+
     var body: some View {
         Form {
             Section("Reading model") {
@@ -163,8 +166,35 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Jev cloud fallback (optional)") {
+                Toggle("Ask Jev about senders the local model still can't place", isOn: Bindable(state).jevSettings.enabled)
+                    .disabled(!hasJevKey)
+
+                SecureField("Jev API key", text: $jevAPIKeyField)
+                    .onSubmit { saveJevKey() }
+                HStack {
+                    Button("Save key") { saveJevKey() }.disabled(jevAPIKeyField.isEmpty)
+                    if hasJevKey {
+                        Text("Key saved").font(.caption).foregroundStyle(.secondary)
+                        Button("Remove key", role: .destructive) { removeJevKey() }.controlSize(.small)
+                    }
+                }
+
+                Text("Off by default, and disabled here until a key is saved. When on, only a sender's address and a few of their subject lines — never a message body — go to TypeSafe AI's Jev API, and only for senders Grokbox's local model still could not categorize. Requires your own API key from typesafe.ai. This is the one exception to \"nothing leaves this Mac\" — see docs/PRIVACY.md and ADR-0023.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .task { loadJevKey() }
+
+            Section("App lock") {
+                Toggle("Require Face ID or Touch ID to open Grokbox", isOn: Bindable(state).biometricLockSettings.enabled)
+                Text("Asked for every time Grokbox opens, starting next launch. Falls back to your device password if biometrics are not enrolled. This locks the app's own window only — it does not encrypt anything further.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Section("Privacy") {
-                Text("Grokbox makes exactly three kinds of network connection: IMAP to your own mail server, a loopback call to Ollama if you use it, and — only when you click Unsubscribe — an HTTPS request to the address a sender put in their own headers. There is nothing else. See docs/PRIVACY.md in the source for the full inventory.")
+                Text("Grokbox makes exactly three kinds of network connection by default: IMAP to your own mail server, a loopback call to Ollama if you use it, and — only when you click Unsubscribe — an HTTPS request to the address a sender put in their own headers. The one opt-in exception is the Jev cloud fallback above. See docs/PRIVACY.md in the source for the full inventory.")
                     .font(.caption).foregroundStyle(.secondary)
 
                 Button("Erase everything Grokbox knows…", role: .destructive) { confirmingErase = true }
@@ -178,6 +208,24 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Settings")
+    }
+
+    private func loadJevKey() {
+        let key = (try? JevKeyStore.apiKey()) ?? nil
+        hasJevKey = !(key ?? "").isEmpty
+    }
+
+    private func saveJevKey() {
+        guard !jevAPIKeyField.isEmpty else { return }
+        try? JevKeyStore.save(apiKey: jevAPIKeyField)
+        jevAPIKeyField = ""
+        loadJevKey()
+    }
+
+    private func removeJevKey() {
+        try? JevKeyStore.delete()
+        state.jevSettings.enabled = false
+        loadJevKey()
     }
 }
 

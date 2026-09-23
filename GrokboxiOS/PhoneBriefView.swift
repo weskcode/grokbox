@@ -10,6 +10,7 @@ struct PhoneBriefView: View {
     @Query private var contacts: [ContactedAddress]
     @State private var tick = Date()
     @State private var showWorthKnowing = false
+    @State private var searchText = ""
 
     init(accounts: [MailAccount]) {
         self.accounts = accounts
@@ -18,10 +19,21 @@ struct PhoneBriefView: View {
     }
 
     private var accountIDs: Set<UUID> { Set(accounts.map(\.id)) }
+
+    private var searched: [MessageHeader] {
+        let scoped = classified.filter { accountIDs.contains($0.accountID) }
+        guard !searchText.isEmpty else { return scoped }
+        return scoped.filter { message in
+            message.subject.localizedCaseInsensitiveContains(searchText)
+                || message.senderName.localizedCaseInsensitiveContains(searchText)
+                || message.senderAddress.localizedCaseInsensitiveContains(searchText)
+                || (message.summary?.localizedCaseInsensitiveContains(searchText) ?? false)
+        }
+    }
+
     private var ranked: [BriefItem] {
         let counts = Dictionary(contacts.map { ($0.address, $0.timesContacted) }, uniquingKeysWith: { a, _ in a })
-        let now = tick
-        return BriefRanking.rank(classified.filter { accountIDs.contains($0.accountID) }, contactCounts: counts, now: now)
+        return BriefRanking.rank(searched, contactCounts: counts, now: tick)
     }
     private var needsYou: [BriefItem] { ranked.filter { $0.message.importance == .needsYou } }
     private var worthKnowing: [BriefItem] { ranked.filter { $0.message.importance == .worthKnowing } }
@@ -80,6 +92,7 @@ struct PhoneBriefView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .searchable(text: $searchText, prompt: "Search subject or sender")
         .navigationTitle("Brief")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await state.readAll(accounts); state.refreshDigest(accounts); tick = Date() }
