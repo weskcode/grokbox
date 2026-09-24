@@ -77,6 +77,8 @@ public struct IMAPCapabilities: Sendable {
     public var supportsUIDPlus: Bool { raw.contains("UIDPLUS") }
     /// Gmail's extensions: labels as first-class, thread IDs, and so on.
     public var supportsGmailExtensions: Bool { raw.contains("X-GM-EXT-1") }
+    /// RFC 2177: the server tells an idle client about changes as they happen.
+    public var supportsIdle: Bool { raw.contains("IDLE") }
 }
 
 /// What a MOVE produced on the other side.
@@ -149,6 +151,12 @@ public actor IMAPClient {
     private var tagCounter = 0
     private var isLoggedIn = false
     public private(set) var capabilities = IMAPCapabilities(raw: [])
+    /// Messages in the open mailbox, as the server last reported. IDLE uses
+    /// it to tell new mail from mail leaving.
+    private var selectedExists = 0
+    /// Whether the current IDLE has been ended with DONE. Sent once only:
+    /// the timer and a change can both want to end it.
+    private var idleDone = true
 
     struct Result: Sendable {
         var untagged: [IMAPLine]
@@ -335,6 +343,57 @@ public actor IMAPClient {
 
     private static let mimeFields = "CONTENT-TYPE CONTENT-TRANSFER-ENCODING"
 
+    /// RFC 2177 IDLE on the open mailbox, for at most `maxWait`. Returns true
+    /// as soon as new mail arrives, false if the time ran out first. Mail
+    /// leaving the mailbox (`EXPUNGE`, which is what Grokbox's own archiving
+    /// looks like from here) is not new mail. Read-only: it only listens.
+    ///
+    /// Callers re-enter it in a loop; RFC 2177 asks clients to end an IDLE
+    /// within 29 minutes, which `maxWait` should respect.
+    public func idle(maxWait: Duration) async throws -> Bool {
+        tagCounter += 1
+        let tag = String(format: "g%04d", tagCounter)
+        try await connection.write("\(tag) IDLE\r\n")
+        let first = try await connection.readResponseLine()
+        guard first.text.hasPrefix("+") else {
+            throw IMAPError.commandFailed(command: "IDLE", response: first.text)
+        }
+        idleDone = false
+        let timer = Task { [weak self] in
+            try? await Task.sleep(for: maxWait)
+            guard !Task.isCancelled else { return }
+            try? await self?.endIdle()
+        }
+        defer { timer.cancel() }
+
+        var newMail = false
+        while true {
+            // Past maxWait the timer has sent DONE, so the reply is due; the
+            // extra minute is only for a slow server.
+            let line = try await connection.readResponseLine(timeout: maxWait + .seconds(60))
+            if line.text.hasPrefix("\(tag) ") {
+                guard line.text.split(separator: " ").dropFirst().first?.uppercased() == "OK" else {
+                    throw IMAPError.commandFailed(command: "IDLE", response: line.text)
+                }
+                return newMail
+            }
+            if line.text.hasPrefix("* BYE") { throw IMAPError.connectionClosed }
+            if let count = IMAPResponseParser.parseExists(line.text) {
+                if count > selectedExists { newMail = true }
+                selectedExists = count
+            } else if IMAPResponseParser.isExpunge(line.text) {
+                selectedExists = max(0, selectedExists - 1)
+            }
+            if newMail { try await endIdle() }
+        }
+    }
+
+    private func endIdle() async throws {
+        guard !idleDone else { return }
+        idleDone = true
+        try await connection.write("DONE\r\n")
+    }
+
     // MARK: - Mutating operations
 
     /// Opens a mailbox read-write. The only caller is `PlanExecutor`.
@@ -435,6 +494,7 @@ public actor IMAPClient {
             if let count = IMAPResponseParser.parseExists(line.text) { status.exists = count }
             if let validity = IMAPResponseParser.parseUIDValidity(line.text) { status.uidValidity = validity }
         }
+        selectedExists = status.exists
         return status
     }
 

@@ -42,15 +42,19 @@ public final class Maintainer {
         public var intervalMinutes: Int
         public var readLimit: Int
         public var indexDepth: Int
+        /// With automatic tidy-up on, also run soon after new mail reaches an
+        /// inbox (IMAP IDLE), not only on the timer.
+        public var runsOnNewMail: Bool
 
         /// Reads cost ~10 s each on-device with structured output; 25 keeps a pass under five minutes.
         public static let defaults = Settings(isAutoEnabled: false, intervalMinutes: 30, readLimit: 25, indexDepth: 1_000)
 
-        public init(isAutoEnabled: Bool, intervalMinutes: Int, readLimit: Int, indexDepth: Int) {
+        public init(isAutoEnabled: Bool, intervalMinutes: Int, readLimit: Int, indexDepth: Int, runsOnNewMail: Bool = true) {
             self.isAutoEnabled = isAutoEnabled
             self.intervalMinutes = intervalMinutes
             self.readLimit = readLimit
             self.indexDepth = indexDepth
+            self.runsOnNewMail = runsOnNewMail
         }
 
         public static func load(from defaults: UserDefaults = .standard) -> Settings {
@@ -58,7 +62,8 @@ public final class Maintainer {
                 isAutoEnabled: defaults.bool(forKey: "grokbox.autoMaintain"),
                 intervalMinutes: max(5, defaults.integer(forKey: "grokbox.autoIntervalMinutes").nonZero ?? Settings.defaults.intervalMinutes),
                 readLimit: defaults.integer(forKey: "grokbox.readLimit").nonZero ?? Settings.defaults.readLimit,
-                indexDepth: defaults.integer(forKey: "grokbox.indexDepth").nonZero ?? Settings.defaults.indexDepth
+                indexDepth: defaults.integer(forKey: "grokbox.indexDepth").nonZero ?? Settings.defaults.indexDepth,
+                runsOnNewMail: defaults.object(forKey: "grokbox.autoOnNewMail") as? Bool ?? true
             )
         }
     }
@@ -182,8 +187,32 @@ public final class Maintainer {
 
     // MARK: - Timer loop
 
+    /// When new mail was first reported since the last pass. Nil when none is waiting.
+    private var newMailAt: Date?
+
+    /// New mail waits this long before a pass, so a burst is handled once.
+    nonisolated static let arrivalSettle: TimeInterval = 20
+    /// And a pass never follows the previous one sooner than this, which is
+    /// also the shortest timer interval: push brings passes forward, it does
+    /// not make them (or their notifications) more frequent than the timer can.
+    nonisolated static let minimumSpacing: TimeInterval = 5 * 60
+
+    /// An `InboxWatcher` saw new mail. Only acted on while automatic tidy-up
+    /// is on and set to run on new mail.
+    public func noteNewMail(at date: Date = Date()) {
+        if newMailAt == nil { newMailAt = date }
+    }
+
+    nonisolated static func newMailIsDue(now: Date, newMailAt: Date?, lastRunAt: Date?) -> Bool {
+        guard let newMailAt, now.timeIntervalSince(newMailAt) >= arrivalSettle else { return false }
+        if let lastRunAt, now.timeIntervalSince(lastRunAt) < minimumSpacing { return false }
+        return true
+    }
+
     /// Starts the periodic loop. The closures are evaluated each tick so account
-    /// and model changes in the app are picked up without a restart.
+    /// and model changes in the app are picked up without a restart. A pass
+    /// runs when the interval is up, or earlier once new mail has been
+    /// reported and `newMailIsDue` agrees.
     public func startLoop(
         accounts: @escaping @MainActor () -> [MailAccount],
         model: @escaping @MainActor () async -> (any TextModel)?,
@@ -191,18 +220,35 @@ public final class Maintainer {
     ) {
         stopLoop()
         loopTask = Task { [weak self] in
+            var due: Date?
             while !Task.isCancelled {
+                guard let self else { return }
                 let current = settings()
                 guard current.isAutoEnabled else {
-                    self?.nextRunAt = nil
+                    due = nil
+                    self.nextRunAt = nil
+                    self.newMailAt = nil
                     try? await Task.sleep(for: .seconds(30))
                     continue
                 }
-                let interval = Duration.seconds(current.intervalMinutes * 60)
-                self?.nextRunAt = Date().addingTimeInterval(TimeInterval(current.intervalMinutes * 60))
-                try? await Task.sleep(for: interval)
-                guard !Task.isCancelled, let self else { return }
-                await self.run(accounts: accounts(), model: await model(), settings: settings())
+                let now = Date()
+                let interval = TimeInterval(current.intervalMinutes * 60)
+                // A shortened interval takes effect now rather than after the old one.
+                if due.map({ $0 > now.addingTimeInterval(interval) }) ?? true { due = now.addingTimeInterval(interval) }
+                self.nextRunAt = due
+                if !current.runsOnNewMail { self.newMailAt = nil }
+                let arrival = Self.newMailIsDue(now: now, newMailAt: self.newMailAt, lastRunAt: self.lastRunAt)
+                if now >= (due ?? now) || arrival {
+                    let previousRun = self.lastRunAt
+                    let waiting = self.newMailAt
+                    self.newMailAt = nil
+                    await self.run(accounts: accounts(), model: await model(), settings: settings())
+                    // Skipped because something else was running: keep the news for next tick.
+                    if self.lastRunAt == previousRun, arrival { self.newMailAt = waiting }
+                    due = Date().addingTimeInterval(interval)
+                    continue
+                }
+                try? await Task.sleep(for: .seconds(10))
             }
         }
     }

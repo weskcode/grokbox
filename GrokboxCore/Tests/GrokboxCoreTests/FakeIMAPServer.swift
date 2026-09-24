@@ -84,11 +84,20 @@ final class FakeIMAPServer: @unchecked Sendable {
         }
     }
 
+    /// The tag of the last IDLE, which DONE (untagged) completes.
+    private var idleTag: String?
+
     private func handle(_ line: String, on connection: NWConnection) {
+        if line.uppercased() == "DONE" {
+            lock.lock(); receivedCommands.append("DONE"); let tag = idleTag; idleTag = nil; lock.unlock()
+            if let tag { send("\(tag) OK IDLE terminated\r\n", on: connection) }
+            return
+        }
         let parts = line.split(separator: " ", maxSplits: 1)
         guard parts.count == 2 else { return }
         let tag = String(parts[0])
         let command = String(parts[1])
+        if command.uppercased() == "IDLE" { lock.lock(); idleTag = tag; lock.unlock() }
 
         lock.lock(); receivedCommands.append(command); lock.unlock()
 

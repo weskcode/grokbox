@@ -21,6 +21,10 @@ public protocol MailProvider: Sendable {
     /// body. Read with `BodyExtractor`; never stored.
     func bodyExcerpt(uid: UInt32) async throws -> Data?
 
+    /// Waits on the open mailbox (IMAP IDLE) until new mail arrives or
+    /// `maxWait` passes. True means new mail.
+    func waitForNewMail(maxWait: Duration) async throws -> Bool
+
     // Mutating — only PlanExecutor calls these
     func openReadWrite(_ mailbox: String) async throws -> MailboxStatus
     func setFlags(uids: [UInt32], _ change: IMAPClient.FlagChange, flags: [String]) async throws
@@ -110,6 +114,10 @@ public struct IMAPMailProvider: MailProvider {
 
     public func bodyExcerpt(uid: UInt32) async throws -> Data? {
         try await client.fetchBodyExcerpt(uid: uid)
+    }
+
+    public func waitForNewMail(maxWait: Duration) async throws -> Bool {
+        try await client.idle(maxWait: maxWait)
     }
 
     public func openReadWrite(_ mailbox: String) async throws -> MailboxStatus {

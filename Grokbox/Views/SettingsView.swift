@@ -14,6 +14,7 @@ struct SettingsView: View {
     @AppStorage("grokbox.ollamaModel") private var ollamaModel = OllamaProvider.defaultModel
     @AppStorage("grokbox.autoMaintain") private var autoMaintain = false
     @AppStorage("grokbox.autoIntervalMinutes") private var intervalMinutes = 30
+    @AppStorage("grokbox.autoOnNewMail") private var runsOnNewMail = true
     @AppStorage("grokbox.readLimit") private var readLimit = 25
     @AppStorage("grokbox.indexDepth") private var indexDepth = 1_000
     @AppStorage("grokbox.notify") private var notify = false
@@ -71,6 +72,9 @@ struct SettingsView: View {
                     Text("3 hours").tag(180)
                 }
                 .disabled(!autoMaintain)
+                Toggle("Also when new mail arrives", isOn: $runsOnNewMail)
+                    .disabled(!autoMaintain)
+                    .help("Keeps one read-only connection per account listening to its inbox (IMAP IDLE). A tidy-up then runs shortly after mail arrives, but never within five minutes of the last one.")
 
                 Toggle("Notify me when a tidy-up finds something that needs me", isOn: $notify)
                     .onChange(of: notify) { _, on in if on { NotificationService.requestPermission() } }

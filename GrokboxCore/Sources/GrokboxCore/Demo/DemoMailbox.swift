@@ -294,6 +294,11 @@ public struct DemoMailProvider: MailProvider {
         mailbox.body(in: try requireSelected(), uid: uid)
     }
 
+    /// Demo mail never arrives on its own, so there is nothing to wait for.
+    public func waitForNewMail(maxWait: Duration) async throws -> Bool {
+        throw IMAPError.commandFailed(command: "IDLE", response: "The demo mailboxes do not receive new mail.")
+    }
+
     public func setFlags(uids: [UInt32], _ change: IMAPClient.FlagChange, flags: [String]) async throws {
         try await mailbox.beforeWrite?(.init(operation: "\(change.sign)FLAGS", uids: uids, values: flags))
         mailbox.store(in: try requireSelected(), uids: Set(uids), add: change == .add, flags: flags)

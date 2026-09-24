@@ -83,6 +83,12 @@ enum IMAPResponseParser {
         return zip(names, line.literals).map { (name: $0, data: $1) }
     }
 
+    /// `* 12 EXPUNGE`: one message left the open mailbox.
+    static func isExpunge(_ text: String) -> Bool {
+        let parts = text.split(separator: " ")
+        return parts.count == 3 && parts[0] == "*" && parts[1].allSatisfy(\.isNumber) && parts[2].uppercased() == "EXPUNGE"
+    }
+
     // MARK: - CAPABILITY
 
     /// `* CAPABILITY IMAP4rev1 UNSELECT IDLE NAMESPACE QUOTA ID XLIST CHILDREN X-GM-EXT-1 UIDPLUS MOVE`

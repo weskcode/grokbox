@@ -13,6 +13,8 @@ final class AppState {
     let engine: SyncEngine
     let executor: PlanExecutor
     let maintainer: Maintainer
+    /// IDLE connections on each inbox, while automatic tidy-up runs on new mail.
+    let watcher = InboxWatcher()
     private let context: ModelContext
 
     /// How aggressively Grokbox cleans. Held here so every screen sees a
@@ -336,7 +338,21 @@ final class AppState {
             },
             settings: { Maintainer.Settings.load() }
         )
+        watcher.onNewMail = { [weak self] _ in self?.maintainer.noteNewMail() }
+        watcher.onLog = { Log.note($0) }
+        // Settings and accounts change underneath; keep the watched set in
+        // step. `watch` leaves accounts already being watched alone.
+        watcherSync?.cancel()
+        watcherSync = Task { [weak self] in
+            while !Task.isCancelled {
+                let settings = Maintainer.Settings.load()
+                self?.watcher.watch(accounts(), enabled: settings.isAutoEnabled && settings.runsOnNewMail)
+                try? await Task.sleep(for: .seconds(15))
+            }
+        }
     }
+
+    private var watcherSync: Task<Void, Never>?
 
     /// Reads new mail for several accounts in sequence (the all-accounts Brief).
     func readAll(_ accounts: [MailAccount], scope: SyncEngine.ReadScope = .recent) async {
@@ -383,6 +399,7 @@ final class AppState {
     /// because messages reference accounts by id, not by relationship.
     func remove(_ account: MailAccount) {
         let id = account.id
+        watcher.forget(id)
         try? KeychainStore.delete(account: account.keychainAccount)
         stopDemoServer(for: account)
         let messages = #Predicate<MessageHeader> { $0.accountID == id }
@@ -404,6 +421,7 @@ final class AppState {
 
     /// Wipes every local record and Keychain item. The mailbox itself is untouched.
     func eraseEverything() {
+        watcher.stopAll()
         for account in (try? context.fetch(FetchDescriptor<MailAccount>())) ?? [] {
             try? KeychainStore.delete(account: account.keychainAccount)
             stopDemoServer(for: account)
