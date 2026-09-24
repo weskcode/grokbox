@@ -105,10 +105,9 @@ struct SendersView: View {
 
     private var indexBar: some View {
         HStack(spacing: 12) {
-            if state.engine.phase.isRunning {
-                EngineStatusBar(label: state.engine.phase.label, fraction: state.engine.phase.fraction,
-                                isRunning: true, isFailed: false, onStop: { state.stop() })
-            } else {
+            // Index and Depth stay mounted and disabled while indexing, so
+            // VoiceOver focus survives pressing Index (GB-037).
+            Group {
                 Button {
                     state.engine.index(account: account, messageLimit: messageLimit)
                 } label: {
@@ -124,10 +123,13 @@ struct SendersView: View {
                     Text("Everything").tag(1_000_000)
                 }
                 .labelsHidden().frame(width: 130)
-
-                EngineStatusBar(label: state.engine.phase.label, fraction: nil, isRunning: false,
-                                isFailed: { if case .failed = state.engine.phase { true } else { false } }())
+                .disabled(state.isBusy)
             }
+
+            EngineStatusBar(label: state.engine.phase.label, fraction: state.engine.phase.fraction,
+                            isRunning: state.engine.phase.isRunning,
+                            isFailed: { if case .failed = state.engine.phase { true } else { false } }(),
+                            onStop: { state.stop() })
             Label("Index is read-only", systemImage: "lock")
                 .font(.caption).foregroundStyle(.secondary)
                 .help("Indexing opens mailboxes with IMAP EXAMINE, which the server enforces as read-only.")
@@ -144,16 +146,24 @@ struct SendersView: View {
                     verdictFilter = (verdictFilter == verdict) ? nil : verdict
                 } label: {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(verdict.label.uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                        // Uppercased on screen only; VoiceOver spells out an
+                        // all-caps string letter by letter (GB-041).
+                        Text(verdict.label).textCase(.uppercase).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
                         Text(count.formatted()).font(.title2.monospacedDigit())
                         Text("\(matching.count) senders").font(.caption).foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
                     .background(verdictFilter == verdict ? Color.accentColor.opacity(0.12) : .clear)
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.accentColor, lineWidth: verdictFilter == verdict ? 2 : 0))
                 }
                 .buttonStyle(.plain)
                 .help(verdict.explanation)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(verdict.label), \(count.formatted()) messages from \(matching.count) senders")
+                .accessibilityValue(verdictFilter == verdict ? "Filter on" : "Filter off")
+                .accessibilityAddTraits(verdictFilter == verdict ? [.isButton, .isSelected] : .isButton)
+                .accessibilityHint("Filters the sender list")
             }
         }
     }
@@ -179,6 +189,10 @@ struct SendersView: View {
                         }
                         .buttonStyle(.plain)
                         .help("\(matching.count) senders, \(messages) messages → \(category.folderName)")
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("\(category.label), \(matching.count) senders, \(messages.formatted()) messages")
+                        .accessibilityValue(categoryFilter == category ? "Filter on" : "Filter off")
+                        .accessibilityAddTraits(categoryFilter == category ? [.isButton, .isSelected] : .isButton)
                     }
                 }
             }

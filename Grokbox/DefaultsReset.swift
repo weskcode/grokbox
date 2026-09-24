@@ -6,7 +6,7 @@ import GrokboxCore
 enum MailboxSnapshotDefaults {
     static let keys = [
         "grokbox.cleanupPolicy", "grokbox.preferredModel", "grokbox.ollamaModel",
-        "grokbox.autoMaintain", "grokbox.autoIntervalMinutes", "grokbox.readLimit",
+        "grokbox.autoMaintain", "grokbox.autoIntervalMinutes", "grokbox.autoOnNewMail", "grokbox.readLimit",
         "grokbox.indexDepth", "grokbox.notify", "grokbox.guardTransactional",
     ]
 

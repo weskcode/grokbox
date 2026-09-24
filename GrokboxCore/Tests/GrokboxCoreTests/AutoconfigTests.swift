@@ -49,15 +49,17 @@ struct AutoconfigParsingTests {
         #expect(!found.offersOAuth2)
     }
 
-    @Test func starttlsOnlyIsReportedNotSilentlyDowngraded() {
+    /// STARTTLS used to be unsupported and reported as a failure. Grokbox now
+    /// speaks it, and always requires the upgrade, so a STARTTLS-only
+    /// provider is usable and still encrypted.
+    @Test func starttlsOnlyIsUsedAsRequiredSTARTTLS() throws {
         let xml = """
         <clientConfig version="1.1"><emailProvider id="x">
           <incomingServer type="imap"><hostname>imap.x.example</hostname><port>143</port><socketType>STARTTLS</socketType></incomingServer>
         </emailProvider></clientConfig>
         """
-        let result = AutoconfigService.parse(xml: Data(xml.utf8), email: "a@x.example", source: "t")
-        guard case .failure(let failure) = result else { Issue.record("should fail"); return }
-        #expect(failure == .onlySTARTTLS(host: "imap.x.example"))
+        let found = try AutoconfigService.parse(xml: Data(xml.utf8), email: "a@x.example", source: "t").get()
+        #expect(found.port == 143 && found.security == .starttls)
     }
 
     @Test func prefersSSLEntryWhenBothOffered() throws {
@@ -172,6 +174,32 @@ struct LinkHygieneTests {
         let r = report("Reset your password at https://northbank-security.example/reset now", from: "northbank.example")
         #expect(r.linkHosts == ["northbank-security.example"])
         #expect(r.isSuspicious)
+    }
+
+    @Test func findsTheMismatchInsideAQuotedPrintableHTMLPart() {
+        // `href=3D"...` is how quoted-printable writes `href="...`. Read raw,
+        // the link is invisible; decoded first, it is caught.
+        let raw = "Content-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n"
+            + "<p>Please <a href=3D\"https://evil.example/login\">northbank.example/secure</a> to verify your account.</p>"
+        let r = report(raw)
+        #expect(r.warnings.contains { $0.contains("shows northbank.example") && $0.contains("goes to evil.example") })
+    }
+
+    @Test func aFormInMailIsFlagged() {
+        let r = report(#"<form action="https://collect.example/pw" method="post"><input name="password"></form>"#)
+        #expect(r.warnings.contains { $0.contains("form") && $0.contains("collect.example") })
+        #expect(report(#"<form><input></form>"#).warnings.contains { $0.contains("form") })
+    }
+
+    @Test func disguisedIPAddressesAreStillIPAddresses() {
+        for host in ["3232235777", "0xC0A80001", "0300.0250.0.1", "0xC0.0xA8.0.1", "::1", "[2001:db8::1]"] {
+            #expect(LinkHygiene.isIPAddress(host), "\(host)")
+        }
+        for host in ["northbank.example", "123.com", "localhost", "cafe"] {
+            #expect(!LinkHygiene.isIPAddress(host), "\(host)")
+        }
+        let r = report(#"<a href="http://3232235777/login">Sign in</a> to your account"#)
+        #expect(r.warnings.contains { $0.contains("bare IP") })
     }
 
     @Test func registrableDomainHandlesCountryCodes() {

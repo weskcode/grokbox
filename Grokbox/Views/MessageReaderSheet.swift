@@ -14,7 +14,7 @@ struct MessageReaderSheet: View {
 
     private enum LoadState {
         case loading
-        case loaded(String)
+        case loaded(MessageBodyReader.Reading)
         case failed(String)
     }
 
@@ -46,13 +46,18 @@ struct MessageReaderSheet: View {
         switch state {
         case .loading:
             VStack { ProgressView("Reading…") }.frame(maxWidth: .infinity, maxHeight: .infinity)
-        case .loaded(let text):
+        case .loaded(let reading):
             ScrollView {
-                Text(text)
-                    .font(.body)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(16)
+                VStack(alignment: .leading, spacing: 12) {
+                    if !reading.linkWarnings.isEmpty {
+                        linkWarnings(reading.linkWarnings)
+                    }
+                    Text(reading.text)
+                        .font(.body)
+                        .textSelection(.enabled)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
             }
         case .failed(let description):
             ContentUnavailableView("Could not read this message", systemImage: "exclamationmark.triangle",
@@ -61,10 +66,31 @@ struct MessageReaderSheet: View {
         }
     }
 
+    /// Same shape as the store-recovery banner in `RootView`: a warning, not
+    /// a block. The links are never live here; this is advice for the
+    /// moment someone opens the message in their mail client.
+    private func linkWarnings(_ warnings: [String]) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Be careful with the links in this message").font(.callout.weight(.semibold))
+                ForEach(warnings, id: \.self) { warning in
+                    Text("• " + warning.prefix(1).uppercased() + warning.dropFirst() + ".").font(.callout)
+                }
+            }
+            .accessibilityElement(children: .combine)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityIdentifier("reader.linkWarnings")
+    }
+
     private func load() async {
         do {
-            let text = try await MessageBodyReader.read(uid: message.uid, mailbox: message.mailbox, account: account)
-            state = .loaded(text)
+            let reading = try await MessageBodyReader.read(uid: message.uid, mailbox: message.mailbox, account: account,
+                                                           senderDomain: message.senderDomain)
+            state = .loaded(reading)
         } catch {
             state = .failed(error.localizedDescription)
         }

@@ -23,6 +23,11 @@ struct RootView: View {
 
     private var isAllAccounts: Bool { selectedAccountID == Self.allAccountsID }
 
+    private func announceEnd(_ wasRunning: Bool, _ isRunning: Bool, _ label: String) {
+        guard wasRunning, !isRunning else { return }
+        AccessibilityNotification.Announcement(label).post()
+    }
+
     var body: some View {
         if state.biometricLockSettings.enabled && !state.isUnlocked {
             LockView(state: state)
@@ -70,6 +75,16 @@ struct RootView: View {
         }
         // The account query fills in after the first appearance; choose then too.
         .onChange(of: accounts.count) { chooseInitialSelection() }
+        // Say when long work ends, since the progress bar that showed it is
+        // gone by then (GB-037). A tidy-up runs the engine and the executor
+        // in turn; only its own end is announced, not each step's.
+        .onChange(of: state.engine.phase) { old, new in
+            if !state.maintainer.phase.isRunning { announceEnd(old.isRunning, new.isRunning, new.label) }
+        }
+        .onChange(of: state.executor.phase) { old, new in
+            if !state.maintainer.phase.isRunning { announceEnd(old.isRunning, new.isRunning, new.label) }
+        }
+        .onChange(of: state.maintainer.phase) { old, new in announceEnd(old.isRunning, new.isRunning, new.label) }
         .sheet(item: $passwordAccount) { account in
             UpdatePasswordSheet(account: account, state: state)
         }
@@ -308,6 +323,7 @@ struct EngineStatusBar: View {
             if isRunning {
                 ProgressView(value: fraction ?? 0).progressViewStyle(.linear).frame(width: 160)
                     .accessibilityLabel(label)
+                    .accessibilityValue(fraction.map { "\(Int($0 * 100)) percent" } ?? "In progress")
                 if let onStop { Button("Stop", action: onStop).controlSize(.small) }
             }
             Text(label)
@@ -315,6 +331,7 @@ struct EngineStatusBar: View {
                 .foregroundStyle(isFailed ? .red : .secondary)
                 .lineLimit(1)
                 .help(label)
+                .accessibilityAddTraits(isRunning ? .updatesFrequently : [])
             Spacer()
         }
     }

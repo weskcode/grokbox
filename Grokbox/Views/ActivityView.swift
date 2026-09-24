@@ -69,6 +69,7 @@ struct ActivityView: View {
                 }
                 .controlSize(.small)
                 .disabled(state.isBusy)
+                .accessibilityLabel("Undo \(title(for: action)) from \(action.senderName.isEmpty ? action.senderAddress : action.senderName)")
             } else if !action.isUndoable && !action.isUndone && action.errorMessage == nil {
                 Text("Can't undo").font(.caption2).foregroundStyle(.tertiary)
                     .help(cantUndoHelp(for: action))

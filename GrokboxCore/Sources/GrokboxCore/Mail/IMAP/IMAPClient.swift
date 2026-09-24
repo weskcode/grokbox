@@ -77,6 +77,8 @@ public struct IMAPCapabilities: Sendable {
     public var supportsUIDPlus: Bool { raw.contains("UIDPLUS") }
     /// Gmail's extensions: labels as first-class, thread IDs, and so on.
     public var supportsGmailExtensions: Bool { raw.contains("X-GM-EXT-1") }
+    /// RFC 2177: the server tells an idle client about changes as they happen.
+    public var supportsIdle: Bool { raw.contains("IDLE") }
 }
 
 /// What a MOVE produced on the other side.
@@ -149,6 +151,12 @@ public actor IMAPClient {
     private var tagCounter = 0
     private var isLoggedIn = false
     public private(set) var capabilities = IMAPCapabilities(raw: [])
+    /// Messages in the open mailbox, as the server last reported. IDLE uses
+    /// it to tell new mail from mail leaving.
+    private var selectedExists = 0
+    /// Whether the current IDLE has been ended with DONE. Sent once only:
+    /// the timer and a change can both want to end it.
+    private var idleDone = true
 
     struct Result: Sendable {
         var untagged: [IMAPLine]
@@ -173,6 +181,32 @@ public actor IMAPClient {
         guard greeting.text.hasPrefix("* OK") || greeting.text.hasPrefix("* PREAUTH") else {
             throw IMAPError.unexpectedResponse(greeting.text)
         }
+        if security.usesStartTLS {
+            do {
+                try await upgradeToTLS(greeting: greeting.text)
+            } catch {
+                await connection.disconnect()
+                throw error
+            }
+        }
+    }
+
+    /// RFC 3501 §6.2.1 and RFC 8314 §3: STARTTLS first, before any
+    /// credentials. There is no fallback to cleartext on any path. A PREAUTH
+    /// greeting means the server considers the session already
+    /// authenticated and will not accept STARTTLS, so it is refused too.
+    private func upgradeToTLS(greeting: String) async throws {
+        guard greeting.hasPrefix("* OK") else { throw IMAPError.startTLSUnavailable }
+        let offered = try await preLoginCapabilities()
+        guard offered.contains("STARTTLS") else { throw IMAPError.startTLSUnavailable }
+        let result = try await execute("STARTTLS")
+        guard result.isOK else { throw IMAPError.commandFailed(command: "STARTTLS", response: result.completionDetail) }
+        try await connection.startTLS()
+        // Capabilities learned in cleartext are discarded (RFC 3501 §6.2.1);
+        // this also proves the handshake completed before LOGIN is sent.
+        let secured = try await execute("CAPABILITY")
+        guard secured.isOK else { throw IMAPError.commandFailed(command: "CAPABILITY", response: secured.completionDetail) }
+        capabilities = IMAPCapabilities(raw: [])
     }
 
     public func login(username: String, password: String) async throws {
@@ -283,16 +317,81 @@ public actor IMAPClient {
         return result.untagged.compactMap { IMAPResponseParser.parseFlagsLine($0.text) }
     }
 
-    /// Fetches the first `maxBytes` of a message body without marking it read.
+    /// Fetches a message's MIME entity without marking it read: its own
+    /// `Content-Type` and `Content-Transfer-Encoding` lines, a blank line,
+    /// then the first `maxBytes` of its body. The header lines are what say
+    /// where a multipart's boundary is and which charset a single part uses;
+    /// `BODY[TEXT]` alone carries neither.
     ///
-    /// The result is handed to the local model and discarded. It is never
-    /// written to disk.
+    /// The result is handed to the local model or shown in the reader and
+    /// discarded. It is never written to disk.
     public func fetchBodyExcerpt(uid: UInt32, maxBytes: Int = 8_000) async throws -> Data? {
-        let result = try await execute("UID FETCH \(uid) (BODY.PEEK[TEXT]<0.\(maxBytes)>)")
+        let result = try await execute("UID FETCH \(uid) (BODY.PEEK[HEADER.FIELDS (\(Self.mimeFields))] BODY.PEEK[TEXT]<0.\(maxBytes)>)")
         guard result.isOK else {
             throw IMAPError.commandFailed(command: "UID FETCH body", response: result.completionDetail)
         }
-        return result.untagged.first { $0.text.contains(" FETCH ") }?.literals.first
+        guard let line = result.untagged.first(where: { $0.text.contains(" FETCH ") }) else { return nil }
+        let sections = IMAPResponseParser.literalSections(line)
+        guard let text = sections.first(where: { $0.name.hasPrefix("BODY[TEXT]") })?.data else { return nil }
+        var header = sections.first(where: { $0.name.hasPrefix("BODY[HEADER.FIELDS") })?.data ?? Data()
+        // The section ends with the blank line that closes a header block, but
+        // an empty or sloppy one may not; the entity needs it either way.
+        while !header.isEmpty, !header.suffix(2).elementsEqual([0x0D, 0x0A]) { header.removeLast() }
+        if !header.suffix(4).elementsEqual([0x0D, 0x0A, 0x0D, 0x0A]) { header.append(contentsOf: [0x0D, 0x0A]) }
+        return header + text
+    }
+
+    private static let mimeFields = "CONTENT-TYPE CONTENT-TRANSFER-ENCODING"
+
+    /// RFC 2177 IDLE on the open mailbox, for at most `maxWait`. Returns true
+    /// as soon as new mail arrives, false if the time ran out first. Mail
+    /// leaving the mailbox (`EXPUNGE`, which is what Grokbox's own archiving
+    /// looks like from here) is not new mail. Read-only: it only listens.
+    ///
+    /// Callers re-enter it in a loop; RFC 2177 asks clients to end an IDLE
+    /// within 29 minutes, which `maxWait` should respect.
+    public func idle(maxWait: Duration) async throws -> Bool {
+        tagCounter += 1
+        let tag = String(format: "g%04d", tagCounter)
+        try await connection.write("\(tag) IDLE\r\n")
+        let first = try await connection.readResponseLine()
+        guard first.text.hasPrefix("+") else {
+            throw IMAPError.commandFailed(command: "IDLE", response: first.text)
+        }
+        idleDone = false
+        let timer = Task { [weak self] in
+            try? await Task.sleep(for: maxWait)
+            guard !Task.isCancelled else { return }
+            try? await self?.endIdle()
+        }
+        defer { timer.cancel() }
+
+        var newMail = false
+        while true {
+            // Past maxWait the timer has sent DONE, so the reply is due; the
+            // extra minute is only for a slow server.
+            let line = try await connection.readResponseLine(timeout: maxWait + .seconds(60))
+            if line.text.hasPrefix("\(tag) ") {
+                guard line.text.split(separator: " ").dropFirst().first?.uppercased() == "OK" else {
+                    throw IMAPError.commandFailed(command: "IDLE", response: line.text)
+                }
+                return newMail
+            }
+            if line.text.hasPrefix("* BYE") { throw IMAPError.connectionClosed }
+            if let count = IMAPResponseParser.parseExists(line.text) {
+                if count > selectedExists { newMail = true }
+                selectedExists = count
+            } else if IMAPResponseParser.isExpunge(line.text) {
+                selectedExists = max(0, selectedExists - 1)
+            }
+            if newMail { try await endIdle() }
+        }
+    }
+
+    private func endIdle() async throws {
+        guard !idleDone else { return }
+        idleDone = true
+        try await connection.write("DONE\r\n")
     }
 
     // MARK: - Mutating operations
@@ -395,6 +494,7 @@ public actor IMAPClient {
             if let count = IMAPResponseParser.parseExists(line.text) { status.exists = count }
             if let validity = IMAPResponseParser.parseUIDValidity(line.text) { status.uidValidity = validity }
         }
+        selectedExists = status.exists
         return status
     }
 

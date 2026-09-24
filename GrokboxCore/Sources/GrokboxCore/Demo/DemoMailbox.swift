@@ -152,7 +152,7 @@ public final class DemoMailbox: @unchecked Sendable {
 
     public func body(in mailbox: String, uid: UInt32) -> Data? {
         guard let message = messages(in: mailbox).first(where: { $0.uid == uid }) else { return nil }
-        return Data(Self.renderBody(message).utf8)
+        return Data((Self.renderMIMEHeader(message) + Self.renderBody(message)).utf8)
     }
 
     // MARK: - Writes
@@ -220,6 +220,13 @@ public final class DemoMailbox: @unchecked Sendable {
         )
     }
 
+    /// The part of the header that says how to read the body.
+    static func renderMIMEHeader(_ message: DemoMailServer.Message) -> String {
+        message.isHTML
+            ? "Content-Type: multipart/alternative; boundary=\"demo-boundary\"\r\n\r\n"
+            : "Content-Type: text/plain; charset=utf-8\r\n\r\n"
+    }
+
     static func renderBody(_ message: DemoMailServer.Message) -> String {
         message.isHTML
             ? "--demo-boundary\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n\(message.body)\r\n--demo-boundary\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<html><body><p>\(message.body)</p></body></html>\r\n--demo-boundary--\r\n"
@@ -285,6 +292,11 @@ public struct DemoMailProvider: MailProvider {
 
     public func bodyExcerpt(uid: UInt32) async throws -> Data? {
         mailbox.body(in: try requireSelected(), uid: uid)
+    }
+
+    /// Demo mail never arrives on its own, so there is nothing to wait for.
+    public func waitForNewMail(maxWait: Duration) async throws -> Bool {
+        throw IMAPError.commandFailed(command: "IDLE", response: "The demo mailboxes do not receive new mail.")
     }
 
     public func setFlags(uids: [UInt32], _ change: IMAPClient.FlagChange, flags: [String]) async throws {

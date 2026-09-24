@@ -32,9 +32,10 @@ struct MessageBodyReaderTests {
         let message = try #require(mailbox.messages(in: "INBOX").first)
         let expected = BodyExtractor.plainText(from: try #require(mailbox.body(in: "INBOX", uid: message.uid)))
 
-        let text = try await MessageBodyReader.read(uid: message.uid, mailbox: "INBOX", account: account)
-        #expect(text == expected)
-        #expect(!text.isEmpty)
+        let reading = try await MessageBodyReader.read(uid: message.uid, mailbox: "INBOX", account: account,
+                                                       senderDomain: "grokbox.demo")
+        #expect(reading.text == expected)
+        #expect(!reading.text.isEmpty)
     }
 
     @Test func aMissingMessageThrowsADedicatedErrorRatherThanShowingBlankText() async throws {
@@ -43,7 +44,7 @@ struct MessageBodyReaderTests {
         _ = container
 
         await #expect(throws: MessageBodyReader.ReaderError.empty) {
-            _ = try await MessageBodyReader.read(uid: 999_999, mailbox: "INBOX", account: account)
+            _ = try await MessageBodyReader.read(uid: 999_999, mailbox: "INBOX", account: account, senderDomain: "grokbox.demo")
         }
     }
 }

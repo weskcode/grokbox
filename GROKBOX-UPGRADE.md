@@ -12,6 +12,7 @@ truth for what's actually been decided. Append new threads as dated sections bel
 4. [DejaLu comparison + 5-item scoped implementation plan](#thread-4--dejalu-comparison--5-item-scoped-implementation-plan-2026-09-22) (2026-09-22)
 5. [Full technical/UX/security/release audit](#thread-5--full-technicaluxsecurityrelease-audit-2026-09-05--2026-09-06) (2026-09-05 → 2026-09-06)
 6. [Session status check, live sweep, and infrastructure findings](#thread-6--session-status-check-live-sweep-and-infrastructure-findings-2026-09-22) (2026-09-22)
+7. [Thunderbird study for a full, private, good-looking client](#thread-7--thunderbird-study-for-a-full-private-good-looking-client-2026-09-23) (2026-09-23)
 
 ---
 
@@ -917,5 +918,240 @@ Combining all six threads' framing:
    verification grep, missing tracking-pixel note) and its `LinkHygiene.swift`
    dead-code finding; Thread 2's two grammar fixes in `SweepGuard.swift`
    (lines 76/78). None are blocked on the direction question above.
+
+## Thread 7 — Thunderbird study for a full, private, good-looking client (2026-09-23)
+
+The owner asked what Grokbox can learn from Thunderbird (github.com/thunderbird)
+to become "a fully functional but good looking and privacy adherent mail app."
+That wording goes past the "stay a triage tool" direction recorded under
+Consolidated open questions, item 1. Nothing below is approved; it is research
+and a proposed order of work.
+
+`docs/LANDSCAPE.md` (6 September) already covered Thunderbird's autoconfig
+ladder, OAuth client IDs in source, filter actions, and junk learning, from the
+triage angle. This pass read three more things: comm-central `master` (via the
+`mozilla/releases-comm-central` mirror), `thunderbird/thunderbird-ios` at
+`8fc45db` (22 September), and `thunderbird/thunderbird-android` at HEAD
+(23 September). It also mapped what Grokbox's code does today.
+
+### Where Grokbox stands against a full client (from the code, 23 September)
+
+- No send path at all: no SMTP, no APPEND, no drafts (`SenderMessagesSheet.swift:172`).
+- The reader shows the first 8 KB of `BODY.PEEK[TEXT]`, cut to 3,000
+  characters, as plain text (`IMAPClient.swift:290-296`, `BodyExtractor.swift:10`).
+  Body charsets are always decoded as UTF-8 (`BodyExtractor.swift:11,70,92`),
+  multipart handling takes the first boundary line only, and attachments are
+  never listed.
+- Only INBOX, or All Mail on Gmail, is indexed (`SyncEngine.swift:155-160`).
+  There is no folder tree and no chronological message list. Threads are
+  sender plus normalized subject (`ThreadKey.swift`), not References or
+  In-Reply-To, which are never fetched.
+- Per-message actions are archive ("Done") and a local-only snooze. Read or
+  unread, flag, move, trash and junk exist only inside bulk sweeps.
+- IMAP has no STARTTLS, IDLE, CONDSTORE/QRESYNC, SEARCH, ID, APPEND or
+  XOAUTH2. The timer loop is off by default, and iOS has no background refresh.
+- `LinkHygiene` is dead code: only a test references it
+  (`AutoconfigTests.swift:144`). PRIVACY.md and LANDSCAPE.md both say its
+  warnings appear on the Brief row.
+- The app lock runs once per launch; `isUnlocked` is never reset on
+  background (`AppState.swift:50`).
+- No design tokens. Both asset catalogs hold only the app icon; styling is
+  system semantic colors plus inline literals (corner radius 8 and 10, font
+  sizes 12, 44, 52).
+- About 17 accessibility labels and 7 identifiers on macOS;
+  `MessageReaderSheet`, `ActivityView` and `SettingsView` have none.
+
+### What Thunderbird desktop teaches
+
+Privacy defaults worth copying, with Thunderbird's own values:
+
+- Remote content off (`mailnews.message_display.disable_remote_image` = true)
+  with a precedence order: per-message override, then admin trusted domains,
+  then a per-sender allow, then per-site allow or block, and a block wins even
+  over a global allow (`nsMsgContentPolicy.cpp`). The bar offers "show for this
+  message", "allow from this sender", "allow from this site".
+- JavaScript off in message views, iframes fully sandboxed.
+- A "simple HTML" sanitized mode, forced for junk
+  (`mail.spam.display.sanitize` = true).
+- Phishing detector (`PhishingDetector.sys.mjs`) is about 100 lines: compare the
+  base domain (Public Suffix List) of link text and href, check obfuscated IP
+  hosts only after a mismatch, warn on any `form[action]`, skip Sent and Drafts.
+- MDN read receipts: never auto-send; the "ask me" defaults show why.
+
+Places where Grokbox can beat Thunderbird's defaults when it sends mail:
+
+- Thunderbird sends a User-Agent (`mailnews.headers.sendUserAgent` = true).
+- It leaks the local time zone; `mail.sanitize_date_header` (UTC, rounded to
+  the minute) is off by default.
+- Its SMTP EHLO sends the LAN IP as a literal unless `hello_argument` is set
+  (`SmtpClient.sys.mjs`).
+- It sends IMAP `ID` with app name and version by default.
+- Telemetry is opt-out, and account setup queries Mozilla's ISPDB.
+- Message-ID is done right: `<UUID@domain-of-From>`, never the machine host
+  (`nsMsgCompUtils.cpp`). Copy that.
+
+Sync and storage, where Thunderbird is paying off early decisions:
+
+- `use_condstore` ships false "in case client or server has bugs", and there
+  is no QRESYNC code at all. IDLE and COMPRESS are on.
+- Mork keeps one `.msf` index per folder, read wholly into RAM, and it became
+  the source of truth instead of a cache. Mbox storage needs compaction, which
+  was rewritten in 2024 after corruption reports. Gloda search is a second
+  database their own docs call slow.
+- Panorama, the replacement, is one global SQLite database:
+  `folders`, `messages(id, folderId, threadId, threadParent, messageId, date,
+  sender, recipients, ..., flags, tags)`, key/value property tables, and live
+  query views in place of stored folder views. It is still nightly-only.
+  A new client can start where they are heading: one database, one file per
+  message body, full-text search in the same store, QRESYNC with a per-account
+  off switch.
+
+Design:
+
+- Supernova (115) added Cards view, density (compact / normal / touch), font
+  size in the app menu, and optional folder-pane modes. Cards is now the
+  default (`mail.threadpane.listview` = 0, 3 rows per card).
+- Users complained that Cards showed 17 rows where Table showed 37. Lesson: a
+  dense mode from day one; never take the table away.
+- Their designers counted 27 interaction states for one message-list row
+  (hover, selection, focus, unread, across themes). Worth listing Grokbox's
+  row states before styling rows.
+- 128 added per-account colours and followed the system accent colour.
+- Their 2025 accessibility study found shortcuts that did not follow platform
+  norms, no screen-reader confirmation after a move, and confusing search.
+  For Grokbox: Mail.app's shortcuts, native `Table`/`List` semantics,
+  VoiceOver announcements after archive and move.
+
+### What the Thunderbird mobile repos teach
+
+thunderbird-ios is SwiftUI, Swift 6, iOS 18, and not usable yet ("Not yet
+functional or ready for production use"; IMAP landed June 2026, target end of
+2026). IMAP and SMTP sit on `apple/swift-nio-imap` and swift-nio, all pinned to
+`branch: main`. Its `MIME` (about 1,265 lines), `EmailAddress` and `JMAP`
+(about 1,926 lines) modules use Foundation only. OAuth2 uses PKCE S256 through
+`webAuthenticationSession`, with a provider table matched on MX host.
+
+Its HTML reader is not a model to copy: remote images and tracking pixels load.
+It sets `allowsContentJavaScript = false`, but has no content rule list, no
+sanitizer, no CSP, and a persistent data store. Remote feature flags are
+fetched from GitHub Pages by default (`FeatureFlags.swift:25`).
+
+thunderbird-android (K-9 lineage) is the mature reference:
+
+- Remote images: `ShowPictures { NEVER, ALWAYS, ONLY_FROM_CONTACTS }`, default
+  NEVER, enforced by blocking all network loads in the web view, not by the
+  sanitizer. The sanitizer (jsoup `Safelist.relaxed()` plus mail tags) allows
+  remote `src`; the network block also catches CSS `url()`.
+- `cid:` images served from local parts with `Cache-Control: no-store`.
+- Push (RFC 0005): IDLE on the inbox only by default, re-IDLE before RFC
+  2177's 29 minutes, a folder cap, polling fallback. All-folder push was
+  rejected because of server connection limits.
+- Unified inbox is a saved search over a per-folder "include" flag, not a
+  merged store.
+- Autoconfig runs every source in parallel, highest priority wins, and marks
+  each result `isTrusted` only if every hop was valid HTTPS or DNSSEC.
+- Telemetry code exists but every build wires the no-op.
+- `@PiiSafe` compiler plugin keeps personal data out of `toString()` and logs.
+- Storage is moving to one global database (RFC 0007).
+
+Licences: thunderbird-ios and the ISPDB are MPL-2.0, which allows copying into a
+GPL-3.0 project if the copied files keep their MPL headers. thunderbird-android
+is Apache-2.0, also one-way compatible with GPL-3.0 (keep notices and
+`NOTICE`). The constraint is Grokbox's own "no third-party code" claim, not the
+licences. Vendoring even Foundation-only MIME code would change that sentence
+in the README and PRIVACY.md, so it needs a decision; porting ideas does not.
+
+### A hardened HTML reader for Grokbox, built only from system APIs
+
+Combines Thunderbird desktop's policy and Android's enforcement:
+
+- `WKWebViewConfiguration`: `allowsContentJavaScript = false`, no user scripts,
+  `WKWebsiteDataStore.nonPersistent()`.
+- A `WKContentRuleList` that blocks every http(s) load by default. Lifting it
+  for one message or one sender is the "load remote content" action.
+- A `WKURLSchemeHandler` for `cid:` that serves parts from memory.
+- An injected CSP (`default-src 'none'; img-src cid: data:; style-src
+  'unsafe-inline'`); a sender's own CSP can only tighten it.
+- Strip `meta http-equiv=refresh`, forms and scripts before loading.
+- `decidePolicyFor` cancels every navigation; links open in the browser after
+  a phishing check (the ported detector, reusing `LinkHygiene`).
+- Junk and unknown senders always get the sanitized simple view.
+
+This reverses PRIVACY.md's "Render HTML: never." Rendering with every network
+load blocked keeps the tracking-pixel claim true, but the sentence and the
+threat model change.
+
+### Proposed order, if the owner chooses the full-client direction
+
+Each phase names the ADR or doc it would reverse. None is approved.
+
+0. **Live proof first.** The first real-mail sweep has still never run
+   (RESUMING.md). A bigger client multiplies the untested IMAP surface.
+1. **In-lane fixes, no ADR conflict:** wire `LinkHygiene` into the Brief and
+   reader and add the Thunderbird checks (base-domain compare, form action);
+   decode body charsets; parse multipart properly; re-lock on background;
+   STARTTLS; IDLE on the inbox only; CONDSTORE/QRESYNC behind a per-account
+   switch; add the `.well-known` and MX steps to autoconfig; bundle an ISPDB
+   snapshot so the domain never leaves the Mac; accessibility batch C.
+2. **Full reader** (reverses "headers only" in ROADMAP "Not planned" and
+   PRIVACY.md "Render HTML"): real MIME tree via `BODYSTRUCTURE`, the hardened
+   web view above, remote content off with per-sender and per-message allow,
+   attachment list and save.
+3. **Mailbox browsing** (no ADR conflict, but new screens): folder tree from
+   `LIST` with SPECIAL-USE, chronological list with a dense and a card
+   density, real threading from References and In-Reply-To, per-message read,
+   flag, move, junk and trash (trash is allowed by ADR-0019).
+4. **Local store for bodies** (persistence change; PRIVACY.md "never stored"):
+   bodies cached as files, a full-text index in the same store, encryption at
+   rest decided up front. Thunderbird's Panorama schema is a useful starting
+   point.
+5. **Compose and send** (reverses ROADMAP "Sending mail. Out of scope." and
+   README "No SMTP"): SMTP over implicit TLS or STARTTLS, APPEND to Drafts and
+   Sent, and private headers by default: no User-Agent, UTC date rounded to
+   the minute, Message-ID from the From domain, a fixed EHLO literal, never an
+   automatic read receipt.
+6. **OAuth2 for Gmail and Outlook** (ADR-0002; auth): PKCE through
+   `ASWebAuthenticationSession`, XOAUTH2 over IMAP and SMTP, Grokbox's own
+   client IDs and Google verification. Reusing Thunderbird's IDs breaks
+   provider terms.
+7. **Design system** (owner directs visuals): semantic colour tokens with
+   soft/default/hover/pressed steps (the idea behind thunderbird-ios
+   `BoltUI`), a Dynamic Type scale, per-account colours, a listed set of row
+   states. Needs two or three named directions with comps before any code.
+
+Not recommended: OpenPGP (large, and RNP or GnuPG would be a dependency);
+S/MIME through Security.framework is the realistic later option. CardDAV and
+CalDAV: Contacts.framework and EventKit already cover the Mac.
+
+### Owner's decision (23 September 2026)
+
+Stay a triage tool. Build the in-lane fixes only; no ADR is reversed. Built the
+same day (uncommitted at the time of writing, listed under Unreleased in
+CHANGELOG.md): re-lock on background, phishing checks in the reader, MIME and
+charset decoding, accessibility batch C (GB-006, 035, 036, 037, 040, 041, 091),
+STARTTLS, and inbox push via IDLE. Not built from phase 1: CONDSTORE/QRESYNC,
+the autoconfig `.well-known` and MX steps, and a bundled ISPDB snapshot.
+
+### Sources
+
+- comm-central: `mailnews/mailnews.js`, `mail/app/profile/all-thunderbird.js`,
+  `mail/app/StaticPrefList.yaml`, `mailnews/base/src/nsMsgContentPolicy.cpp`,
+  `mail/modules/PhishingDetector.sys.mjs`, `mailnews/compose/src/SmtpClient.sys.mjs`,
+  `mailnews/compose/src/nsMsgCompUtils.cpp`, `mailnews/imap/src/nsImapProtocol.cpp`,
+  `mailnews/db/panorama/src/DatabaseCore.cpp` (github.com/mozilla/releases-comm-central, master, 2026-09-23)
+- source-docs.thunderbird.net: message_database, folder_storage, panorama
+- blog.thunderbird.net: Supernova (2023-07), folder pane preview (2023-02),
+  128 Nebula (2024-07), April 2024 digest, accessibility study (2025-09),
+  conversation view (2025-10), 2025 review, mobile progress report (2026-07)
+- roadmaps.thunderbird.net (desktop and iOS, updated 2026-07-23)
+- github.com/thunderbird/thunderbird-ios (`Core/`, `Bolt/`, `Documentation.docc/`,
+  `FeatureFlags.swift`, `EmailBodyView.swift`), github.com/thunderbird/swift-rich-html-editor
+- github.com/thunderbird/thunderbird-android (`docs/architecture/`, `docs/engineering/adr/`,
+  `docs/engineering/rfcs/` 0005 and 0007, `feature/autodiscovery/`, `library/html-cleaner/`,
+  `library/pii-safe/`, `MessageWebView.kt`, `ShowPictures.kt`)
+- Mozilla Connect Cards-view thread and support.mozilla.org pages were read via
+  search excerpts only (direct fetch returned 403)
+
+---
 
 <!-- Next research thread: append a new "## Thread N — <angle> (<date>)" section above this line. -->

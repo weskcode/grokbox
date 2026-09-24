@@ -37,12 +37,13 @@ public enum AccountKind: String, Codable, CaseIterable, Sendable {
     }
 
     /// Proton Bridge terminates TLS on loopback with its own certificate, so we
-    /// accept a self-signed cert there and nowhere else. Everything remote is
+    /// accept a self-signed cert there and nowhere else. STARTTLS is Bridge's
+    /// default connection mode. Everything remote is
     /// proper TLS. The demo server is in-process and speaks cleartext.
     public var defaultSecurity: IMAPSecurity {
         switch self {
         case .gmail, .generic: .tls
-        case .protonBridge: .tlsSelfSignedLoopback
+        case .protonBridge: .starttlsSelfSignedLoopback
         case .demo: .none
         }
     }
@@ -57,7 +58,7 @@ public enum AccountKind: String, Codable, CaseIterable, Sendable {
             + "Your normal Google password will not work."
         case .protonBridge:
             "The password shown in the Proton Mail Bridge app, not your Proton password. "
-            + "Bridge must be running, with Settings → Advanced → Connection mode set to SSL."
+            + "Bridge must be running. Its default connection mode, STARTTLS, works as is."
         case .generic:
             "Your IMAP password, or an app-specific password if your provider issues them."
         case .demo:

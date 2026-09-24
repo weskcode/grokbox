@@ -7,6 +7,33 @@ All notable changes to Grokbox are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- STARTTLS, which Proton Mail Bridge uses by default and many servers offer
+  on port 143. The upgrade is required: if a server does not offer it,
+  refuses it, sends data before encryption starts, or presents a certificate
+  that does not verify, Grokbox disconnects before sending the password. New
+  Bridge accounts now default to it.
+- New mail can start a tidy-up. With automatic tidy-up on, "Also when new mail
+  arrives" keeps one read-only connection per account listening to its inbox
+  (IMAP IDLE). A pass runs about 20 seconds after mail arrives, never within
+  five minutes of the last one. Mail leaving the inbox does not count.
+- The message reader warns about suspicious links above the text, using
+  Thunderbird's checks: link text naming one site but going to another,
+  lookalike (punycode) hosts, IP addresses in any disguise (decimal, hex,
+  octal, IPv6), and forms that post what you type.
+
+### Changed
+- The app lock locks again when Grokbox is hidden, the screen locks, or the
+  Mac sleeps, and on iPhone whenever it goes to the background. It used to
+  lock once per launch. The menu-bar summary is hidden while locked.
+- Message bodies are decoded properly: nested multiparts, attachments
+  skipped, and each part read in its own charset (ISO-8859-1, Windows-1252,
+  Shift_JIS and the rest) instead of always as UTF-8. The reader and the
+  model both see the difference.
+- Accessibility: the Sweep checkbox names its sender; Brief, Sweep and
+  Activity buttons say which message or sender they act on; section titles
+  are headings; controls stay in place (disabled) while work runs, and its
+  end is announced; the Senders filters report whether they are on; Add
+  Mailbox reads out errors; the reading-model choice is a real radio group.
 - Setup runs the moment an account is added: it confirms the password was
   accepted, says what it found on the server, asks how much mail to look at
   and how tidy you want things, then indexes and reads while showing progress

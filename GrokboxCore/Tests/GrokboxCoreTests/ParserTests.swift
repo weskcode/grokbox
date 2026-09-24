@@ -106,4 +106,99 @@ struct BodyExtractorTests {
         let long = String(repeating: "word ", count: 2_000)
         #expect(BodyExtractor.plainText(from: Data(long.utf8), maxCharacters: 100).count == 100)
     }
+
+    /// A MIME entity as `IMAPClient.fetchBodyExcerpt` returns it: header lines,
+    /// blank line, body — built from bytes so charsets are real.
+    private func entity(_ header: String, _ body: [UInt8]) -> Data {
+        Data((header + "\r\n\r\n").utf8) + Data(body)
+    }
+
+    @Test func decodesASinglePartInItsDeclaredCharset() {
+        // "Grüße" in ISO-8859-1: ü = 0xFC, ß = 0xDF. Read as UTF-8 these are garbage.
+        let body: [UInt8] = Array("Gr".utf8) + [0xFC, 0xDF] + Array("e aus Wien".utf8)
+        let text = BodyExtractor.plainText(from: entity("Content-Type: text/plain; charset=ISO-8859-1", body))
+        #expect(text == "Grüße aus Wien")
+    }
+
+    @Test func decodesQuotedPrintableInAWindowsCharset() {
+        // windows-1252 0x93/0x94 are curly quotes; 0x80 is the euro sign.
+        let text = BodyExtractor.plainText(from: entity(
+            "Content-Type: text/plain; charset=\"windows-1252\"\r\nContent-Transfer-Encoding: quoted-printable",
+            Array("=93Only =8025=94".utf8)))
+        #expect(text == "\u{201C}Only €25\u{201D}")
+    }
+
+    @Test func usesTheBoundaryFromTheHeaderAndWalksNestedParts() {
+        // The outer boundary line is not the first line (a preamble comes
+        // first), and the text lives inside a nested multipart/alternative.
+        let raw = """
+        This is a multi-part message in MIME format.\r
+        --outer\r
+        Content-Type: multipart/alternative; boundary="inner"\r
+        \r
+        --inner\r
+        Content-Type: text/plain; charset=utf-8\r
+        Content-Transfer-Encoding: base64\r
+        \r
+        \(Data("Nested café plain".utf8).base64EncodedString())\r
+        --inner\r
+        Content-Type: text/html; charset=utf-8\r
+        \r
+        <p>Nested <b>html</b></p>\r
+        --inner--\r
+        --outer\r
+        Content-Type: application/pdf\r
+        Content-Disposition: attachment; filename="bill.pdf"\r
+        \r
+        JVBERi0xLjQK\r
+        --outer--\r
+        """
+        let parts = BodyExtractor.extract(from: entity("Content-Type: multipart/mixed; boundary=outer", Array(raw.utf8)))
+        #expect(parts.plain == "Nested café plain")
+        #expect(parts.html?.contains("<b>html</b>") == true)
+    }
+
+    @Test func skipsATextAttachmentAheadOfTheBody() {
+        let raw = "--b\r\nContent-Type: text/plain\r\nContent-Disposition: attachment; filename=log.txt\r\n\r\nattached log\r\n--b\r\nContent-Type: text/plain\r\n\r\nthe real message\r\n--b--\r\n"
+        let text = BodyExtractor.plainText(from: entity("Content-Type: multipart/mixed; boundary=\"b\"", Array(raw.utf8)))
+        #expect(text == "the real message")
+    }
+
+    @Test func toleratesABase64PartCutOffByTheExcerptLimit() {
+        let full = Data("A sentence long enough to be cut part way through.".utf8).base64EncodedString()
+        let cut = String(full.prefix(full.count - 3))   // not a multiple of four
+        let text = BodyExtractor.plainText(from: entity(
+            "Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64", Array(cut.utf8)))
+        #expect(text.hasPrefix("A sentence long enough"))
+    }
+
+    @Test func readsTheCharsetFromAnHTMLMetaTagWhenTheHeaderHasNone() {
+        let body: [UInt8] = Array("<html><head><meta charset=\"iso-8859-1\"></head><body><p>Caf".utf8) + [0xE9] + Array("</p></body></html>".utf8)
+        let text = BodyExtractor.plainText(from: entity("Content-Type: text/html", body))
+        #expect(text == "Café")
+    }
+
+    @Test func anEmptyHeaderBlockMeansPlainText() {
+        let text = BodyExtractor.plainText(from: Data("\r\nKey: value is body text, not a header".utf8))
+        #expect(text == "Key: value is body text, not a header")
+    }
+}
+
+struct LiteralSectionTests {
+    @Test func pairsLiteralsWithTheSectionsTheyBelongTo() {
+        // Servers may answer in any order; the names decide, not the position.
+        let line = IMAPLine(text: "* 2 FETCH (UID 20 BODY[TEXT]<0> {4} BODY[HEADER.FIELDS (CONTENT-TYPE CONTENT-TRANSFER-ENCODING)] {2})",
+                            literals: [Data("body".utf8), Data("\r\n".utf8)])
+        let sections = IMAPResponseParser.literalSections(line)
+        #expect(sections.map(\.name) == ["BODY[TEXT]<0>", "BODY[HEADER.FIELDS (CONTENT-TYPE CONTENT-TRANSFER-ENCODING)]"])
+        #expect(sections.first?.data == Data("body".utf8))
+    }
+
+    @Test func aSectionSentAsNILIsSkippedRatherThanShiftingTheRest() {
+        let line = IMAPLine(text: "* 2 FETCH (UID 20 BODY[HEADER.FIELDS (CONTENT-TYPE)] NIL BODY[TEXT]<0> {4})",
+                            literals: [Data("body".utf8)])
+        let sections = IMAPResponseParser.literalSections(line)
+        #expect(sections.count == 1)
+        #expect(sections.first?.name == "BODY[TEXT]<0>")
+    }
 }

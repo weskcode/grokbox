@@ -7,6 +7,7 @@ import GrokboxCore
 /// needs you and deal with it in a minute.
 struct PhoneRootView: View {
     @Environment(AppState.self) private var state
+    @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \MailAccount.createdAt) private var accounts: [MailAccount]
     @State private var scope: UUID?          // nil = all accounts
     @State private var addingAccount = false
@@ -38,6 +39,11 @@ struct PhoneRootView: View {
         .sheet(isPresented: $addingAccount) { PhoneAddAccountView(onCreate: { onboarding = $0 }) }
         .sheet(item: $onboarding) { account in
             NavigationStack { AccountOnboarding(account: account, state: state) }
+        }
+        // Background only: the Face ID sheet itself makes the scene inactive,
+        // so locking on inactive would re-lock behind every unlock.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background { state.relockIfRequired() }
         }
         .task {
             Log.note("phone root appeared")

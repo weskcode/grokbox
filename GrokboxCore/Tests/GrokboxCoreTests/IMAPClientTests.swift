@@ -99,7 +99,9 @@ struct IMAPClientTests {
         let body = try await client.fetchBodyExcerpt(uid: 20)
         await client.logout()
 
-        let text = BodyExtractor.plainText(from: try #require(body))
+        let entity = try #require(body)
+        #expect(String(decoding: entity, as: UTF8.self).hasPrefix("Content-Type: text/plain"), "carries the header that says how to read it")
+        let text = BodyExtractor.plainText(from: entity)
         #expect(text.contains("Please reply by Friday"))
     }
 

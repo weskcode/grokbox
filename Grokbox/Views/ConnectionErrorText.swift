@@ -13,7 +13,10 @@ enum ConnectionErrorText {
             }
         }
         if text.localizedCaseInsensitiveContains("Connection refused") && kind == .protonBridge {
-            return "Nothing is listening on 127.0.0.1:\(port). Is Proton Mail Bridge running, with Connection mode set to SSL?"
+            return "Nothing is listening on 127.0.0.1:\(port). Is Proton Mail Bridge running?"
+        }
+        if text.localizedCaseInsensitiveContains("Timed out connecting") && kind == .protonBridge {
+            return "Bridge did not answer. If its Connection mode is set to SSL rather than STARTTLS, choose “TLS, self-signed” under Security."
         }
         return text
     }

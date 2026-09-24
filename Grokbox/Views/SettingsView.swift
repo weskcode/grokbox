@@ -14,6 +14,7 @@ struct SettingsView: View {
     @AppStorage("grokbox.ollamaModel") private var ollamaModel = OllamaProvider.defaultModel
     @AppStorage("grokbox.autoMaintain") private var autoMaintain = false
     @AppStorage("grokbox.autoIntervalMinutes") private var intervalMinutes = 30
+    @AppStorage("grokbox.autoOnNewMail") private var runsOnNewMail = true
     @AppStorage("grokbox.readLimit") private var readLimit = 25
     @AppStorage("grokbox.indexDepth") private var indexDepth = 1_000
     @AppStorage("grokbox.notify") private var notify = false
@@ -31,17 +32,18 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Reading model") {
-                ForEach(state.modelStatuses, id: \.name) { status in
-                    HStack {
-                        Button {
-                            preferredModel = status.name
-                            Task { await state.refreshModels() }
-                        } label: {
-                            Image(systemName: state.model?.name == status.name ? "largecircle.fill.circle" : "circle")
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(!status.availability.isAvailable)
-
+                // A real radio group: the whole label is the hit target, with
+                // group semantics and arrow keys (GB-091). Selection shows the
+                // model actually in use, which is the preference unless that
+                // one is unavailable.
+                Picker("Reading model", selection: Binding(
+                    get: { state.model?.name ?? "" },
+                    set: { name in
+                        preferredModel = name
+                        Task { await state.refreshModels() }
+                    }
+                )) {
+                    ForEach(state.modelStatuses, id: \.name) { status in
                         VStack(alignment: .leading, spacing: 2) {
                             Text(status.name)
                             switch status.availability {
@@ -51,8 +53,12 @@ struct SettingsView: View {
                                 Text(reason).font(.caption).foregroundStyle(.secondary)
                             }
                         }
+                        .tag(status.name)
+                        .disabled(!status.availability.isAvailable)
                     }
                 }
+                .pickerStyle(.radioGroup)
+                .labelsHidden()
                 TextField("Ollama model", text: $ollamaModel, prompt: Text(OllamaProvider.defaultModel))
                     .onSubmit { Task { await state.refreshModels() } }
                 Button("Check again") { Task { await state.refreshModels() } }
@@ -71,6 +77,9 @@ struct SettingsView: View {
                     Text("3 hours").tag(180)
                 }
                 .disabled(!autoMaintain)
+                Toggle("Also when new mail arrives", isOn: $runsOnNewMail)
+                    .disabled(!autoMaintain)
+                    .help("Keeps one read-only connection per account listening to its inbox (IMAP IDLE). A tidy-up then runs shortly after mail arrives, but never within five minutes of the last one.")
 
                 Toggle("Notify me when a tidy-up finds something that needs me", isOn: $notify)
                     .onChange(of: notify) { _, on in if on { NotificationService.requestPermission() } }
@@ -188,7 +197,7 @@ struct SettingsView: View {
 
             Section("App lock") {
                 Toggle("Require Face ID or Touch ID to open Grokbox", isOn: Bindable(state).biometricLockSettings.enabled)
-                Text("Asked for every time Grokbox opens, starting next launch. Falls back to your device password if biometrics are not enrolled. This locks the app's own window only — it does not encrypt anything further.")
+                Text("Asked when Grokbox opens, and again after it has been hidden, the screen locks, or the Mac sleeps. Falls back to your device password if biometrics are not enrolled. Covers the window and the menu-bar summary; it does not encrypt anything further.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
