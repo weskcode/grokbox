@@ -26,7 +26,11 @@ struct MenuBarView: View {
                 }
             }
 
-            if state.isBusy {
+            if state.biometricLockSettings.enabled && !state.isUnlocked {
+                // The popover shows senders and summaries; the lock covers it too.
+                Label("Grokbox is locked. Open it to unlock.", systemImage: "lock.fill")
+                    .font(.callout).foregroundStyle(.secondary)
+            } else if state.isBusy {
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.small)
                     Text(state.maintainer.phase.isRunning ? state.maintainer.phase.label : state.engine.phase.label)

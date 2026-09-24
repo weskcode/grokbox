@@ -192,7 +192,7 @@ struct SettingsView: View {
 
             Section("App lock") {
                 Toggle("Require Face ID or Touch ID to open Grokbox", isOn: Bindable(state).biometricLockSettings.enabled)
-                Text("Asked for every time Grokbox opens, starting next launch. Falls back to your device password if biometrics are not enrolled. This locks the app's own window only — it does not encrypt anything further.")
+                Text("Asked when Grokbox opens, and again after it has been hidden, the screen locks, or the Mac sleeps. Falls back to your device password if biometrics are not enrolled. Covers the window and the menu-bar summary; it does not encrypt anything further.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }

@@ -2,11 +2,12 @@ import SwiftUI
 import GrokboxCore
 
 /// Shown instead of the app's normal content when biometric lock is on and
-/// this launch has not yet passed it. Reuses the same empty-state visual
+/// the app has not been unlocked since it last left sight. Reuses the same empty-state visual
 /// language as `RootView`'s own empty states rather than inventing a new one.
 struct LockView: View {
     let state: AppState
 
+    @Environment(\.scenePhase) private var scenePhase
     @State private var isUnlocking = false
     @State private var errorMessage: String?
 
@@ -28,7 +29,12 @@ struct LockView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(32)
-        .task { await unlock() }
+        // Ask only once the app is in front. The lock can engage while the
+        // screen is locked or the app hidden, and a prompt raised then fails
+        // unseen and leaves an error waiting for the user.
+        .onChange(of: scenePhase, initial: true) { _, phase in
+            if phase == .active { Task { await unlock() } }
+        }
     }
 
     private func unlock() async {

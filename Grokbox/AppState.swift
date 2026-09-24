@@ -45,11 +45,21 @@ final class AppState {
         }
     }
 
-    /// Whether this launch has passed the biometric gate — or never needed
-    /// to, if the lock was off when the app launched. Never persisted: a
-    /// session that started unlocked stays unlocked even if the setting is
-    /// turned on mid-session; only the next cold launch is actually gated.
+    /// Whether the biometric gate has been passed since the app last left
+    /// sight — or never needed to be, if the lock was off at launch. Never
+    /// persisted. Turning the setting on mid-session does not lock at once;
+    /// the next `relockIfRequired()` does.
     var isUnlocked: Bool = !BiometricLockSettings.current.enabled
+
+    /// Locks again if the app lock is on. Called when Grokbox leaves the
+    /// user's sight: on the Mac when it is hidden, the screen locks or
+    /// sleeps, or the session switches user; on iOS when it goes to the
+    /// background. Without this the lock was passed once per launch.
+    func relockIfRequired() {
+        guard biometricLockSettings.enabled, isUnlocked else { return }
+        isUnlocked = false
+        Log.note("app locked")
+    }
 
     /// Set once at launch if the index had to be rebuilt or cannot be written.
     /// Shown as a banner until dismissed — silently losing someone's index and
@@ -111,7 +121,29 @@ final class AppState {
             // summary is rebuilt here or it would go stale between them.
             self.refreshDigest(self.allAccounts)
         }
+        #if os(macOS)
+        observeLockTriggers()
+        #endif
     }
+
+    #if os(macOS)
+    /// The moments a Mac is out of its owner's sight. Merely switching to
+    /// another app is not one of them: locking on every ⌘-Tab would make the
+    /// lock something people turn off.
+    private func observeLockTriggers() {
+        let relock: @Sendable (Notification) -> Void = { [weak self] _ in
+            MainActor.assumeIsolated { self?.relockIfRequired() }
+        }
+        NotificationCenter.default.addObserver(forName: NSApplication.didHideNotification, object: nil, queue: .main, using: relock)
+        let workspace = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.screensDidSleepNotification, NSWorkspace.willSleepNotification,
+                     NSWorkspace.sessionDidResignActiveNotification] {
+            workspace.addObserver(forName: name, object: nil, queue: .main, using: relock)
+        }
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("com.apple.screenIsLocked"), object: nil, queue: .main, using: relock)
+    }
+    #endif
 
     /// What every Stop button calls. Stopping only the engine or only the
     /// executor would let a tidy-up carry on to its next step, so this always
