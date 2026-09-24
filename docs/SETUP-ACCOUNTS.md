@@ -68,18 +68,19 @@ decrypts locally and exposes a normal IMAP server on your machine.
 2. Install Bridge from proton.me and sign in.
 3. Bridge shows a per-account username and a **Bridge-specific password** — this
    is not your Proton password. Copy it.
-4. In Bridge → Settings → Advanced, set **Connection mode** to **SSL**. Grokbox does not
-   speak STARTTLS.
+4. Leave Bridge's **Connection mode** at its default, **STARTTLS**. If you set it
+   to **SSL**, choose "TLS, self-signed" under Security when adding the account.
 5. In Grokbox: Add Account → Proton Mail (via Bridge), paste both.
 5. Bridge must be running whenever Grokbox syncs.
 
 Defaults are `127.0.0.1`, port 1143.
 
-**Known limitation:** Grokbox v0.1 speaks implicit TLS or cleartext, not
-STARTTLS. Bridge often expects STARTTLS on 1143. If the connection fails, that
-is the likely cause — STARTTLS is on the v0.2 roadmap. The cleartext option is
-offered because Bridge is loopback-only, so those bytes never leave the machine,
-but it will only work if your Bridge is configured to allow it.
+Grokbox speaks implicit TLS and STARTTLS. STARTTLS is always required, never
+optional: if a server does not offer it, refuses it, or its certificate does
+not verify, Grokbox disconnects before sending your password. Self-signed
+certificates are accepted only on 127.0.0.1, which is where Bridge runs. The
+cleartext option is offered for the same reason, but it will only work if your
+Bridge is configured to allow it.
 
 Of the two providers, **Gmail is the verified path in v0.1.** Proton is wired up
 but less tested.

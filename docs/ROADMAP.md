@@ -53,7 +53,7 @@ not model (odd `LIST` shapes, servers that fold differently, huge mailboxes).
 
 - **Live run on a real Gmail account.** Everything above is verified against
   the demo mailboxes and a fake server; a real server will find edge cases.
-- STARTTLS (Bridge's default mode); today Bridge must be set to SSL mode
+- STARTTLS, Bridge's default mode (built 23 September 2026; required, never a fallback to cleartext)
 - Design pass — the UI is deliberately unstyled; the owner directs that
 - XCUITest smoke suite driving the demo flow through the real UI
 - Faster reads: the structured schema costs ~10 s/message on-device; try a

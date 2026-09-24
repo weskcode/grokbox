@@ -6,7 +6,7 @@
 
 | Destination | When | What | Can you turn it off? |
 |---|---|---|---|
-| **Your IMAP server** (e.g. `imap.gmail.com:993`) | Index, Read, Sweep, Tidy-up | IMAP commands. Credentials over TLS. Header and body reads are `PEEK`, so nothing is marked read by looking. | It is the product; remove the account. |
+| **Your IMAP server** (e.g. `imap.gmail.com:993`) | Index, Read, Sweep, Tidy-up. With automatic tidy-up on and "Also when new mail arrives" ticked, one more read-only connection per account stays open, listening to the inbox (IMAP `IDLE`) | IMAP commands. Credentials over TLS, either from the first byte or after a required `STARTTLS`. Header and body reads are `PEEK`, so nothing is marked read by looking. | It is the product; remove the account. Untick "Also when new mail arrives" to close the listening connection. |
 | **`autoconfig.<your domain>`** and **`autoconfig.thunderbird.net`** (Mozilla's ISPDB) | Only when you press "Look up settings" while adding an account | Just the domain of the address you typed — never the full address | Type in server settings by hand instead. |
 | **`127.0.0.1:11434`** (Ollama) | Read, if you chose Ollama | Subject, sender, and up to 3,000 characters of body text per message | Choose Apple's model instead, or none. Loopback only — the code refuses any other host. |
 | **A sender's unsubscribe URL** | When you click Unsubscribe, or — only if you turn it on in Settings — automatically during a sweep for senders that meet the conditions you set | An RFC 8058 POST to the HTTPS URL the sender put in their own `List-Unsubscribe` header | Do not click it. |

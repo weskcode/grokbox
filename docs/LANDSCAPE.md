@@ -94,7 +94,8 @@ clients can still do: `LinkHygiene` inspects the body excerpt the reader
 already fetches and flags the classic tells: link text that shows one domain
 but goes to another, punycode look-alike hosts, bare-IP links, and
 "act now" mail that never links back to the sender's own domain. Warnings
-appear on the Brief row.
+appear at the top of the message reader. (Added 23 September: forms, and IP
+hosts written in decimal, hex or octal, after Thunderbird's detector.)
 
 ### 6. Snooze, unified inbox, search
 Mailspring, FairEmail, and Proton snooze **(source)**; every client has a
