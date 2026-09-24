@@ -3,8 +3,11 @@ import Foundation
 /// The checks a careful mail client makes before it lets you click.
 ///
 /// Grokbox never renders HTML, so tracking pixels and scripts cannot run.
-/// What it *can* do, on the body excerpt the reader already fetches, is
-/// notice the classic phishing tells and say so on the row.
+/// What it *can* do, on the body the reader fetches, is notice the classic
+/// phishing tells and say so above the message. The checks follow
+/// Thunderbird's phishing detector (`PhishingDetector.sys.mjs`): link text
+/// that names one site but goes to another, hosts written as IP addresses in
+/// any of their disguises, and forms that post what you type somewhere.
 public enum LinkHygiene {
     public struct Report: Sendable, Equatable {
         public var warnings: [String]
@@ -12,8 +15,15 @@ public enum LinkHygiene {
         public var isSuspicious: Bool { !warnings.isEmpty }
     }
 
+    /// Inspects a MIME entity (or a bare body), decoded first so links inside
+    /// quoted-printable or base64 parts are seen.
     public static func inspect(rawBody: Data, senderDomain: String) -> Report {
-        let text = String(decoding: rawBody, as: UTF8.self)
+        inspect(BodyExtractor.extract(from: rawBody), senderDomain: senderDomain)
+    }
+
+    public static func inspect(_ body: BodyExtractor.Extracted, senderDomain: String) -> Report {
+        // The HTML part carries anchors; the plain part only bare URLs.
+        let text = body.html ?? body.plain ?? ""
         var warnings: [String] = []
         var hosts: [String] = []
 
@@ -28,6 +38,14 @@ public enum LinkHygiene {
         // Bare URLs in plain text.
         for url in bareURLs(in: text) {
             if let host = hostName(of: url) { hosts.append(host) }
+        }
+
+        for action in formActions(in: text) {
+            if let host = hostName(of: action) {
+                warnings.append("contains a form that sends what you type to \(host)")
+            } else {
+                warnings.append("contains a form asking you to type something in")
+            }
         }
 
         let unique = Array(Set(hosts)).sorted()
@@ -106,16 +124,54 @@ public enum LinkHygiene {
     static func registrable(_ host: String) -> String {
         let labels = host.split(separator: ".").map(String.init)
         guard labels.count >= 2 else { return host }
-        let secondLevel = ["co", "com", "net", "org", "gov", "ac", "edu"]
+        let secondLevel = ["co", "com", "net", "org", "gov", "ac", "edu", "ne", "or", "go", "gob", "mil", "nic", "ltd", "plc"]
         if labels.count >= 3, secondLevel.contains(labels[labels.count - 2]), labels.last!.count == 2 {
             return labels.suffix(3).joined(separator: ".")
         }
         return labels.suffix(2).joined(separator: ".")
     }
 
+    /// Dotted-quad, but also the disguises browsers still accept: one big
+    /// decimal (`3232235777`), hex (`0xC0A80001`, `0xC0.0xA8.0.1`), octal
+    /// (`0300.0250.0.1`), and IPv6 literals.
     static func isIPAddress(_ host: String) -> Bool {
-        let parts = host.split(separator: ".")
-        return parts.count == 4 && parts.allSatisfy { Int($0).map { (0...255).contains($0) } ?? false }
+        let host = host.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        if host.contains(":") { return host.allSatisfy { $0.isHexDigit || $0 == ":" || $0 == "." } }
+        let parts = host.split(separator: ".", omittingEmptySubsequences: false)
+        guard (1...4).contains(parts.count) else { return false }
+        return parts.allSatisfy { numericComponent($0) != nil }
+    }
+
+    private static func numericComponent(_ part: Substring) -> UInt64? {
+        let lower = part.lowercased()
+        if lower.hasPrefix("0x") { return lower.count > 2 ? UInt64(lower.dropFirst(2), radix: 16) : nil }
+        if lower.count > 1, lower.hasPrefix("0") { return UInt64(lower.dropFirst(), radix: 8) }
+        return UInt64(lower)
+    }
+
+    /// The `action` of every `<form>`. A form in mail has no honest use.
+    static func formActions(in html: String) -> [String] {
+        var out: [String] = []
+        var remainder = Substring(html)
+        while let open = remainder.range(of: "<form", options: .caseInsensitive) {
+            let tag = remainder[open.upperBound...]
+            let close = tag.firstIndex(of: ">") ?? tag.endIndex
+            let attrs = tag[..<close]
+            if let actionRange = attrs.range(of: "action=", options: .caseInsensitive) {
+                var value = attrs[actionRange.upperBound...]
+                if let quote = value.first, quote == "\"" || quote == "'" {
+                    value = value.dropFirst()
+                    value = value.prefix { $0 != quote }
+                } else {
+                    value = value.prefix { !$0.isWhitespace }
+                }
+                out.append(String(value))
+            } else {
+                out.append("")
+            }
+            remainder = tag[close...]
+        }
+        return out
     }
 
     static func looksLikeAccountMail(_ text: String) -> Bool {

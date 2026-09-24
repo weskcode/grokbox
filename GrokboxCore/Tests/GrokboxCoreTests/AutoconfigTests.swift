@@ -174,6 +174,32 @@ struct LinkHygieneTests {
         #expect(r.isSuspicious)
     }
 
+    @Test func findsTheMismatchInsideAQuotedPrintableHTMLPart() {
+        // `href=3D"...` is how quoted-printable writes `href="...`. Read raw,
+        // the link is invisible; decoded first, it is caught.
+        let raw = "Content-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n"
+            + "<p>Please <a href=3D\"https://evil.example/login\">northbank.example/secure</a> to verify your account.</p>"
+        let r = report(raw)
+        #expect(r.warnings.contains { $0.contains("shows northbank.example") && $0.contains("goes to evil.example") })
+    }
+
+    @Test func aFormInMailIsFlagged() {
+        let r = report(#"<form action="https://collect.example/pw" method="post"><input name="password"></form>"#)
+        #expect(r.warnings.contains { $0.contains("form") && $0.contains("collect.example") })
+        #expect(report(#"<form><input></form>"#).warnings.contains { $0.contains("form") })
+    }
+
+    @Test func disguisedIPAddressesAreStillIPAddresses() {
+        for host in ["3232235777", "0xC0A80001", "0300.0250.0.1", "0xC0.0xA8.0.1", "::1", "[2001:db8::1]"] {
+            #expect(LinkHygiene.isIPAddress(host), "\(host)")
+        }
+        for host in ["northbank.example", "123.com", "localhost", "cafe"] {
+            #expect(!LinkHygiene.isIPAddress(host), "\(host)")
+        }
+        let r = report(#"<a href="http://3232235777/login">Sign in</a> to your account"#)
+        #expect(r.warnings.contains { $0.contains("bare IP") })
+    }
+
     @Test func registrableDomainHandlesCountryCodes() {
         #expect(LinkHygiene.registrable("mail.google.com") == "google.com")
         #expect(LinkHygiene.registrable("news.bbc.co.uk") == "bbc.co.uk")
