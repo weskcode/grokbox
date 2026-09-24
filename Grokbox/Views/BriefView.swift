@@ -155,10 +155,9 @@ struct BriefView: View {
             Text(Date.now, format: .dateTime.weekday(.wide).month(.wide).day())
                 .font(.largeTitle.weight(.semibold))
             HStack(spacing: 12) {
-                if state.engine.phase.isRunning {
-                    EngineStatusBar(label: state.engine.phase.label, fraction: state.engine.phase.fraction,
-                                    isRunning: true, isFailed: false, onStop: { state.stop() })
-                } else {
+                // Always mounted, disabled while busy: swapping them out for
+                // the progress bar dropped VoiceOver focus (GB-037).
+                Group {
                     Button {
                         Task { await state.readAll(accounts) }
                     } label: {
@@ -183,7 +182,12 @@ struct BriefView: View {
                     .disabled(state.model == nil || state.isBusy)
                     .fixedSize()
                     .help("Reads older unread mail — but only from people and record-keeping senders, or flagged. Bulk mail is never worth the model's time.")
+                }
 
+                if state.engine.phase.isRunning {
+                    EngineStatusBar(label: state.engine.phase.label, fraction: state.engine.phase.fraction,
+                                    isRunning: true, isFailed: false, onStop: { state.stop() })
+                } else {
                     if case .failed(let message) = state.engine.phase {
                         Text(message).font(.callout).foregroundStyle(.red).lineLimit(1).help(message)
                     } else if case .finished(let message) = state.maintainer.phase, state.maintainer.lastRunAt != nil {
@@ -221,7 +225,7 @@ struct BriefView: View {
     private func section(_ title: String, subtitle: String?, items: [Ranked], empty: String, accent: Color) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
-                Text(title).font(.title3.weight(.semibold))
+                Text(title).font(.title3.weight(.semibold)).accessibilityAddTraits(.isHeader)
                 if !items.isEmpty { Text("\(items.count)").font(.callout).foregroundStyle(.secondary) }
                 if let subtitle { Text(subtitle).font(.callout).foregroundStyle(.secondary) }
             }
@@ -246,6 +250,7 @@ struct BriefView: View {
                 }
             }
             .buttonStyle(.plain)
+            .accessibilityAddTraits(.isHeader)
             if showWorthKnowing {
                 if worthKnowing.isEmpty {
                     Text("Nothing new worth reading.").foregroundStyle(.secondary).padding(.vertical, 6)
@@ -260,6 +265,7 @@ struct BriefView: View {
         let message = item.message
         return HStack(alignment: .top, spacing: 12) {
             RoundedRectangle(cornerRadius: 2).fill(accent).frame(width: 3).padding(.vertical, 2)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text(message.senderName.isEmpty ? message.senderAddress : message.senderName).font(.headline)
@@ -287,6 +293,7 @@ struct BriefView: View {
             VStack(alignment: .trailing, spacing: 6) {
                 if let account = account(for: message), let url = account.webLink(for: message) {
                     Button("Open") { openURL(url) }.controlSize(.small)
+                        .accessibilityLabel("Open \(message.subject) in browser")
                 }
                 Button("Done") {
                     guard let account = account(for: message) else { return }
@@ -295,6 +302,7 @@ struct BriefView: View {
                 }
                 .controlSize(.small)
                 .disabled(state.isBusy)
+                .accessibilityLabel("Archive \(item.others.isEmpty ? "message" : "thread") from \(message.senderName.isEmpty ? message.senderAddress : message.senderName): \(message.subject)")
                 .help((item.others.isEmpty ? "Archive this message. " : "Archive all \(item.thread.count) messages in this thread. ")
                       + (account(for: message).map { [.gmail, .demo].contains($0.kind) } ?? true
                          ? "Undo from Activity." : "Activity shows whether this server lets it be undone."))
@@ -306,6 +314,7 @@ struct BriefView: View {
                 }
                 .controlSize(.small)
                 .fixedSize()
+                .accessibilityLabel("Later: snooze \(message.subject)")
                 .help("Hide until then. Deferring on purpose is not the same as forgetting.")
             }
         }

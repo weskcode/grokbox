@@ -32,17 +32,18 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Reading model") {
-                ForEach(state.modelStatuses, id: \.name) { status in
-                    HStack {
-                        Button {
-                            preferredModel = status.name
-                            Task { await state.refreshModels() }
-                        } label: {
-                            Image(systemName: state.model?.name == status.name ? "largecircle.fill.circle" : "circle")
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(!status.availability.isAvailable)
-
+                // A real radio group: the whole label is the hit target, with
+                // group semantics and arrow keys (GB-091). Selection shows the
+                // model actually in use, which is the preference unless that
+                // one is unavailable.
+                Picker("Reading model", selection: Binding(
+                    get: { state.model?.name ?? "" },
+                    set: { name in
+                        preferredModel = name
+                        Task { await state.refreshModels() }
+                    }
+                )) {
+                    ForEach(state.modelStatuses, id: \.name) { status in
                         VStack(alignment: .leading, spacing: 2) {
                             Text(status.name)
                             switch status.availability {
@@ -52,8 +53,12 @@ struct SettingsView: View {
                                 Text(reason).font(.caption).foregroundStyle(.secondary)
                             }
                         }
+                        .tag(status.name)
+                        .disabled(!status.availability.isAvailable)
                     }
                 }
+                .pickerStyle(.radioGroup)
+                .labelsHidden()
                 TextField("Ollama model", text: $ollamaModel, prompt: Text(OllamaProvider.defaultModel))
                     .onSubmit { Task { await state.refreshModels() } }
                 Button("Check again") { Task { await state.refreshModels() } }

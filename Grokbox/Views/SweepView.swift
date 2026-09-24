@@ -65,10 +65,10 @@ struct SweepView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
-                if state.executor.phase.isRunning {
-                    EngineStatusBar(label: state.executor.phase.label, fraction: nil, isRunning: true, isFailed: false,
-                                    onStop: { state.stop() })
-                } else if let plan {
+                // The controls stay mounted and are disabled while a sweep
+                // runs, rather than swapped out, so VoiceOver focus survives
+                // pressing Archive (GB-037).
+                if let plan {
                     Button {
                         var toApply = plan
                         toApply.items = toApply.items.map { var i = $0; i.markRead = markRead; return i }
@@ -85,12 +85,16 @@ struct SweepView: View {
 
                     Toggle("Also mark read", isOn: $markRead)
 
-                    Button("All") { setAll(true) }.controlSize(.small)
-                    Button("None") { setAll(false) }.controlSize(.small)
+                    Button("All") { setAll(true) }.controlSize(.small).disabled(state.isBusy)
+                    Button("None") { setAll(false) }.controlSize(.small).disabled(state.isBusy)
                     Button("Refresh") { self.plan = buildPlan() }.disabled(state.isBusy)
 
-                    EngineStatusBar(label: state.executor.phase.label, fraction: nil, isRunning: false,
-                                    isFailed: { if case .failed = state.executor.phase { true } else { false } }())
+                    EngineStatusBar(label: state.executor.phase.label, fraction: nil, isRunning: state.executor.phase.isRunning,
+                                    isFailed: { if case .failed = state.executor.phase { true } else { false } }(),
+                                    onStop: { state.stop() })
+                } else if state.executor.phase.isRunning {
+                    EngineStatusBar(label: state.executor.phase.label, fraction: nil, isRunning: true, isFailed: false,
+                                    onStop: { state.stop() })
                 }
             }
             Text("Each sender is filed into the folder for its kind — Promotions, Newsletters, Notifications — never a generic bin. Flagged mail, mail the model says needs you, and receipts are held back automatically. Nothing is deleted. \(undoPromise) Approving a sender writes a rule so future mail is filed the same way.")
@@ -116,6 +120,8 @@ struct SweepView: View {
                             .foregroundStyle(.secondary)
                     }
                     .font(.callout)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityAddTraits(.isHeader)
                 }
             }
         }
@@ -124,7 +130,11 @@ struct SweepView: View {
     private func itemRow(_ item: CleanupPlan.Item) -> some View {
         Group {
                 HStack(spacing: 12) {
-                    Toggle("", isOn: binding(for: item.id)).labelsHidden()
+                    // The label is hidden on screen but is what VoiceOver
+                    // reads: this checkbox is the consent for a bulk move (GB-006).
+                    Toggle("Include \(item.cluster.displayName)", isOn: binding(for: item.id))
+                        .labelsHidden()
+                        .accessibilityValue(item.isEnabled ? "Will be archived" : "Excluded")
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 6) {
                             Button(item.cluster.displayName) { drillDown = profiles.first { $0.address == item.cluster.address } }
@@ -151,6 +161,7 @@ struct SweepView: View {
                     }
                     .controlSize(.small)
                     .help("Never suggest sweeping this sender.")
+                    .accessibilityLabel("Always keep \(item.cluster.displayName)")
                 }
                 .padding(.vertical, 4)
                 .opacity(item.isEnabled ? 1 : 0.45)

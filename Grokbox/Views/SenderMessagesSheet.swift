@@ -72,6 +72,7 @@ struct SenderMessagesSheet: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(profile.displayName).font(.title3.weight(.semibold))
+                    .accessibilityAddTraits(.isHeader).accessibilityHeading(.h1)
                 Text(profile.address).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()

@@ -19,6 +19,7 @@ struct AddAccountSheet: View {
     @State private var security = AccountKind.gmail.defaultSecurity
     @State private var errorMessage: String?
     @State private var isTesting = false
+    @AccessibilityFocusState private var errorFocused: Bool
 
     private var canSave: Bool {
         !username.isEmpty && !password.isEmpty && !host.isEmpty && Int(port) != nil && !isTesting
@@ -32,6 +33,7 @@ struct AddAccountSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Add Mailbox")
                 .font(.title2.weight(.semibold))
+                .accessibilityAddTraits(.isHeader).accessibilityHeading(.h1)
 
             demoBox
 
@@ -72,12 +74,16 @@ struct AddAccountSheet: View {
                     .font(.callout)
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
+                    // Moved to when it appears, so the guidance is read out
+                    // instead of appearing silently below the Add button (GB-035).
+                    .accessibilityFocused($errorFocused)
             }
 
             HStack {
                 if isTesting {
-                    ProgressView().controlSize(.small)
+                    ProgressView().controlSize(.small).accessibilityLabel("Checking the connection")
                     Text("Checking the connection…").font(.callout).foregroundStyle(.secondary)
+                        .accessibilityAddTraits(.updatesFrequently)
                 }
                 Spacer()
                 Button("Cancel") { dismiss() }
@@ -85,17 +91,22 @@ struct AddAccountSheet: View {
                 Button("Add") { Task { await save() } }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canSave)
+                    .accessibilityHint(canSave ? "" : "Enter an email address, password, server and numeric port first")
             }
         }
         .padding(20)
         .frame(width: 480)
+        .onChange(of: errorMessage) { _, message in if message != nil { errorFocused = true } }
+        .onChange(of: isTesting) { _, testing in
+            if testing { AccessibilityNotification.Announcement("Checking the connection").post() }
+        }
     }
 
     private var demoBox: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Try it first").font(.headline)
+                    Text("Try it first").font(.headline).accessibilityAddTraits(.isHeader).accessibilityHeading(.h2)
                     Text("Three sample mailboxes, generated on this Mac. Nothing real is touched.")
                         .font(.caption).foregroundStyle(.secondary)
                 }

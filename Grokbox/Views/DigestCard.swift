@@ -26,7 +26,7 @@ struct DigestCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Where things stand").font(.title3.weight(.semibold))
+                Text("Where things stand").font(.title3.weight(.semibold)).accessibilityAddTraits(.isHeader)
                 if let latest {
                     Text(latest.generatedAt, format: .relative(presentation: .named)).font(.callout).foregroundStyle(.secondary)
                 }
