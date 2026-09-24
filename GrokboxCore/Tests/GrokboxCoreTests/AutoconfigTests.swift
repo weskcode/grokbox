@@ -49,15 +49,17 @@ struct AutoconfigParsingTests {
         #expect(!found.offersOAuth2)
     }
 
-    @Test func starttlsOnlyIsReportedNotSilentlyDowngraded() {
+    /// STARTTLS used to be unsupported and reported as a failure. Grokbox now
+    /// speaks it, and always requires the upgrade, so a STARTTLS-only
+    /// provider is usable and still encrypted.
+    @Test func starttlsOnlyIsUsedAsRequiredSTARTTLS() throws {
         let xml = """
         <clientConfig version="1.1"><emailProvider id="x">
           <incomingServer type="imap"><hostname>imap.x.example</hostname><port>143</port><socketType>STARTTLS</socketType></incomingServer>
         </emailProvider></clientConfig>
         """
-        let result = AutoconfigService.parse(xml: Data(xml.utf8), email: "a@x.example", source: "t")
-        guard case .failure(let failure) = result else { Issue.record("should fail"); return }
-        #expect(failure == .onlySTARTTLS(host: "imap.x.example"))
+        let found = try AutoconfigService.parse(xml: Data(xml.utf8), email: "a@x.example", source: "t").get()
+        #expect(found.port == 143 && found.security == .starttls)
     }
 
     @Test func prefersSSLEntryWhenBothOffered() throws {

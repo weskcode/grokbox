@@ -134,7 +134,7 @@ struct Guide: Equatable {
         why: "Proton encrypts mail end to end, so no server speaks plain IMAP. Bridge runs on your Mac, decrypts locally, and gives Grokbox its own password — not your Proton password.",
         steps: [
             "Install and sign into Proton Mail Bridge. It needs a paid Proton plan.",
-            "In Bridge, open Settings → Advanced and set Connection mode to SSL.",
+            "Leave Bridge's Connection mode at its default, STARTTLS. If you changed it to SSL, choose “TLS, self-signed” under Security below.",
             "Open your account in Bridge and copy the IMAP password it shows.",
             "Paste it here. Bridge must be running whenever Grokbox syncs.",
         ],

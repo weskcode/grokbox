@@ -173,6 +173,32 @@ public actor IMAPClient {
         guard greeting.text.hasPrefix("* OK") || greeting.text.hasPrefix("* PREAUTH") else {
             throw IMAPError.unexpectedResponse(greeting.text)
         }
+        if security.usesStartTLS {
+            do {
+                try await upgradeToTLS(greeting: greeting.text)
+            } catch {
+                await connection.disconnect()
+                throw error
+            }
+        }
+    }
+
+    /// RFC 3501 §6.2.1 and RFC 8314 §3: STARTTLS first, before any
+    /// credentials. There is no fallback to cleartext on any path. A PREAUTH
+    /// greeting means the server considers the session already
+    /// authenticated and will not accept STARTTLS, so it is refused too.
+    private func upgradeToTLS(greeting: String) async throws {
+        guard greeting.hasPrefix("* OK") else { throw IMAPError.startTLSUnavailable }
+        let offered = try await preLoginCapabilities()
+        guard offered.contains("STARTTLS") else { throw IMAPError.startTLSUnavailable }
+        let result = try await execute("STARTTLS")
+        guard result.isOK else { throw IMAPError.commandFailed(command: "STARTTLS", response: result.completionDetail) }
+        try await connection.startTLS()
+        // Capabilities learned in cleartext are discarded (RFC 3501 §6.2.1);
+        // this also proves the handshake completed before LOGIN is sent.
+        let secured = try await execute("CAPABILITY")
+        guard secured.isOK else { throw IMAPError.commandFailed(command: "CAPABILITY", response: secured.completionDetail) }
+        capabilities = IMAPCapabilities(raw: [])
     }
 
     public func login(username: String, password: String) async throws {

@@ -37,7 +37,6 @@ public enum AutoconfigService {
 
     public enum Failure: Error, Equatable {
         case invalidAddress
-        case onlySTARTTLS(host: String)
         case nothingFound
     }
 
@@ -65,23 +64,16 @@ public enum AutoconfigService {
             throw Failure.invalidAddress
         }
         let domain = String(trimmed[trimmed.index(after: at)...])
-        var sawSTARTTLSOnly: String?
 
         // 1. The provider's own endpoint. Domain only, no address parameter.
         if let url = URL(string: endpoints.providerTemplate.replacingOccurrences(of: "%DOMAIN%", with: domain)),
            let data = try? await fetch(url, session: session) {
-            switch parse(xml: data, email: trimmed, source: "\(domain)'s autoconfig") {
-            case .success(let found): return found
-            case .failure(let failure): if case .onlySTARTTLS(let host) = failure { sawSTARTTLSOnly = host }
-            }
+            if case .success(let found) = parse(xml: data, email: trimmed, source: "\(domain)'s autoconfig") { return found }
         }
 
         // 2. Mozilla's ISPDB, by domain.
         if let data = try? await fetch(endpoints.ispdbBase.appending(path: domain), session: session) {
-            switch parse(xml: data, email: trimmed, source: "Mozilla ISPDB") {
-            case .success(let found): return found
-            case .failure(let failure): if case .onlySTARTTLS(let host) = failure { sawSTARTTLSOnly = host }
-            }
+            if case .success(let found) = parse(xml: data, email: trimmed, source: "Mozilla ISPDB") { return found }
         }
 
         // 3. Guess, then prove it by reading an IMAP greeting over TLS.
@@ -91,7 +83,6 @@ public enum AutoconfigService {
                               offersOAuth2: false, offersPassword: true, source: "Guessed and verified")
         }
 
-        if let host = sawSTARTTLSOnly { throw Failure.onlySTARTTLS(host: host) }
         throw Failure.nothingFound
     }
 
@@ -135,7 +126,8 @@ public enum AutoconfigService {
             if let ssl = parser.imapServers.first(where: { $0.socketType?.uppercased() == "SSL" }) {
                 return parse(single: ssl, parser: parser, email: email, source: source)
             }
-            return .failure(.onlySTARTTLS(host: server.hostname ?? "?"))
+            // STARTTLS is required, never optional, so this is not a downgrade.
+            security = .starttls
         default: return .failure(.nothingFound)
         }
         guard let host = server.hostname, let port = server.port else { return .failure(.nothingFound) }

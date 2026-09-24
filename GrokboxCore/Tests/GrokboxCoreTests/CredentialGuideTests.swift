@@ -17,7 +17,8 @@ struct CredentialHintTests {
         let hint = AccountKind.protonBridge.credentialHint
         #expect(hint.localizedCaseInsensitiveContains("bridge"))
         #expect(hint.localizedCaseInsensitiveContains("not your proton password"))
-        #expect(hint.localizedCaseInsensitiveContains("ssl"))
+        // Bridge's default mode now works, and the hint says which mode that is.
+        #expect(hint.localizedCaseInsensitiveContains("starttls"))
     }
 
     @Test func demoNeedsNothing() {
