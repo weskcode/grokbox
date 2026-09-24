@@ -116,6 +116,7 @@ enum GmailFixture {
     }
 
     static let body = "This is the plain text body.\r\nPlease reply by Friday.\r\n"
+    static let mimeHeader = "Content-Type: text/plain; charset=utf-8\r\n\r\n"
 
     static var script: FakeIMAPServer.Script {
         let headers =
@@ -134,7 +135,7 @@ enum GmailFixture {
             ("SELECT \"[Gmail]/All Mail\"", "* 3 EXISTS\r\n{tag} OK [READ-WRITE] [Gmail]/All Mail selected. (Success)\r\n"),
             ("FETCH 1:3", headers + "{tag} OK Success\r\n"),
             ("FETCH 1:1", sentHeader + "{tag} OK Success\r\n"),
-            ("UID FETCH 20 (BODY.PEEK[TEXT]", "* 2 FETCH (UID 20 BODY[TEXT]<0> {\(body.utf8.count)}\r\n\(body))\r\n{tag} OK Success\r\n"),
+            ("UID FETCH 20 (BODY.PEEK[", "* 2 FETCH (UID 20 BODY[HEADER.FIELDS (CONTENT-TYPE CONTENT-TRANSFER-ENCODING)] {\(mimeHeader.utf8.count)}\r\n\(mimeHeader) BODY[TEXT]<0> {\(body.utf8.count)}\r\n\(body))\r\n{tag} OK Success\r\n"),
             ("UID STORE", "{tag} OK Success\r\n"),
             ("UID MOVE", "{tag} OK [COPYUID 1 10 99] Success\r\n"),
             ("CREATE", "{tag} OK Success\r\n"),

@@ -283,17 +283,31 @@ public actor IMAPClient {
         return result.untagged.compactMap { IMAPResponseParser.parseFlagsLine($0.text) }
     }
 
-    /// Fetches the first `maxBytes` of a message body without marking it read.
+    /// Fetches a message's MIME entity without marking it read: its own
+    /// `Content-Type` and `Content-Transfer-Encoding` lines, a blank line,
+    /// then the first `maxBytes` of its body. The header lines are what say
+    /// where a multipart's boundary is and which charset a single part uses;
+    /// `BODY[TEXT]` alone carries neither.
     ///
-    /// The result is handed to the local model and discarded. It is never
-    /// written to disk.
+    /// The result is handed to the local model or shown in the reader and
+    /// discarded. It is never written to disk.
     public func fetchBodyExcerpt(uid: UInt32, maxBytes: Int = 8_000) async throws -> Data? {
-        let result = try await execute("UID FETCH \(uid) (BODY.PEEK[TEXT]<0.\(maxBytes)>)")
+        let result = try await execute("UID FETCH \(uid) (BODY.PEEK[HEADER.FIELDS (\(Self.mimeFields))] BODY.PEEK[TEXT]<0.\(maxBytes)>)")
         guard result.isOK else {
             throw IMAPError.commandFailed(command: "UID FETCH body", response: result.completionDetail)
         }
-        return result.untagged.first { $0.text.contains(" FETCH ") }?.literals.first
+        guard let line = result.untagged.first(where: { $0.text.contains(" FETCH ") }) else { return nil }
+        let sections = IMAPResponseParser.literalSections(line)
+        guard let text = sections.first(where: { $0.name.hasPrefix("BODY[TEXT]") })?.data else { return nil }
+        var header = sections.first(where: { $0.name.hasPrefix("BODY[HEADER.FIELDS") })?.data ?? Data()
+        // The section ends with the blank line that closes a header block, but
+        // an empty or sloppy one may not; the entity needs it either way.
+        while !header.isEmpty, !header.suffix(2).elementsEqual([0x0D, 0x0A]) { header.removeLast() }
+        if !header.suffix(4).elementsEqual([0x0D, 0x0A, 0x0D, 0x0A]) { header.append(contentsOf: [0x0D, 0x0A]) }
+        return header + text
     }
+
+    private static let mimeFields = "CONTENT-TYPE CONTENT-TRANSFER-ENCODING"
 
     // MARK: - Mutating operations
 

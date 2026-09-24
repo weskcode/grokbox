@@ -16,6 +16,9 @@ public protocol MailProvider: Sendable {
     func headers(from start: Int, to end: Int) async throws -> [FetchedHeader]
     func headers(uidsFrom start: UInt32) async throws -> [FetchedHeader]
     func flags(from start: Int, to end: Int) async throws -> [FlagUpdate]
+    /// The message's MIME entity, cut short: its `Content-Type` and
+    /// `Content-Transfer-Encoding` lines, a blank line, and the start of the
+    /// body. Read with `BodyExtractor`; never stored.
     func bodyExcerpt(uid: UInt32) async throws -> Data?
 
     // Mutating — only PlanExecutor calls these

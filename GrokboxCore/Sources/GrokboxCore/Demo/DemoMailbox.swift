@@ -152,7 +152,7 @@ public final class DemoMailbox: @unchecked Sendable {
 
     public func body(in mailbox: String, uid: UInt32) -> Data? {
         guard let message = messages(in: mailbox).first(where: { $0.uid == uid }) else { return nil }
-        return Data(Self.renderBody(message).utf8)
+        return Data((Self.renderMIMEHeader(message) + Self.renderBody(message)).utf8)
     }
 
     // MARK: - Writes
@@ -218,6 +218,13 @@ public final class DemoMailbox: @unchecked Sendable {
             listID: nil,
             messageID: "<demo-\(message.uid)@grokbox.local>"
         )
+    }
+
+    /// The part of the header that says how to read the body.
+    static func renderMIMEHeader(_ message: DemoMailServer.Message) -> String {
+        message.isHTML
+            ? "Content-Type: multipart/alternative; boundary=\"demo-boundary\"\r\n\r\n"
+            : "Content-Type: text/plain; charset=utf-8\r\n\r\n"
     }
 
     static func renderBody(_ message: DemoMailServer.Message) -> String {

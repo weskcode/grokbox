@@ -222,7 +222,7 @@ public final class DemoMailServer: @unchecked Sendable {
             parts.append("X-GM-LABELS (\(rendered.joined(separator: " ")))")
         }
         if items.contains("INTERNALDATE") { parts.append("INTERNALDATE \"\(internalDate(message.date))\"") }
-        if items.contains("HEADER.FIELDS") {
+        if items.contains("HEADER.FIELDS (FROM") {
             var block = "From: \(message.fromName.isEmpty ? message.fromAddress : "\(message.fromName) <\(message.fromAddress)>")\r\n"
             block += "To: \(message.to)\r\nSubject: \(message.subject)\r\nDate: \(rfc2822(message.date))\r\nMessage-ID: <demo-\(message.uid)@grokbox.local>\r\n"
             if let unsub = message.listUnsubscribe {
@@ -231,6 +231,10 @@ public final class DemoMailServer: @unchecked Sendable {
             }
             block += "\r\n"
             parts.append("BODY[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID LIST-UNSUBSCRIBE LIST-UNSUBSCRIBE-POST LIST-ID)] {\(block.utf8.count)}\r\n\(block)")
+        }
+        if items.contains("HEADER.FIELDS (CONTENT-TYPE") {
+            let block = DemoMailbox.renderMIMEHeader(message)
+            parts.append("BODY[HEADER.FIELDS (CONTENT-TYPE CONTENT-TRANSFER-ENCODING)] {\(block.utf8.count)}\r\n\(block)")
         }
         if items.contains("BODY.PEEK[TEXT]") {
             let body = DemoMailbox.renderBody(message)
