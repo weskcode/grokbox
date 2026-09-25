@@ -22,6 +22,9 @@ All notable changes to Grokbox are recorded here. The format follows
   octal, IPv6), and forms that post what you type.
 
 ### Changed
+- CI runs on Xcode Cloud instead of GitHub Actions. `ci_scripts/ci_post_clone.sh`
+  generates the project with XcodeGen, and the `Grokbox` scheme is now shared
+  and runs the engine tests.
 - The app lock locks again when Grokbox is hidden, the screen locks, or the
   Mac sleeps, and on iPhone whenever it goes to the background. It used to
   lock once per launch. The menu-bar summary is hidden while locked.

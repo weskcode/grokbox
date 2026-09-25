@@ -24,10 +24,20 @@ extended attributes break code signing.
 cd GrokboxCore && swift test
 ```
 
+The `Grokbox` scheme's test action runs the same engine tests through Xcode
+(`xcodebuild test -scheme Grokbox -destination 'platform=macOS'`).
+
 UI tests for the phone app: add `-only-testing:GrokboxiOSUITests` to an `xcodebuild test` on the `GrokboxiOS` scheme. They launch with `--stub-model`, a rules-only reader, so they never depend on the on-device model.
 
 Around 130 tests in 40 suites, including an in-process IMAP server and a real
 TLS handshake with `imap.gmail.com` (no credentials are sent).
+
+## Continuous integration
+
+Xcode Cloud runs CI on pull requests and pushes to `develop` and `main`.
+`ci_scripts/ci_post_clone.sh` installs XcodeGen and generates the project,
+since `Grokbox.xcodeproj` is not committed. The workflows themselves are
+configured in Xcode, not in this repository.
 
 ## Rules that are not negotiable
 

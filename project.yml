@@ -40,6 +40,11 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         COMBINE_HIDPI_IMAGES: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    # A shared scheme, so Xcode Cloud can see it. Its test action runs the
+    # GrokboxCore package tests (the same suite as `swift test`).
+    scheme:
+      testTargets:
+        - package: GrokboxCore/GrokboxCoreTests
 
   GrokboxiOS:
     type: application
