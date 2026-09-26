@@ -85,7 +85,7 @@ Stated by the project in `docs/THREAT-MODEL.md` in Privacy Guides' taxonomy; che
 ## Unverified
 
 - Apple Foundation Models' on-device claim (platform assertion; not testable from userland).
-- CI workflow (`.github/workflows/ci.yml`) has not run; the runner image name is a best guess.
+- CI moved from GitHub Actions to Xcode Cloud; the Xcode Cloud workflows are configured in Xcode and are not in the repository.
 - Behaviour against a live IMAP server (Gmail, Proton Bridge) — never exercised.
 
 ## Attribution

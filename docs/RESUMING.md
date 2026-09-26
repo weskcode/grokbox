@@ -15,8 +15,9 @@ The four merged feature branches (`feature/hardening`, `feature/brief-accuracy`,
 `feature/cleanup-policy`, `feature/sender-overrides`) were deleted locally and
 on `origin` on 23 September. Every commit on them is in `develop`.
 
-All commits are SSH-signed. CI runs on `main`, `develop` and feature branches
-and covers engine tests, the Mac build, the iOS build, and the iOS UI tests.
+All commits are SSH-signed. CI now runs on Xcode Cloud (it was GitHub Actions
+through 0.5.1), on pull requests and pushes to `main` and `develop`, and covers
+engine tests, the Mac build, the iOS build, and the iOS UI tests.
 CI was green on both PRs before they were merged, and on `main` before 0.5.1
 was tagged.
 
