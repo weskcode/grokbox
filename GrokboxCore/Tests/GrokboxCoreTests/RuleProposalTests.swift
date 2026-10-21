@@ -196,8 +196,8 @@ struct RuleProposalTests {
         let acme = KnownSender(address: "news@acme.example", displayName: "Acme Inc.", category: .newsletter, supportsOneClickUnsubscribe: false)
         let spaced = KnownSender(address: "w@medium.example", displayName: "Medium  Weekly ", category: .newsletter, supportsOneClickUnsubscribe: false)
         let starred = KnownSender(address: "d@deals.example", displayName: "*NEW* Deals", category: .promotion, supportsOneClickUnsubscribe: false)
-        let rules: [String: SenderOverride] = [acme.address: .init(decision: .sweep), spaced.address: .init(decision: .sweep),
-                                               starred.address: .init(decision: .sweep)]
+        let rules = Self.rules.merging([acme.address: .init(decision: .sweep), spaced.address: .init(decision: .sweep),
+                                        starred.address: .init(decision: .sweep)]) { $1 }
         func make(_ request: String) -> RuleProposal {
             RuleProposal.make(request: request, senders: Self.senders + [acme, spaced, starred], rules: rules,
                               folders: Self.folders, policy: .gentle)
