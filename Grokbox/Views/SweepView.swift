@@ -57,7 +57,7 @@ struct SweepView: View {
     /// where the messages went.
     private var undoPromise: String {
         switch account.kind {
-        case .gmail, .demo: "Every archive, label and read change can be undone from Activity."
+        case .gmail, .demo: "Every change to your mail is listed in Activity, with Undo while the mailbox is unchanged."
         default: "Every change to your mail is listed in Activity, with Undo wherever this server reports where the mail went."
         }
     }

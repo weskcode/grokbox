@@ -2,8 +2,8 @@
 
 A local-first mail triage tool for macOS, iPhone and iPad. It indexes your
 mailboxes, collapses them into senders, and tells you what is actually filling
-your inbox — with nothing leaving your machine unless you opt in to the Jev
-fallback described below.
+your inbox — without sending it anywhere except your own mail server and the
+exceptions listed under Privacy.
 
 Built for the specific problem of the **email pile-up**: tens of thousands of
 messages, most of them machine-sent, and no viable path through them one at a
@@ -66,8 +66,8 @@ due date) are kept.
 
 ## What it will not do
 
-- **Destroy mail.** No code path sets `\Deleted` or sends `EXPUNGE`; a test
-  enforces it. If you choose Move to Trash (Thorough does for promotions, and a
+- **Destroy mail.** No code path sets `\Deleted` or sends `EXPUNGE`; tests check
+  the commands the client sends. If you choose Move to Trash (Thorough does for promotions, and a
   sender can be set to it), the mail moves to your provider's Trash and the
   provider deletes it when it empties the Trash.
 - **Send mail.** No SMTP.

@@ -10,7 +10,7 @@ Ollama is Mac only, so there reading uses Apple's on-device model.
 | Destination | When | What | Can you turn it off? |
 |---|---|---|---|
 | **Your IMAP server** (e.g. `imap.gmail.com:993`) | Index, Read, Sweep, Tidy-up. With automatic tidy-up on and "Also when new mail arrives" ticked, one more read-only connection per account stays open, listening to the inbox (IMAP `IDLE`) | IMAP commands. Credentials over TLS, either from the first byte or after a required `STARTTLS`. Header and body reads are `PEEK`, so nothing is marked read by looking. | It is the product; remove the account. Untick "Also when new mail arrives" to close the listening connection. |
-| **`autoconfig.<your domain>`** and **`autoconfig.thunderbird.net`** (Mozilla's ISPDB) | Only when you press "Look up settings" while adding an account | Just the domain of the address you typed — never the full address | Type in server settings by hand instead. |
+| **`autoconfig.<your domain>`** and **`autoconfig.thunderbird.net`** (Mozilla's ISPDB) | Only when you press "Look up settings" while adding an account. If neither answers, it also opens a TLS connection to `imap.<your domain>:993` to look for an IMAP greeting | Just the domain of the address you typed — never the full address. These web lookups do not restrict redirects, so the final host can differ from the two named | Type in server settings by hand instead. |
 | **`127.0.0.1:11434`** (Ollama) | Read, if you chose Ollama | Subject, sender, and up to 3,000 characters of body text per message | Choose Apple's model instead, or none. Loopback only — the code refuses any other host. |
 | **A sender's unsubscribe URL** | When you click Unsubscribe, or automatically during a sweep or an automatic tidy-up for senders that meet the conditions in your cleanup policy. Automatic unsubscribe is on under Balanced and Thorough (including when chosen during account setup), off under Gentle, the default, and can be set for a single sender under any preset. | An RFC 8058 POST to the HTTPS URL the sender put in their own `List-Unsubscribe` header. The sender receives your request and Grokbox cannot take it back. One redirect is followed, and only to another public HTTPS host, which then also receives the request. | Do not click it, choose Gentle or "Only when I press it" in Settings, and do not set a sender to unsubscribe when possible. |
 | **`api.typesafe.ai`** (Jev, TypeSafe AI) | Only if you turn on "Jev cloud fallback" in Settings and save your own API key — and then only for a sender the local model still could not categorize | The sender's address and a handful of their subject lines. Never a message body. | Off by default. Turn it off in Settings, or Erase everything, which also deletes the saved key. See ADR-0023. |
@@ -21,9 +21,9 @@ domain-only lookup, not an ongoing connection. The one opt-in exception is
 the Jev row above — a third-party API you must explicitly enable and supply
 your own key for; ADR-0023 explains why it exists and exactly what it is
 scoped to. The demo mailboxes run
-entirely inside the app's process — there is no listening socket anywhere in
-the shipped app, and the sandbox has no `network.server` entitlement to allow
-one. There is no telemetry, no crash reporter, no update check, no analytics,
+inside the app's process and are served on a socket bound to `127.0.0.1` only,
+so no other machine can reach them; the app has no `network.server`
+entitlement. There is no telemetry, no crash reporter, no update check, no analytics,
 no "anonymous usage statistics", no account with us. The app has one network
 entitlement, `network.client`, and the sandbox refuses anything else.
 
@@ -59,7 +59,7 @@ key, under its own service, `com.wesleykeetch.grokbox.jev`.
 ## What Grokbox will not do to your mail
 
 - **Destroy mail.** There is no code path that sets `\Deleted` or sends `EXPUNGE`.
-  A test (`archiveSendsGmailLabelRemoval`) fails the build if one appears.
+  Tests such as `archiveSendsGmailLabelRemoval` check the commands the client sends.
   Move to Trash is a separate, opt-in choice: Thorough applies it to promotions,
   and a single sender can be set to it. The mail goes to your provider's Trash,
   Grokbox can move it back from Activity until the provider empties the Trash

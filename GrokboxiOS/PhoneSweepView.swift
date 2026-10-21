@@ -82,7 +82,15 @@ struct PhoneSweepView: View {
         let trashed = items.filter { $0.disposition == .trash }.count
         let archived = items.filter { $0.disposition == .archiveOnly }.count
         let unsubscribing = items.filter(\.unsubscribe).count
+        let own = items.filter {
+            $0.disposition != state.policy.disposition(for: $0.cluster.category)
+                || $0.unsubscribe != CleanupPlan.qualifiesForAutoUnsubscribe($0.cluster, policy: state.policy)
+                || $0.folder != $0.cluster.category.folderName
+        }.count
         var text = state.policy.summary
+        if own > 0 {
+            text += " \(own) \(own == 1 ? "sender in this plan follows its own setting" : "senders in this plan follow their own settings") instead, as the groups below show."
+        }
         if trashed > 0 {
             text += " In this plan, \(trashed) \(trashed == 1 ? "sender goes" : "senders go") to your provider's Trash. The provider deletes mail for good when it empties the Trash; Undo works until then, where the server reported where the mail went."
         }
