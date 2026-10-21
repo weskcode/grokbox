@@ -72,7 +72,7 @@ public enum MessageIDList {
         while i < c.count {
             let ch = c[i]
             if inQuotes {
-                if ch == "\\", i + 1 < c.count { i += 1; local.append(c[i]); if !atext.contains(c[i]) { needsQuotes = true } }
+                if ch == "\\", i + 1 < c.count { i += 1; if !c[i].isNewline { local.append(c[i]); if !atext.contains(c[i]) { needsQuotes = true } } }
                 else if ch == "\"" { inQuotes = false }
                 else if !(ch.isNewline) { local.append(ch); if !atext.contains(ch) { needsQuotes = true } }
             } else if ch == ">" {

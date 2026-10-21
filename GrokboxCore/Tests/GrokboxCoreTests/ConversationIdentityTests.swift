@@ -38,6 +38,8 @@ struct MessageIDListTests {
         #expect(spaced == ["\"a b\"@mail.example"])
         #expect(joined == ["ab@mail.example"])
         #expect(spaced != joined, "a space inside quotes is part of the id")
+        #expect(MessageIDList.parse("<\"a\\\r\n b\"@mail.example>") == ["\"a b\"@mail.example"],
+                "an escaped line break is folding, never part of an id")
     }
 
     @Test func aLongChainLinksThroughAnyOfItsIDs() {
