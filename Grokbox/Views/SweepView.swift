@@ -57,7 +57,7 @@ struct SweepView: View {
     /// where the messages went.
     private var undoPromise: String {
         switch account.kind {
-        case .gmail, .demo: "Every change to your mail is listed in Activity, with Undo while the mailbox is unchanged."
+        case .gmail, .demo: "Every change to your mail is listed in Activity. Archive, label and read changes can be undone; a move to Trash only if the server reported where the mail went."
         default: "Every change to your mail is listed in Activity, with Undo wherever this server reports where the mail went."
         }
     }
@@ -107,7 +107,7 @@ struct SweepView: View {
                             self.plan = buildPlan()
                         }
                     } label: {
-                        Label("Archive \(plan.enabledMessageCount.formatted()) messages from \(plan.enabledItems.count) senders", systemImage: "wind")
+                        Label("\(plan.enabledItems.contains { $0.disposition == .trash } ? "Archive or trash" : "Archive") \(plan.enabledMessageCount.formatted()) messages from \(plan.enabledItems.count) senders", systemImage: "wind")
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(plan.isEmpty || state.isBusy)

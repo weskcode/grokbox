@@ -40,7 +40,7 @@ struct PhoneSweepView: View {
                         let toApply = plan
                         Task { await state.executor.apply(toApply, to: account, policy: state.policy); self.plan = buildPlan() }
                     } label: {
-                        Label("Archive \(plan.enabledMessageCount.formatted()) messages from \(plan.enabledItems.count) senders", systemImage: "wind")
+                        Label("\(plan.enabledItems.contains { $0.disposition == .trash } ? "Archive or trash" : "Archive") \(plan.enabledMessageCount.formatted()) messages from \(plan.enabledItems.count) senders", systemImage: "wind")
                     }
                     .buttonStyle(.borderedProminent).disabled(state.isBusy)
                 } else {
@@ -89,7 +89,7 @@ struct PhoneSweepView: View {
         }.count
         var text = state.policy.summary
         if own > 0 {
-            text += " \(own) \(own == 1 ? "sender in this plan follows its own setting" : "senders in this plan follow their own settings") instead, as the groups below show."
+            text += " \(own) \(own == 1 ? "sender in this plan follows its own setting" : "senders in this plan follow their own settings") instead; the group headings below show where each goes."
         }
         if trashed > 0 {
             text += " In this plan, \(trashed) \(trashed == 1 ? "sender goes" : "senders go") to your provider's Trash. The provider deletes mail for good when it empties the Trash; Undo works until then, where the server reported where the mail went."

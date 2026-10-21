@@ -13,11 +13,13 @@ time.
 
 Grokbox is a native **macOS** app with an **iPhone and iPad** target on the same
 engine, **GPL-3.0**, with **no third-party code**, **no telemetry**, **no
-account**, and **no server of its own**. By default it talks to exactly three
-things: the IMAP servers you add, a language model running on this device, and a
-sender's own unsubscribe URL — when you click Unsubscribe, or automatically
-during a sweep if you chose Balanced or Thorough, turned that on, or set a sender
-to it (Gentle, the default, does none of these on its own). One optional
+account**, and **no server of its own**. By default it talks to the IMAP servers
+you add, a language model running on this device (Ollama on loopback, if you
+choose it), a sender's own unsubscribe URL — when you click Unsubscribe, or
+automatically during a sweep if you chose Balanced or Thorough, turned that on,
+or set a sender to it (Gentle, the default, does none of these on its own) — and,
+only when you press "Look up settings" while adding an account, a domain-only
+settings lookup. One optional
 exception exists: turn on and configure the Jev cloud fallback in Settings, and
 TypeSafe AI's Jev API can categorize senders your local model could not place,
 using your own API key — off unless you set it up (see
@@ -72,19 +74,21 @@ due date) are kept.
   provider deletes it when it empties the Trash.
 - **Send mail.** No SMTP.
 - **Act on a sender you have not approved.**
-- **Talk to anything but your mail server, Ollama on loopback, and a sender's
-  own unsubscribe URL** (when you click Unsubscribe, or automatically if you
-  turned that on) — unless you opt into the Jev cloud fallback in Settings,
-  which is off by default. Full inventory in
+- **Talk to anything but your mail server, Ollama on loopback, a sender's own
+  unsubscribe URL** (when you click Unsubscribe, or automatically if you turned
+  that on), **and the domain-only settings lookup** you start with "Look up
+  settings" — unless you opt into the Jev cloud fallback in Settings, which is
+  off by default. Full inventory in
   [docs/PRIVACY.md](docs/PRIVACY.md).
 
 ## Privacy
 
-- No network traffic except IMAP to your own mail server, a sender's own
-  unsubscribe link (when you press Unsubscribe, or when automatic unsubscribe is
-  on), and a domain-only settings lookup when you press "Look up settings" while
-  adding an account — the one opt-in exception is the Jev cloud fallback (off by default, your
-  own API key); see [ADR-0023](docs/DECISIONS.md)
+- No network traffic except IMAP to your own mail server, Ollama on loopback if
+  you choose it, a sender's own unsubscribe link (when you press Unsubscribe, or
+  when automatic unsubscribe is on), and a domain-only settings lookup when you
+  press "Look up settings" while adding an account — the one opt-in exception is
+  the Jev cloud fallback (off by default, your own API key); see
+  [ADR-0023](docs/DECISIONS.md)
 - No telemetry, no analytics, no crash reporting, no accounts
 - No third-party dependencies — the IMAP client is written from scratch
 - Passwords live in the macOS Keychain
