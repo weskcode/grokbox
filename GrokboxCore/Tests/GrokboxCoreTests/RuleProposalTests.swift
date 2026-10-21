@@ -123,17 +123,32 @@ struct RuleProposalTests {
                                                   category: .promotion, supportsOneClickUnsubscribe: true)]
         let proposal = RuleProposal.make(request: "Keep everything from PayPal", senders: senders, rules: Self.rules,
                                          folders: Self.folders, policy: .gentle)
-        #expect(proposal == .unresolved(.ambiguousRequest))
+        #expect(proposal == .unresolved(.ambiguousSender(["service@paypa1.example", "service@paypal.example"])),
+                "the spoof is not a candidate; the two real PayPals are")
     }
 
-    @Test func twoSpoofedNamesCannotHideTheRealSender() {
+    @Test func spoofedNamesCannotTakeTheRealSendersSentence() {
         let spoofs = ["a", "b"].map {
             KnownSender(address: "\($0)@spoof.example", displayName: "everything from MegaMart", category: .promotion,
                         supportsOneClickUnsubscribe: true)
         }
         let proposal = RuleProposal.make(request: "Keep everything from MegaMart", senders: Self.senders + spoofs, rules: Self.rules,
                                          folders: Self.folders, policy: .gentle)
-        #expect(proposal == .unresolved(.ambiguousRequest), "MegaMart is a real reading, so a list of spoofs alone would mislead")
+        #expect(draft(proposal)?.address == "deals@megamart.example", "the sentence means MegaMart")
+    }
+
+    @Test func aNameStartingLikeTheGrammarCannotStandInForAnUnknownSender() {
+        let spoof = KnownSender(address: "evil@x.example", displayName: "mail from Not A Sender", category: .promotion,
+                                supportsOneClickUnsubscribe: true)
+        var rules = Self.rules
+        rules[spoof.address] = .init(decision: .sweep)
+        func make(_ request: String) -> RuleProposal {
+            RuleProposal.make(request: request, senders: Self.senders + [spoof], rules: rules, folders: Self.folders, policy: .gentle)
+        }
+        for request in ["Trash mail from Not A Sender", "Keep mail from Not A Sender", "Unsubscribe me from mail from Not A Sender"] {
+            if case .draft(let draft) = make(request) { Issue.record("\(request) drafted \(draft)") }
+        }
+        #expect(draft(make("Trash evil@x.example"))?.after.disposition == .trash, "the sender is still reachable by its address")
     }
 
     // MARK: - Only whole supported sentences
@@ -216,6 +231,26 @@ struct RuleProposalTests {
                 "filing into Trash would trash without the warning")
         #expect(propose("File Medium Daily Digest under INBOX", folders: folders) == .unresolved(.reservedFolder("INBOX")))
         #expect(propose("File Medium Daily Digest under [Gmail]/Spam", folders: folders) == .unresolved(.reservedFolder("[Gmail]/Spam")))
+    }
+
+    @Test(arguments: ["the trash", "the bin", "INBOX.Trash", "corbeille", "Papierkorb", "Trash/Old", "INBOX.Junk", "Spam/2026"])
+    func trashByAnyOtherNameIsNotAFilingFolder(folder: String) {
+        let proposal = propose("Put Medium Daily Digest in \(folder)", folders: Self.folders.union([folder]))
+        #expect(proposal == .unresolved(.reservedFolder(folder)))
+    }
+
+    /// The executor's Trash lookup and this refusal read one list of names.
+    @Test func theExecutorStillFindsAnUnflaggedTrashByName() {
+        let boxes = [IMAPMailbox(name: "INBOX", attributes: [], delimiter: "."),
+                     IMAPMailbox(name: "INBOX.Corbeille", attributes: [], delimiter: ".")]
+        #expect(boxes.trashMailbox?.name == "INBOX.Corbeille")
+        #expect([IMAPMailbox(name: "Reading", attributes: [])].trashMailbox == nil)
+    }
+
+    @Test(arguments: ["Grokbox/Newsletters", "INBOX.Clients", "Archive/Receipts", "Mr. Smith"])
+    func ordinaryFoldersWithSpecialLookingPartsAreAllowed(folder: String) {
+        let proposal = propose("Put Medium Daily Digest in \(folder)", folders: Self.folders.union([folder]))
+        #expect(draft(proposal)?.after.customFolder == folder)
     }
 
     @Test func intoFoldersIsTheCategoryFolderUnlessAFolderHasThatName() {
@@ -302,6 +337,7 @@ struct RuleProposalTests {
         }
         #expect(draft(make("Never unsubscribe from Legacy"))?.after.autoUnsubscribe == false)
         #expect(isConflict(make("Archive Legacy")), "changing where its mail goes meets the collision")
+        #expect(isConflict(make("Trash Legacy")), "restating where its mail goes still names the unused folder")
     }
 
     @Test func unsubscribeNeedsAOneClickLink() {

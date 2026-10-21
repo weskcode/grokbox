@@ -216,14 +216,18 @@ extension Array where Element == IMAPMailbox {
         return IMAPUTF7.decode(raw)
     }
 
+    /// The names providers give their Trash when they do not flag it.
+    static var trashNames: Set<String> {
+        ["trash", "deleted items", "deleted messages", "bin", "corbeille", "papierkorb",
+         "papelera", "cestino", "prullenbak", "lixeira", "papperskorg", "kosz"]
+    }
+
     /// The Trash, by special-use flag or by the names providers use for it.
     public var trashMailbox: IMAPMailbox? {
         if let flagged = first(where: \.isTrash) { return flagged }
-        let known = ["trash", "deleted items", "deleted messages", "bin", "corbeille", "papierkorb",
-                     "papelera", "cestino", "prullenbak", "lixeira", "papperskorg", "kosz"]
         return first { box in
             let leaf = box.displayName.split(separator: Character(box.delimiter ?? "/")).last.map(String.init) ?? box.displayName
-            return known.contains(leaf.lowercased())
+            return Self.trashNames.contains(leaf.lowercased())
         }
     }
 

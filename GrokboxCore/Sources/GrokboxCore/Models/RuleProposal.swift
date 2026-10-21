@@ -85,15 +85,14 @@ enum RuleProposal: Sendable, Equatable {
             after.customFolder = target.folder
             after.disposition = .fileIntoFolders
         }
-        if after == before { return .unresolved(.nothingToChange) }
-
         // A folder means nothing unless the sender's mail is filed, and the
         // policy can change after this draft. Only a change that makes or
-        // touches the mismatch is refused; an old one does not block an
-        // unrelated edit.
+        // touches the mismatch is refused, even when it restates what is
+        // stored; an old one does not block an unrelated edit.
         if let kept = Self.unusedFolder(after), target.change.touchesWhereMailGoes || Self.unusedFolder(before) == nil {
             return .unresolved(.conflict("This sender files into \(kept). Clear that folder before changing where its mail goes."))
         }
+        if after == before { return .unresolved(.nothingToChange) }
 
         let effects = Effects(categories: Set(entries.map(\.category)), policy: policy)
         return .draft(RuleDraft(address: target.address, before: before, after: after,
@@ -137,7 +136,12 @@ enum RuleProposal: Sendable, Equatable {
 
         init(senders: [KnownSender], rules: [String: SenderOverride]) {
             addresses = Set(senders.map(\.address) + rules.keys)
+            // "Trash mail from X" also reads as a sender named "mail from X".
+            // A display name that starts like that is reachable by address only.
             names = senders.map { (name: RuleProposal.spaced($0.displayName), address: $0.address) }
+                .filter { entry in
+                    !RequestForm.mailFrom.contains { !$0.isEmpty && entry.name.lowercased().hasPrefix($0 + " ") }
+                }
         }
     }
 
@@ -145,11 +149,26 @@ enum RuleProposal: Sendable, Equatable {
         text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
+    /// Mail filed anywhere under one of these is on its way out.
+    static let disposalFolderNames: Set<String> = [IMAPMailbox].trashNames
+        .union(["junk", "junk e-mail", "junk email", "spam"])
+
     /// Names a mailbox may not be filed into, whatever the server calls it.
-    static let reservedFolderNames: Set<String> = [
-        "inbox", "trash", "bin", "deleted items", "deleted messages", "junk", "junk e-mail", "junk email", "spam",
-        "sent", "sent items", "sent mail", "sent messages", "drafts", "all mail", "archive", "outbox"
-    ]
+    static let reservedFolderNames: Set<String> = disposalFolderNames.union([
+        "inbox", "sent", "sent items", "sent mail", "sent messages", "drafts", "all mail", "archive", "outbox"
+    ])
+
+    /// Whether filing into `folder` would really be a different action.
+    /// Paths split on "/" and on "." (`INBOX.Trash`), and a leading "the"
+    /// is ignored, so "the trash" is the Trash.
+    static func isReserved(_ folder: String) -> Bool {
+        var name = folder.lowercased()
+        if name.hasPrefix("the ") { name.removeFirst(4) }
+        if name.hasPrefix("[gmail]") || name.hasPrefix("[google mail]") { return true }
+        let parts = name.split { $0 == "/" || $0 == "." }.map { $0.trimmingCharacters(in: .whitespaces) }
+        guard let leaf = parts.last else { return true }
+        return reservedFolderNames.contains(leaf) || parts.contains { disposalFolderNames.contains($0) }
+    }
 
     /// Resolves the words the person typed, spelled as they typed them.
     private static func target(for reading: RequestForm.Reading, in book: SenderBook,
@@ -169,10 +188,7 @@ enum RuleProposal: Sendable, Equatable {
 
         var folder: String?
         if let typed = reading.folder {
-            let leaf = typed.split(separator: "/").last.map(String.init) ?? typed
-            if reservedFolderNames.contains(leaf.lowercased()) || typed.lowercased().hasPrefix("[gmail]") {
-                return .failure(Failure(reason: .reservedFolder(typed)))
-            }
+            if isReserved(typed) { return .failure(Failure(reason: .reservedFolder(typed))) }
             let loose = folders.filter { $0.caseInsensitiveCompare(typed) == .orderedSame }
             if folders.contains(typed) {
                 folder = typed
