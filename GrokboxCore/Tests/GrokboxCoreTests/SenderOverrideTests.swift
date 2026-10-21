@@ -167,7 +167,7 @@ struct StoreRecoveryTests {
     }
 
     @Test func theSchemaIsVersionedAndCoversEveryModel() {
-        #expect(GrokboxSchemaV1.models.count == 8)
+        #expect(GrokboxSchemaV1.models.count == 9)
         #expect(GrokboxMigrationPlan.schemas.count == 1)
         #expect(GrokboxMigrationPlan.stages.isEmpty, "no stage is needed while changes stay additive")
         _ = Schema(versionedSchema: GrokboxSchemaV1.self)

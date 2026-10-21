@@ -528,3 +528,42 @@ recommended automation tool; exporting anything beyond what
 `SenderCluster` already computes on-device.
 
 ---
+
+## ADR-0025 — Conversations come from reply headers; sender and subject is the fallback
+
+**Status:** accepted
+
+The Brief used to collapse mail by account, sender and normalized subject
+(`ThreadKey`). That cannot join a reply from a second person, and it merges
+two unrelated threads that happen to share a sender and subject.
+
+`ConversationIdentity` now decides conversations from the Message-ID,
+In-Reply-To and References headers, scoped by account. It reads ids by the
+RFC 5322 grammar and follows RFC 5256 for parents: References when present,
+otherwise the first In-Reply-To id. Copies of one Message-ID count as one
+message. The result depends only on the set of messages, so sync order,
+repeated fetches and UIDVALIDITY changes do not move mail between
+conversations. Mail with no reply headers keeps the old sender and subject
+grouping, reported as `.subjectFallback` so later work can treat it as a
+guess.
+
+Storage, both additive under ADR-0021 (schema 1.2.0, no stage):
+`MessageHeader.inReplyTo` and `referenceIDs`, where nil means "indexed before
+these were fetched" and empty means "fetched, none", and a
+`SentMessageHeader` row for each of the newest 2,000 Sent messages. Sent rows
+follow the mailbox: a UIDVALIDITY change or an empty Sent folder clears them,
+and a completed walk drops what it no longer sees. Account removal and Erase
+delete them. Rows indexed before the upgrade gain reply ids on the next full
+pass and group as before until then.
+
+What this changes for the user: Done and Later act on every message in a
+conversation row, including other senders' replies. Anyone who knows a
+Message-ID in a conversation can write References that join it; grouping
+grants no trust and changes no rule, so the effect is limited to sharing a
+row.
+
+**Not done here:** reply-needed or waiting states, showing the fallback as
+uncertain in the UI, alias management, and using Sent rows to bridge
+conversations in the Brief.
+
+---

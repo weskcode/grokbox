@@ -38,6 +38,14 @@ public enum MessageIDList {
         return bare
     }
 
+    /// Stored form of an id list. A line feed cannot occur inside a parsed id,
+    /// so the split is exact even for quoted ids with spaces.
+    public static func encode(_ ids: [String]) -> String { ids.joined(separator: "\n") }
+
+    public static func decode(_ stored: String?) -> [String] {
+        stored?.split(separator: "\n").map(String.init) ?? []
+    }
+
     private static let atext = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!#$%&'*+-/=?^_`{|}~.")
 
     private static func skipComment(_ c: [Character], from start: Int) -> Int {
@@ -126,6 +134,12 @@ public enum ConversationIdentity {
             self.init(accountID: accountID, messageID: MessageIDList.messageID(header.messageID),
                       inReplyTo: header.inReplyTo, references: header.references,
                       senderAddress: header.senderAddress, subject: header.subject)
+        }
+
+        public init(_ message: MessageHeader) {
+            self.init(accountID: message.accountID, messageID: MessageIDList.messageID(message.messageID),
+                      inReplyTo: MessageIDList.decode(message.inReplyTo), references: MessageIDList.decode(message.referenceIDs),
+                      senderAddress: message.senderAddress, subject: message.subject)
         }
 
         public var hasReplyHeaders: Bool { !inReplyTo.isEmpty || !references.isEmpty }

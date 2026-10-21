@@ -33,7 +33,12 @@ Ollama, where the whole stack is open source.
 
 In the app's sandboxed container (`~/Library/Containers/com.wesleykeetch.grokbox/`):
 
-- **Message headers**: sender, subject, date, flags, Message-ID, list headers.
+- **Message headers**: sender, subject, date, flags, Message-ID, the ids in
+  In-Reply-To and References, list headers.
+- **Sent mail headers**: for up to the 2,000 newest messages in your Sent
+  folder, the Message-ID, reply ids, From address, subject and date. They tie
+  your replies to the conversations they answer. Recipients are kept only as
+  contacted addresses, below.
 - **Summaries**: the model's one-sentence summary and importance call, for
   messages the reader has processed.
 - **Contacted addresses**: addresses you have sent to, learned from your Sent
