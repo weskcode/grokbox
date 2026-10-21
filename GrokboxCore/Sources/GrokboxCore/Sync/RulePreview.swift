@@ -28,6 +28,9 @@ public struct RulePreview: Sendable {
         public var unsubscribe: Bool
         public var affectedCount: Int
         public var heldCount: Int
+        /// Every message in each group, so `sameEffect` sees a change the capped samples would hide.
+        public var affectedUIDs: [UInt32]
+        public var heldUIDs: [UInt32]
         /// Newest first, capped at the preview's sample limit.
         public var affected: [Message]
         public var held: [Message]
@@ -88,20 +91,20 @@ public struct RulePreview: Sendable {
 
     @MainActor
     public static func make(address: String, edit: RuleEdit, policy: CleanupPolicy = .current,
-                            in context: ModelContext, now: Date = Date(), sampleLimit: Int = 5) -> RulePreview {
-        let resulting = edit.applied(to: RuleStore.overrides(in: context)[address])
+                            in context: ModelContext, now: Date = Date(), sampleLimit: Int = 5) throws -> RulePreview {
+        let resulting = try edit.applied(to: RuleStore.override(for: address, in: context))
         let rules = resulting.map { [address: $0.decision] } ?? [:]
         let overrides = resulting.map { [address: $0] } ?? [:]
 
-        let profiles = (try? context.fetch(FetchDescriptor<SenderProfile>(predicate: #Predicate { $0.address == address }))) ?? []
-        let names = Dictionary(((try? context.fetch(FetchDescriptor<MailAccount>())) ?? []).map { ($0.id, $0.displayName) },
+        let profiles = try context.fetch(FetchDescriptor<SenderProfile>(predicate: #Predicate { $0.address == address }))
+        let names = Dictionary(try context.fetch(FetchDescriptor<MailAccount>()).map { ($0.id, $0.displayName) },
                                uniquingKeysWith: { a, _ in a })
 
-        let effects = profiles.map { profile -> AccountEffect in
+        let effects = try profiles.map { profile -> AccountEffect in
             let plan = CleanupPlan.suggested(from: [profile.assessment], rules: rules, policy: policy, overrides: overrides)
             let outcome: Outcome
             if let item = plan.items.first {
-                let facts = SweepGuard.MessageFacts.load(uids: item.cluster.pendingUIDs, accountID: profile.accountID, in: context)
+                let facts = try SweepGuard.MessageFacts.load(uids: item.cluster.pendingUIDs, accountID: profile.accountID, in: context)
                 let verdict = SweepGuard.check(facts, policy: policy, now: now)
                 let byUID = Dictionary(facts.map { ($0.uid, $0) }, uniquingKeysWith: { a, _ in a })
                 func sample(_ uids: [UInt32], reasons: [UInt32: String] = [:]) -> [Message] {
@@ -116,6 +119,7 @@ public struct RulePreview: Sendable {
                 outcome = .sweeps(Sweep(disposition: item.disposition, folder: item.folder, markRead: item.markRead,
                                         unsubscribe: item.unsubscribe,
                                         affectedCount: verdict.allowed.count, heldCount: verdict.held.count,
+                                        affectedUIDs: verdict.allowed.sorted(), heldUIDs: verdict.held.map(\.uid).sorted(),
                                         affected: sample(verdict.allowed),
                                         held: sample(verdict.held.map(\.uid), reasons: reasons)))
             } else if resulting?.decision == .keep {

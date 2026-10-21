@@ -70,10 +70,12 @@ struct PhoneSendersView: View {
             if let url = item.url { Button("Open link") { openURL(url) } }
             Button("OK", role: .cancel) { }
         } message: { item in Text(item.text) }
-        .alert("Couldn't save the rule", isPresented: Binding(get: { ruleError != nil }, set: { if !$0 { ruleError = nil } }),
-               presenting: ruleError) { _ in
-            Button("OK", role: .cancel) { }
-        } message: { Text($0) }
+        .background {
+            Color.clear.alert("Couldn't save the rule", isPresented: Binding(get: { ruleError != nil }, set: { if !$0 { ruleError = nil } }),
+                              presenting: ruleError) { _ in
+                Button("OK", role: .cancel) { }
+            } message: { Text($0) }
+        }
     }
 
     private func saveRule(_ edit: RuleEdit, for address: String) {

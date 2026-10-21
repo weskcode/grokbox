@@ -68,7 +68,7 @@ struct RulePreviewTests {
         seed(bulk(8), for: account("Home", in: context), in: context)
         try context.save()
 
-        let preview = RulePreview.make(address: address, edit: .customFolder("Clients/VIP"), policy: .thorough, in: context, now: now)
+        let preview = try RulePreview.make(address: address, edit: .customFolder("Clients/VIP"), policy: .thorough, in: context, now: now)
 
         #expect(try sweep(preview).folder == "Clients/VIP")
         #expect(!context.hasChanges, "building a preview must leave the context untouched")
@@ -87,12 +87,12 @@ struct RulePreviewTests {
         try context.save()
 
         for edit in [RuleEdit.decision(.sweep), .disposition(.trash), .autoUnsubscribe(true), .customFolder("Clients/VIP")] {
-            let preview = RulePreview.make(address: address, edit: edit, policy: .balanced, in: context, now: now)
+            let preview = try RulePreview.make(address: address, edit: edit, policy: .balanced, in: context, now: now)
             try RuleStore.apply(edit, for: address, in: context)
             var plan = CleanupPlan.suggested(from: [profile.assessment], rules: RuleStore.all(in: context), policy: .balanced,
                                              overrides: RuleStore.overrides(in: context))
             plan.previewGuard(policy: .balanced, now: now) { cluster in
-                SweepGuard.MessageFacts.load(uids: cluster.pendingUIDs, accountID: home.id, in: context)
+                (try? SweepGuard.MessageFacts.load(uids: cluster.pendingUIDs, accountID: home.id, in: context)) ?? []
             }
             let item = try #require(plan.items.first, "\(edit)")
             let shown = try sweep(preview)
@@ -114,7 +114,7 @@ struct RulePreviewTests {
         messages[1].subject = "Invoice for May"
         seed(messages, for: account("Home", in: context), in: context)
 
-        let sweep = try sweep(RulePreview.make(address: address, edit: .decision(.sweep), policy: .thorough, in: context, now: now))
+        let sweep = try sweep(try RulePreview.make(address: address, edit: .decision(.sweep), policy: .thorough, in: context, now: now))
 
         #expect(sweep.affectedCount == 4)
         #expect(sweep.heldCount == 2)
@@ -130,7 +130,7 @@ struct RulePreviewTests {
         let context = container.mainContext
         seed(bulk(40), for: account("Home", in: context), in: context)
 
-        let sweep = try sweep(RulePreview.make(address: address, edit: .decision(.sweep), policy: .thorough,
+        let sweep = try sweep(try RulePreview.make(address: address, edit: .decision(.sweep), policy: .thorough,
                                                in: context, now: now, sampleLimit: 3))
         #expect(sweep.affectedCount == 40)
         #expect(sweep.affected.count == 3)
@@ -142,7 +142,7 @@ struct RulePreviewTests {
         seed(bulk(5), for: account("Work", in: context), in: context)
         seed(bulk(7), for: account("Home", in: context), in: context)
 
-        let preview = RulePreview.make(address: address, edit: .decision(.sweep), policy: .thorough, in: context, now: now)
+        let preview = try RulePreview.make(address: address, edit: .decision(.sweep), policy: .thorough, in: context, now: now)
 
         #expect(preview.accounts.map(\.accountName) == ["Home", "Work"])
         #expect(try sweep(preview, at: 0).affectedCount == 7)
@@ -155,19 +155,19 @@ struct RulePreviewTests {
         let home = account("Home", in: context)
         let profile = seed(bulk(30), for: home, in: context)
 
-        let both = RulePreview.make(address: address, edit: .decision(.sweep), policy: .thorough, in: context, now: now)
+        let both = try RulePreview.make(address: address, edit: .decision(.sweep), policy: .thorough, in: context, now: now)
         #expect(both.irreversibleEffects == [.unsubscribeRequest, .movesToTrash])
 
-        let neither = RulePreview.make(address: address, edit: .autoUnsubscribe(false), policy: .gentle, in: context, now: now)
+        let neither = try RulePreview.make(address: address, edit: .autoUnsubscribe(false), policy: .gentle, in: context, now: now)
         #expect(neither.irreversibleEffects.isEmpty)
 
-        let forced = RulePreview.make(address: address, edit: .autoUnsubscribe(true), policy: .gentle, in: context, now: now)
+        let forced = try RulePreview.make(address: address, edit: .autoUnsubscribe(true), policy: .gentle, in: context, now: now)
         #expect(forced.irreversibleEffects == [.unsubscribeRequest], "a per-sender override works under Gentle")
 
         profile.pendingUIDs = [1]
         let flagged = try context.fetch(FetchDescriptor<MessageHeader>()).first { $0.uid == 1 }
         flagged?.isFlagged = true
-        let allHeld = RulePreview.make(address: address, edit: .decision(.sweep), policy: .thorough, in: context, now: now)
+        let allHeld = try RulePreview.make(address: address, edit: .decision(.sweep), policy: .thorough, in: context, now: now)
         #expect(allHeld.irreversibleEffects.isEmpty, "a sender whose mail is all held is not unsubscribed")
     }
 
@@ -176,7 +176,7 @@ struct RulePreviewTests {
         let context = container.mainContext
         seed(bulk(5), for: account("Home", in: context), in: context)
 
-        let preview = RulePreview.make(address: address, edit: .decision(.keep), policy: .thorough, in: context, now: now)
+        let preview = try RulePreview.make(address: address, edit: .decision(.keep), policy: .thorough, in: context, now: now)
         #expect(preview.accounts.first?.outcome == .keptInInbox)
         #expect(preview.irreversibleEffects.isEmpty)
     }
@@ -188,11 +188,11 @@ struct RulePreviewTests {
         seed(bulk(5), for: home, address: "friend@x.example", category: .person, oneClick: false, verdict: .review, in: context)
         try RuleStore.set(.sweep, for: "friend@x.example", in: context)
 
-        let cleared = RulePreview.make(address: "friend@x.example", edit: .clear, policy: .thorough, in: context, now: now)
+        let cleared = try RulePreview.make(address: "friend@x.example", edit: .clear, policy: .thorough, in: context, now: now)
         #expect(cleared.accounts.first?.outcome == .notProposed, "a review sender is not swept without a rule")
         #expect(cleared.resultingRule == nil)
 
-        let swept = RulePreview.make(address: "friend@x.example", edit: .decision(.sweep), policy: .thorough, in: context, now: now)
+        let swept = try RulePreview.make(address: "friend@x.example", edit: .decision(.sweep), policy: .thorough, in: context, now: now)
         #expect(try sweep(swept).affectedCount == 5)
     }
 
@@ -201,8 +201,25 @@ struct RulePreviewTests {
         let context = container.mainContext
         seed([], for: account("Home", in: context), in: context)
 
-        let preview = RulePreview.make(address: address, edit: .decision(.sweep), policy: .thorough, in: context, now: now)
+        let preview = try RulePreview.make(address: address, edit: .decision(.sweep), policy: .thorough, in: context, now: now)
         #expect(preview.accounts.first?.outcome == .nothingPending)
+    }
+
+    @Test func sameEffectSeesChangesOutsideTheCappedSamples() throws {
+        let container = ModelContainer.grokboxTestContainer()
+        let context = container.mainContext
+        seed(bulk(30), for: account("Home", in: context), in: context)
+
+        let before = try RulePreview.make(address: address, edit: .decision(.sweep), policy: .thorough,
+                                          in: context, now: now, sampleLimit: 3)
+        // uid 30 is the oldest, far outside the three newest samples.
+        let oldest = try #require(try context.fetch(FetchDescriptor<MessageHeader>()).first { $0.uid == 30 })
+        oldest.isFlagged = true
+        let after = try RulePreview.make(address: address, edit: .decision(.sweep), policy: .thorough,
+                                         in: context, now: now, sampleLimit: 3)
+
+        #expect(try sweep(after).heldCount == 1)
+        #expect(!after.sameEffect(as: before), "an unsampled message changed groups")
     }
 
     @Test func flagsChangedAfterThePreviewShowUpInTheNextOneAndInTheGuard() throws {
@@ -211,23 +228,23 @@ struct RulePreviewTests {
         let home = account("Home", in: context)
         seed(bulk(6), for: home, in: context)
 
-        let before = RulePreview.make(address: address, edit: .decision(.sweep), policy: .thorough, in: context, now: now)
+        let before = try RulePreview.make(address: address, edit: .decision(.sweep), policy: .thorough, in: context, now: now)
         #expect(try sweep(before).heldCount == 0)
 
         // The person flags a message in their mail client; the next sync updates the index.
         let message = try #require(try context.fetch(FetchDescriptor<MessageHeader>()).first { $0.uid == 4 })
         message.isFlagged = true
 
-        let after = RulePreview.make(address: address, edit: .decision(.sweep), policy: .thorough, in: context, now: now)
+        let after = try RulePreview.make(address: address, edit: .decision(.sweep), policy: .thorough, in: context, now: now)
         #expect(!after.sameEffect(as: before), "the screen can tell the answer moved")
         #expect(try sweep(after).held.map(\.uid) == [4])
 
-        let atRunTime = SweepGuard.check(SweepGuard.MessageFacts.load(uids: Array(1...6), accountID: home.id, in: context),
+        let atRunTime = SweepGuard.check(try SweepGuard.MessageFacts.load(uids: Array(1...6), accountID: home.id, in: context),
                                          policy: .thorough, now: now)
         #expect(!atRunTime.allowed.contains(4), "a sweep reads the same index when it runs")
         #expect(atRunTime.allowed.count == (try sweep(after)).affectedCount)
 
-        let again = RulePreview.make(address: address, edit: .decision(.sweep), policy: .thorough, in: context, now: now)
+        let again = try RulePreview.make(address: address, edit: .decision(.sweep), policy: .thorough, in: context, now: now)
         #expect(again.sameEffect(as: after))
     }
 }

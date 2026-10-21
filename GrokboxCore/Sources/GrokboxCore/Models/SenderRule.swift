@@ -84,6 +84,13 @@ public enum RuleStore {
         return Dictionary(rules.map { ($0.address, SenderOverride(rule: $0)) }, uniquingKeysWith: { a, _ in a })
     }
 
+    /// This sender's rule, whole, or nil when there is none. Unlike
+    /// `overrides(in:)` a failed lookup is thrown, not read as "no rule".
+    static func override(for address: String, in context: ModelContext) throws -> SenderOverride? {
+        try context.fetch(FetchDescriptor<SenderRule>(predicate: #Predicate { $0.address == address }))
+            .first.map(SenderOverride.init(rule:))
+    }
+
     /// The one way a rule is written. The preview applies the same `RuleEdit`
     /// to the same starting point, so what it shows is what gets saved.
     ///
@@ -91,8 +98,12 @@ public enum RuleStore {
     /// context keeps showing a rule the store never accepted, and a later
     /// autosave can quietly commit what the person was told had failed.
     public static func apply(_ edit: RuleEdit, for address: String, in context: ModelContext) throws {
-        let descriptor = FetchDescriptor<SenderRule>(predicate: #Predicate { $0.address == address })
-        let existing = (try? context.fetch(descriptor)) ?? []
+        let existing: [SenderRule]
+        do {
+            existing = try context.fetch(FetchDescriptor<SenderRule>(predicate: #Predicate { $0.address == address }))
+        } catch {
+            throw RuleSaveError(address: address, underlying: error.localizedDescription)
+        }
         let before = existing.first.map(SenderOverride.init(rule:))
         guard let after = edit.applied(to: before) else {
             // Deleted at the store, not marked for deletion in the context: a
