@@ -22,6 +22,8 @@ struct PublicHostPolicyTests {
         #expect(refusal("https://localhost/") == .loopback)
         #expect(refusal("https://[::1]/") == .loopback)
         #expect(refusal("https://[::ffff:127.0.0.1]/") == .loopback)
+        #expect(refusal("https://[0:0:0:0:0:0:0:1]/") == .loopback)
+        #expect(refusal("https://localhost./") == .loopback)
     }
 
     @Test func privateNetworksAreRefused() {
@@ -50,19 +52,22 @@ struct PublicHostPolicyTests {
 }
 
 /// A public-looking first hop that redirects to the LAN must not be followed.
+/// The test hook admits loopback on every hop, so the trap sits behind
+/// 0.0.0.0, which the policy refuses but which would reach the loopback
+/// listener if it were ever connected to.
 @Suite(.serialized)
 struct UnsubscribeRedirectTests {
-    @Test func redirectToLoopbackIsNotFollowed() async throws {
+    @Test func redirectToAPrivateAddressIsNotFollowed() async throws {
         let trap = try FakeHTTPServer { _ in (200, "you should never see this") }
         try await trap.start(); defer { trap.stop() }
         let first = try FakeHTTPServer { _ in (302, "") }   // redirect target set below
         try await first.start(); defer { first.stop() }
-        first.redirectLocation = "http://127.0.0.1:\(trap.port)/trap"
+        first.redirectLocation = "http://0.0.0.0:\(trap.port)/trap"
 
         let url = URL(string: "http://127.0.0.1:\(first.port)/unsub")!
         let outcome = await UnsubscribeService.performOneClick(to: url, allowingLoopbackForTests: true)
-        #expect(outcome == .openInBrowser(url), "3xx not followed → not a success")
-        #expect(trap.recorded.isEmpty, "the redirect target was never contacted")
+        #expect(outcome == .notAccepted(status: 302, page: url), "3xx not followed → not a success")
+        #expect(trap.connections == 0, "the redirect target was never contacted")
         #expect(first.recorded.count == 1)
     }
 }

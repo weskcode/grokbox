@@ -121,10 +121,12 @@ struct PhoneSendersView: View {
     private func unsubscribe(_ p: SenderProfile) async {
         let result = await UnsubscribeService.unsubscribe(from: p.assessment.cluster)
         switch result {
-        case .unsubscribed: outcome = (p.displayName, "\(p.displayName) acknowledged the request. Mail may still arrive for a few days.", nil)
+        case .accepted: outcome = (p.displayName, "\(p.displayName) acknowledged the request. Mail may still arrive for a few days.", nil)
         case .openInBrowser(let url): outcome = (p.displayName, "This sender has no one-click option. Open their page to finish.", url)
         case .requiresEmail(let mailto): outcome = (p.displayName, "Only an email option exists: \(mailto). Grokbox does not send mail.", nil)
+        case .notAccepted(let status, let url): outcome = (p.displayName, "Their server didn't accept the request (HTTP \(status)). Open their page to finish.", url)
         case .failed(let why): outcome = (p.displayName, why, nil)
+        case .unknown(let why): outcome = (p.displayName, "Not confirmed. \(why)", nil)
         }
         showingOutcome = true
     }

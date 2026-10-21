@@ -122,7 +122,7 @@ struct SenderMessagesSheet: View {
                 Spacer()
                 if let outcome {
                     Text(describe(outcome)).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                    if case .openInBrowser(let url) = outcome { Button("Open") { openURL(url) }.controlSize(.small) }
+                    if let url = outcome.manualPage { Button("Open") { openURL(url) }.controlSize(.small) }
                 }
             }
         }
@@ -168,10 +168,12 @@ struct SenderMessagesSheet: View {
 
     private func describe(_ outcome: UnsubscribeService.Outcome) -> String {
         switch outcome {
-        case .unsubscribed: "Unsubscribed. Their mail may take a few days to stop."
+        case .accepted: "Request accepted. Their mail may take a few days to stop."
         case .openInBrowser: "No one-click support — open their page to finish."
         case .requiresEmail(let mailto): "Only by email (\(mailto)). Grokbox does not send mail."
+        case .notAccepted(let status, _): "Their server didn't accept it (HTTP \(status)) — open their page to finish."
         case .failed(let message): "Could not unsubscribe: \(message)"
+        case .unknown(let message): "Not confirmed. \(message)"
         }
     }
 }

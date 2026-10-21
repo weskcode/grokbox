@@ -94,7 +94,7 @@ struct SendersView: View {
             }
         }
         .alert("Unsubscribe", isPresented: $showingOutcome, presenting: unsubscribeOutcome) { item in
-            if case .openInBrowser(let url) = item.outcome {
+            if let url = item.outcome.manualPage {
                 Button("Open link") { openURL(url) }
             }
             Button("OK", role: .cancel) { }
@@ -346,10 +346,12 @@ struct SendersView: View {
 
     private func describe(_ outcome: UnsubscribeService.Outcome, sender: String) -> String {
         switch outcome {
-        case .unsubscribed: "\(sender) acknowledged the unsubscribe. Their mail may take a few days to stop."
+        case .accepted: "\(sender) acknowledged the unsubscribe. Their mail may take a few days to stop."
         case .openInBrowser: "\(sender) does not support one-click unsubscribe. Open their page to finish."
         case .requiresEmail(let mailto): "\(sender) only offers unsubscribe by email (\(mailto)). Grokbox does not send mail — do it from your mail app."
+        case .notAccepted(let status, _): "\(sender)'s server didn't accept the one-click request (HTTP \(status)). Open their page to finish."
         case .failed(let message): "Could not unsubscribe from \(sender): \(message)"
+        case .unknown(let message): "Not confirmed for \(sender). \(message)"
         }
     }
 }

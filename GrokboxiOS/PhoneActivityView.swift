@@ -62,7 +62,9 @@ struct PhoneActivityView: View {
         case .markRead: "Marked \(a.messageCount) read"
         case .label: "Filed \(a.messageCount) → \(a.labelName ?? "folder")"
         case .trash: "Moved \(a.messageCount) to Trash"
-        case .unsubscribe: "Unsubscribed from \(a.senderName)"
+        case .unsubscribe: a.errorMessage == nil
+            ? "Unsubscribe accepted by \(a.senderName)"
+            : "Unsubscribe from \(a.senderName) not confirmed"
         }
     }
 }
