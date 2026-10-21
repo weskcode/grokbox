@@ -108,7 +108,11 @@ struct RecoveryPathTests {
         let before = Set(f.mailbox.listMailboxes().map(\.name))
         f.mailbox.uidValidity += 1
 
-        await PlanExecutor(modelContext: f.context).apply(f.plan, to: f.account, recordRules: true, guarded: false)
+        let executor = PlanExecutor(modelContext: f.context)
+        await executor.apply(f.plan, to: f.account, recordRules: true, guarded: false)
+        guard case .failed(let why) = executor.phase, why.localizedCaseInsensitiveContains("renumbered") else {
+            Issue.record("the sweep must be refused for the renumber, got \(executor.phase.label)"); return
+        }
 
         let created = Set(f.mailbox.listMailboxes().map(\.name)).subtracting(before)
         withKnownIssue("PlanExecutor.apply calls ensureMailbox before guardUIDValidity, so a refused sweep still creates folders") {
@@ -251,8 +255,10 @@ struct RecoveryPathTests {
         #expect(uncertain.errorMessage?.contains("may or may not have happened") == true, "the earlier record is kept, not rewritten")
         let planned = Set(f.plan.items.flatMap(\.cluster.pendingUIDs))
         #expect(f.inbox.isDisjoint(with: planned), "every planned message left the inbox")
-        let labelled = Set(f.mailbox.messages(in: DemoMailbox.allMail).filter { planned.contains($0.uid) && $0.labels.contains { $0.hasPrefix("Grokbox/") } }.map(\.uid))
-        #expect(labelled == planned, "every planned message carries its folder label")
+        for item in f.plan.items {
+            let labelled = Set(f.mailbox.messages(in: DemoMailbox.allMail).filter { $0.labels.contains(item.folder) }.map(\.uid))
+            #expect(Set(item.cluster.pendingUIDs).isSubset(of: labelled), "\(item.cluster.address) is filed under \(item.folder)")
+        }
     }
 
     /// A label change whose acknowledgment was lost may have landed. Undo is
@@ -342,9 +348,11 @@ struct RecoveryPathTests {
 
     /// An Undo that fails partway reports failure and keeps the action open.
     /// Running it again finishes the job, because putting a label back is safe
-    /// to repeat. Two ways to fail partway: a later chunk is refused (the first
-    /// chunk is confirmed, the rest did nothing), or the connection is lost
-    /// (the first chunk is confirmed, the rest may have landed).
+    /// to repeat. The demo provider does not chunk, so the failure is injected
+    /// as the error the real client raises after chunk one: a later chunk is
+    /// refused (the first chunk is confirmed, the rest did nothing), or the
+    /// connection is lost (the first chunk is confirmed, the rest may have
+    /// landed). The 500-UID chunking itself is covered by `IMAPClientTests`.
     @Test(arguments: [false, true])
     func anUndoThatStopsHalfwayCanBeRunAgain(lostConnection: Bool) async throws {
         let f = try await fixture(flavor: .gmail)
