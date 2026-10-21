@@ -17,6 +17,9 @@ public struct FetchedHeader: Sendable {
     public var listUnsubscribePost: String?
     public var listID: String?
     public var messageID: String?
+    /// Parsed with `MessageIDList`: ids only, brackets dropped.
+    public var inReplyTo: [String] = []
+    public var references: [String] = []
 
     /// On Gmail, "in the inbox" means it carries `\Inbox`. Elsewhere we index
     /// INBOX itself, so everything is.
@@ -163,7 +166,7 @@ public actor IMAPClient {
         var completion: String
     }
 
-    private static let headerFields = "FROM TO CC SUBJECT DATE MESSAGE-ID LIST-UNSUBSCRIBE LIST-UNSUBSCRIBE-POST LIST-ID"
+    private static let headerFields = "FROM TO CC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES LIST-UNSUBSCRIBE LIST-UNSUBSCRIBE-POST LIST-ID"
 
     public init() { connection = IMAPConnection() }
 
