@@ -331,3 +331,165 @@ struct SweepSafetyTests {
         }
     }
 }
+
+@MainActor
+private final class FailingStore {
+    var refuses: (ModelContext) -> Bool = { _ in false }
+
+    func executor(_ context: ModelContext) -> PlanExecutor {
+        PlanExecutor(modelContext: context) { context in
+            if self.refuses(context) { throw CocoaError(.fileWriteOutOfSpace) }
+            try context.save()
+        }
+    }
+}
+
+extension SweepSafetyTests {
+    private func inbox(_ mailbox: DemoMailbox) -> Set<UInt32> {
+        if mailbox.flavor.isGmail {
+            Set(mailbox.messages(in: DemoMailbox.allMail).filter { $0.labels.contains("\\Inbox") }.map(\.uid))
+        } else {
+            Set(mailbox.messages(in: "INBOX").map(\.uid))
+        }
+    }
+
+    @Test func noWriteGoesOutWhenItsRecordCannotBeSaved() async throws {
+        for flavor in [DemoMailbox.Flavor.gmail, .generic(delimiter: "/", inboxPrefix: false)] {
+            let (container, account, mailbox, basePlan) = try await setUp(flavor: flavor)
+            defer { DemoRegistry.shared.remove(account.id) }
+            let context = container.mainContext
+            var plan = basePlan
+            plan.items[0].markRead = true
+            plan.items[0].unsubscribe = true
+            let before = inbox(mailbox)
+            let writes = WriteCounter()
+            mailbox.beforeWrite = { _ in _ = await writes.next() }
+
+            let store = FailingStore()
+            store.refuses = { _ in true }
+            let executor = store.executor(context)
+            await executor.apply(plan, to: account, recordRules: true, guarded: false)
+
+            guard case .failed(let why) = executor.phase else {
+                Issue.record("\(flavor): expected failure, got \(executor.phase.label)"); continue
+            }
+            #expect(why.contains("could not save to Activity"), "\(flavor)")
+            #expect(await writes.count == 0, "\(flavor): nothing is written without its record")
+            #expect(inbox(mailbox) == before, "\(flavor)")
+            #expect(try context.fetch(FetchDescriptor<CleanupAction>()).isEmpty, "\(flavor): no record claims a write that never went out")
+            #expect(RuleStore.all(in: context).isEmpty, "\(flavor)")
+            #expect(executor.lastOutcome.messages == 0, "\(flavor)")
+        }
+    }
+
+    @Test func aFlagChangeIsNotSentWhenItsUndoCannotBeSaved() async throws {
+        let (container, account, mailbox, basePlan) = try await setUp()
+        defer { DemoRegistry.shared.remove(account.id) }
+        let context = container.mainContext
+        var plan = basePlan
+        plan.items[0].markRead = true
+        let writes = WriteCounter()
+        mailbox.beforeWrite = { _ in _ = await writes.next() }
+
+        let store = FailingStore()
+        store.refuses = { context in
+            context.changedModelsArray.contains { ($0 as? CleanupAction)?.isUndoable == true }
+        }
+        let executor = store.executor(context)
+        await executor.apply(plan, to: account, recordRules: true, guarded: false)
+
+        guard case .failed(let why) = executor.phase else { Issue.record("expected failure, got \(executor.phase.label)"); return }
+        #expect(why.contains("could not save to Activity"))
+        #expect(await writes.count == 0)
+        let action = try #require(try context.fetch(FetchDescriptor<CleanupAction>()).first)
+        #expect(action.kind == .markRead)
+        #expect(action.errorMessage?.hasPrefix("Not sent") == true)
+        #expect(!action.isUndoable)
+    }
+
+    @Test func anUnsubscribeIsNotSentWithoutItsRecord() async throws {
+        let (container, account, mailbox, basePlan) = try await setUp()
+        defer { DemoRegistry.shared.remove(account.id) }
+        let context = container.mainContext
+        var plan = basePlan
+        plan.items[0].unsubscribe = true
+
+        let store = FailingStore()
+        store.refuses = { context in
+            context.insertedModelsArray.contains { ($0 as? CleanupAction)?.kind == .unsubscribe }
+        }
+        let executor = store.executor(context)
+        await executor.apply(plan, to: account, recordRules: true, guarded: false)
+
+        guard case .failed(let why) = executor.phase else { Issue.record("expected failure, got \(executor.phase.label)"); return }
+        #expect(why.contains("could not save to Activity"))
+        let actions = try context.fetch(FetchDescriptor<CleanupAction>())
+        #expect(!actions.contains { $0.kind == .unsubscribe }, "the unsubscribe was not attempted")
+        #expect(actions.contains { $0.kind == .archive && $0.errorMessage == nil }, "the sweep before it is still on record")
+        #expect(RuleStore.all(in: context).isEmpty)
+        #expect(!mailbox.messages(in: DemoMailbox.allMail).isEmpty)
+    }
+
+    @Test func anOutcomeThatCannotBeSavedSaysTheServerChanged() async throws {
+        let (container, account, mailbox, basePlan) = try await setUp()
+        defer { DemoRegistry.shared.remove(account.id) }
+        let context = container.mainContext
+        var plan = basePlan
+        for index in plan.items.indices { plan.items[index].disposition = .archiveOnly }
+        let writes = WriteCounter()
+        let store = FailingStore()
+        let executor = store.executor(context)
+        mailbox.beforeWrite = { _ in
+            _ = await writes.next()
+            await MainActor.run { store.refuses = { _ in true } }
+        }
+        await executor.apply(plan, to: account, recordRules: true, guarded: false)
+
+        guard case .failed(let why) = executor.phase else { Issue.record("expected failure, got \(executor.phase.label)"); return }
+        #expect(why.contains("The server made the change"))
+        #expect(await writes.count == 1, "the run stops at the unsaved outcome")
+        #expect(executor.lastOutcome.messages == plan.items[0].cluster.pendingUIDs.count)
+    }
+
+    @Test func aStopWhoseOutcomeCannotBeSavedIsNotReportedAsClean() async throws {
+        let (container, account, mailbox, plan) = try await setUp()
+        defer { DemoRegistry.shared.remove(account.id) }
+        let store = FailingStore()
+        let executor = store.executor(container.mainContext)
+        mailbox.beforeWrite = { _ in
+            await MainActor.run {
+                executor.cancel()
+                store.refuses = { _ in true }
+            }
+        }
+        await executor.apply(plan, to: account, recordRules: true, guarded: false)
+
+        guard case .failed(let why) = executor.phase else {
+            Issue.record("an unsaved Stop must not read as a clean one: \(executor.phase.label)"); return
+        }
+        #expect(why.hasPrefix("Stopped."))
+        #expect(why.contains("could not save it to Activity"))
+        #expect(executor.lastOutcome.stopped)
+    }
+
+    @Test func anUndoThatCannotBeSavedSaysItHappened() async throws {
+        let (container, account, mailbox, basePlan) = try await setUp()
+        defer { DemoRegistry.shared.remove(account.id) }
+        let context = container.mainContext
+        var plan = basePlan
+        plan.items = [basePlan.items[0]]
+        plan.items[0].disposition = .archiveOnly
+        let store = FailingStore()
+        let executor = store.executor(context)
+        await executor.apply(plan, to: account, recordRules: false, guarded: false)
+        let action = try #require(try context.fetch(FetchDescriptor<CleanupAction>()).first { $0.kind == .archive })
+        try #require(action.isUndoable, "phase was \(executor.phase.label)")
+
+        store.refuses = { _ in true }
+        await executor.undo(action, on: account)
+
+        guard case .failed(let why) = executor.phase else { Issue.record("expected failure, got \(executor.phase.label)"); return }
+        #expect(why.contains("The server made the change"))
+        #expect(Set(action.uids).isSubset(of: inbox(mailbox)), "the undo itself went through")
+    }
+}

@@ -81,9 +81,15 @@ public final class PlanExecutor {
         }
     }
     private let modelContext: ModelContext
+    private let save: (ModelContext) throws -> Void
 
-    public init(modelContext: ModelContext) {
+    public convenience init(modelContext: ModelContext) {
+        self.init(modelContext: modelContext, save: { try $0.save() })
+    }
+
+    init(modelContext: ModelContext, save: @escaping (ModelContext) throws -> Void) {
         self.modelContext = modelContext
+        self.save = save
     }
 
     // MARK: - Apply
@@ -301,7 +307,7 @@ public final class PlanExecutor {
                 }
                 lastOutcome = Outcome(messages: touched, senders: done, failedSenders: failedSenders)
                 phase = .applying(done: done + failedSenders, total: items.count)
-                try modelContext.save()
+                try save(modelContext)
                 if let lostConnection { throw lostConnection }
             }
             // A Stop that landed during the last sender still counts as a Stop.
@@ -318,12 +324,12 @@ public final class PlanExecutor {
             }
         } catch where error is CancellationError || isStopped(token) {
             // Includes a write cut off by Stop's grace period: that is the Stop.
-            try? modelContext.save()
+            try? save(modelContext)
             lastOutcome.stopped = true
             let o = lastOutcome
             phase = .finished("Stopped. Swept \(o.messages.formatted()) messages from \(o.senders) senders; the rest were left alone.")
         } catch {
-            try? modelContext.save()
+            try? save(modelContext)
             phase = .failed(error.localizedDescription)
         }
     }
@@ -394,7 +400,7 @@ public final class PlanExecutor {
                 }
             }
             action.undoneAt = Date()
-            try modelContext.save()
+            try save(modelContext)
             phase = .finished("Undid \(action.kind.label.lowercased()) for \(action.senderName)")
         } catch {
             phase = .failed(error.localizedDescription)
@@ -452,7 +458,7 @@ public final class PlanExecutor {
         // mid-command, Activity says so instead of showing a clean success.
         action.errorMessage = Self.interrupted
         modelContext.insert(action)
-        try? modelContext.save()
+        try? save(modelContext)
         return action
     }
 
@@ -470,7 +476,7 @@ public final class PlanExecutor {
         // be reversed once the server says where the messages went.
         let reversibleIfUnsure = action.targetMailbox == nil
         action.isUndoable = reversibleIfUnsure
-        try? modelContext.save()
+        try? save(modelContext)
         do {
             settle(action, confirmed: requested, moved: try await operation())
             return requested
