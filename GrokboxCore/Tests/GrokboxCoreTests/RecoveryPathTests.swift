@@ -10,9 +10,10 @@ private actor Counter {
 
 /// The recovery paths around a sweep: a server that renumbers, a reply that
 /// never arrives, a connection that comes back, a message that is protected,
-/// and an Undo that stops halfway. Each test fails the demo server in the one
-/// way a real one can and checks what Grokbox says happened against what the
-/// server actually holds.
+/// and an Undo that stops halfway. Each failure test breaks the demo server in
+/// the one way a real one can and checks what Grokbox says happened against
+/// what the server actually holds; the passing controls prove the fixture
+/// would otherwise succeed.
 @MainActor
 @Suite(.serialized)
 struct RecoveryPathTests {
@@ -49,9 +50,12 @@ struct RecoveryPathTests {
 
         let engine = SyncEngine(modelContext: context)
         await engine.indexNow(account: account, mode: .full(limit: 10_000))
-        guard case .finished = engine.phase else { throw IndexFailed(phase: engine.phase.label) }
+        guard case .finished = engine.phase else {
+            DemoRegistry.shared.remove(account.id)
+            throw IndexFailed(phase: engine.phase.label)
+        }
 
-        let suggested = CleanupPlan.suggested(from: SenderProfileBuilder.assessments(for: account, in: context))
+        let suggested = CleanupPlan.suggested(from: SenderProfileBuilder.assessments(for: account, in: context), policy: .balanced)
         let items = suggested.enabledItems.prefix(4).map {
             CleanupPlan.Item(cluster: $0.cluster, archive: true, markRead: false, disposition: .fileIntoFolders)
         }
@@ -88,11 +92,28 @@ struct RecoveryPathTests {
             Issue.record("a renumbered mailbox must stop the sweep, got \(executor.phase.label)"); return
         }
         #expect(why.localizedCaseInsensitiveContains("renumbered"))
-        #expect(await writes.count == 0, "no mail was moved or labelled")
+        #expect(await writes.count == 0, "no message was moved, labelled or flagged")
         #expect(f.inbox == inboxBefore, "the server's inbox is untouched")
         #expect(try actions(f.context).isEmpty, "nothing is logged for work that never started")
         #expect(RuleStore.all(in: f.context).isEmpty, "no sender is approved by a refused sweep")
         #expect(try headers(f).allSatisfy { !$0.isSweptLocally })
+    }
+
+    /// On a plain server the executor creates its target folders before it
+    /// reaches the UIDVALIDITY check, so a refused sweep still writes to the
+    /// server. No mail moves, but the mailbox is not left as it was found.
+    @Test func aSweepRefusedForARenumberCreatesNoFolders() async throws {
+        let f = try await fixture(flavor: Self.generic)
+        defer { DemoRegistry.shared.remove(f.account.id) }
+        let before = Set(f.mailbox.listMailboxes().map(\.name))
+        f.mailbox.uidValidity += 1
+
+        await PlanExecutor(modelContext: f.context).apply(f.plan, to: f.account, recordRules: true, guarded: false)
+
+        let created = Set(f.mailbox.listMailboxes().map(\.name)).subtracting(before)
+        withKnownIssue("PlanExecutor.apply calls ensureMailbox before guardUIDValidity, so a refused sweep still creates folders") {
+            #expect(created.isEmpty, "created \(created.sorted())")
+        }
     }
 
     /// After a renumber the stored UIDs mean nothing. An incremental sync must
@@ -189,8 +210,12 @@ struct RecoveryPathTests {
         let executor = PlanExecutor(modelContext: f.context)
         await executor.apply(f.plan, to: f.account, recordRules: true, guarded: false)
         f.mailbox.beforeWrite = nil
+        #expect(await moves.count == 1, "the lost-acknowledgment scenario ran")
+        #expect(f.inbox.isDisjoint(with: moved), "the server really did move the mail")
+        #expect(try actions(f.context).first?.errorMessage?.contains("may or may not have happened") == true)
 
         await f.engine.indexNow(account: f.account, mode: .incremental(fallbackLimit: 10_000))
+        guard case .finished = f.engine.phase else { Issue.record("sync failed: \(f.engine.phase.label)"); return }
         let pending = Set(SenderProfileBuilder.assessments(for: f.account, in: f.context)
             .first { $0.cluster.address == victim }?.cluster.pendingUIDs ?? [])
         withKnownIssue("GB-012: the stale rows keep the moved mail pending, so a replay targets UIDs the server no longer has") {
@@ -201,9 +226,8 @@ struct RecoveryPathTests {
     // MARK: - Reconnect
 
     /// A dropped connection must not poison the next run on the same executor:
-    /// the earlier uncertain record stays as evidence, the retry completes,
-    /// and Undo of the uncertain label change works because putting a label
-    /// back is safe whether or not it landed.
+    /// the earlier uncertain record stays as evidence, the retry completes, and
+    /// the server ends up holding exactly what the plan asked for.
     @Test func aDroppedConnectionDoesNotPoisonTheNextRun() async throws {
         let f = try await fixture(flavor: .gmail)
         defer { DemoRegistry.shared.remove(f.account.id) }
@@ -225,9 +249,40 @@ struct RecoveryPathTests {
         #expect(executor.lastOutcome.senders == f.plan.items.count)
         #expect(Set(RuleStore.all(in: f.context).keys) == Set(f.plan.items.map(\.cluster.address)))
         #expect(uncertain.errorMessage?.contains("may or may not have happened") == true, "the earlier record is kept, not rewritten")
+        let planned = Set(f.plan.items.flatMap(\.cluster.pendingUIDs))
+        #expect(f.inbox.isDisjoint(with: planned), "every planned message left the inbox")
+        let labelled = Set(f.mailbox.messages(in: DemoMailbox.allMail).filter { planned.contains($0.uid) && $0.labels.contains { $0.hasPrefix("Grokbox/") } }.map(\.uid))
+        #expect(labelled == planned, "every planned message carries its folder label")
+    }
+
+    /// A label change whose acknowledgment was lost may have landed. Undo is
+    /// offered because putting the label back is safe either way, and it does
+    /// restore what the server holds.
+    @Test func aLabelWhoseAcknowledgmentWasLostCanStillBeUndone() async throws {
+        let f = try await fixture(flavor: .gmail)
+        defer { DemoRegistry.shared.remove(f.account.id) }
+        let item = f.plan.items[0]
+        let uids = Set(item.cluster.pendingUIDs)
+        let writes = Counter()
+        f.mailbox.beforeWrite = { [mailbox = f.mailbox] write in
+            guard write.operation == "+X-GM-LABELS", await writes.next() == 1 else { return }
+            mailbox.store(in: DemoMailbox.allMail, uids: Set(write.uids), add: true, labels: write.values)
+            throw IMAPError.connectionClosed
+        }
+        let executor = PlanExecutor(modelContext: f.context)
+        await executor.apply(CleanupPlan(items: [item]), to: f.account, recordRules: false, guarded: false)
+        f.mailbox.beforeWrite = nil
+
+        let uncertain = try #require(try actions(f.context).first { $0.kind == .label })
+        #expect(uncertain.errorMessage?.contains("may or may not have happened") == true)
+        #expect(uncertain.isUndoable)
+        let carries = { f.mailbox.messages(in: DemoMailbox.allMail).filter { uids.contains($0.uid) && $0.labels.contains(item.folder) }.count }
+        #expect(carries() == uids.count, "the label really did land")
 
         await executor.undo(uncertain, on: f.account)
         #expect(uncertain.isUndone, "undo: \(executor.phase.label)")
+        #expect(carries() == 0, "the label is gone from the server")
+        #expect(uids.isSubset(of: f.inbox), "the mail never left the inbox")
     }
 
     // MARK: - Protected messages
@@ -240,8 +295,11 @@ struct RecoveryPathTests {
         defer { DemoRegistry.shared.remove(f.account.id) }
         let victim = try #require(f.plan.items.first { $0.cluster.pendingUIDs.count >= 3 })
         let protected = try #require(victim.cluster.pendingUIDs.max())
+        let subject = try #require(try headers(f).first { $0.uid == protected }?.subject)
+        try #require(!SweepGuard.looksTransactional(subject), "only the flag may protect this message")
         f.mailbox.store(in: f.indexed, uids: [protected], add: true, flags: ["\\Flagged"])
         await f.engine.indexNow(account: f.account, mode: .full(limit: 10_000))
+        #expect(try headers(f).first { $0.uid == protected }?.isFlagged == true, "the re-index picked up the flag")
 
         let executor = PlanExecutor(modelContext: f.context)
         await executor.apply(f.plan, to: f.account, recordRules: true, guarded: true, policy: .thorough)
@@ -251,6 +309,8 @@ struct RecoveryPathTests {
         #expect(f.inbox.isDisjoint(with: Set(victim.cluster.pendingUIDs).subtracting([protected])), "the rest of that sender was swept")
         let held = try actions(f.context).filter { $0.senderAddress == victim.cluster.address }.flatMap(\.heldUIDs)
         #expect(held.contains(protected), "the log names what was held")
+        let summary = try actions(f.context).filter { $0.senderAddress == victim.cluster.address }.compactMap(\.heldSummary)
+        #expect(summary.contains { $0.contains("flagged") }, "and says why: \(summary)")
     }
 
     /// The guard reads flags from the local index, so a message flagged on
@@ -263,7 +323,11 @@ struct RecoveryPathTests {
         defer { DemoRegistry.shared.remove(f.account.id) }
         let victim = try #require(f.plan.items.first { $0.cluster.pendingUIDs.count >= 3 })
         let protected = try #require(victim.cluster.pendingUIDs.max())
+        let subject = try #require(try headers(f).first { $0.uid == protected }?.subject)
+        try #require(!SweepGuard.looksTransactional(subject), "only the flag may protect this message")
         f.mailbox.store(in: f.indexed, uids: [protected], add: true, flags: ["\\Flagged"])
+        #expect(f.mailbox.messages(in: f.indexed).first { $0.uid == protected }?.flags.contains("\\Flagged") == true, "flagged on the server")
+        #expect(try headers(f).first { $0.uid == protected }?.isFlagged == false, "but not in the local index")
 
         let executor = PlanExecutor(modelContext: f.context)
         await executor.apply(f.plan, to: f.account, recordRules: true, guarded: true, policy: .thorough)
@@ -278,8 +342,11 @@ struct RecoveryPathTests {
 
     /// An Undo that fails partway reports failure and keeps the action open.
     /// Running it again finishes the job, because putting a label back is safe
-    /// to repeat.
-    @Test func anUndoThatStopsHalfwayCanBeRunAgain() async throws {
+    /// to repeat. Two ways to fail partway: a later chunk is refused (the first
+    /// chunk is confirmed, the rest did nothing), or the connection is lost
+    /// (the first chunk is confirmed, the rest may have landed).
+    @Test(arguments: [false, true])
+    func anUndoThatStopsHalfwayCanBeRunAgain(lostConnection: Bool) async throws {
         let f = try await fixture(flavor: .gmail)
         defer { DemoRegistry.shared.remove(f.account.id) }
         let executor = PlanExecutor(modelContext: f.context)
@@ -288,18 +355,19 @@ struct RecoveryPathTests {
         let archive = try #require(try actions(f.context).first { $0.kind == .archive && $0.isUndoable && $0.uids.count >= 2 })
         let uids = archive.uids.sorted()
         let applied = Array(uids.prefix(uids.count / 2))
+        let rest = Array(uids.dropFirst(applied.count))
         #expect(f.inbox.isDisjoint(with: Set(uids)))
 
         f.mailbox.beforeWrite = { [mailbox = f.mailbox] write in
             guard write.operation == "+X-GM-LABELS", write.values == ["\\Inbox"] else { return }
-            mailbox.store(in: DemoMailbox.allMail, uids: Set(applied), add: true, labels: ["\\Inbox"])
-            throw PartialWriteError(applied: applied, reason: "NO test refusal")
+            mailbox.store(in: DemoMailbox.allMail, uids: Set(lostConnection ? uids : applied), add: true, labels: ["\\Inbox"])
+            throw PartialWriteError(applied: applied, unsure: lostConnection ? rest : [], reason: lostConnection ? "connection lost" : "NO test refusal")
         }
         await executor.undo(archive, on: f.account)
 
         guard case .failed = executor.phase else { Issue.record("expected failure, got \(executor.phase.label)"); return }
         #expect(!archive.isUndone, "a half-finished undo is not recorded as done")
-        #expect(f.inbox.intersection(Set(uids)) == Set(applied))
+        #expect(f.inbox.intersection(Set(uids)) == Set(lostConnection ? uids : applied))
 
         f.mailbox.beforeWrite = nil
         await executor.undo(archive, on: f.account)
