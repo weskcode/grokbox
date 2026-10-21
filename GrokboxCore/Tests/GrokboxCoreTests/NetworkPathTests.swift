@@ -9,6 +9,7 @@ final class FakeHTTPServer: @unchecked Sendable {
     private let queue = DispatchQueue(label: "fake-http")
     private let lock = NSLock()
     private(set) var requests: [String] = []
+    private var accepted = 0
     let responder: @Sendable (String) -> (status: Int, body: String)
     private(set) var port: UInt16 = 0
     /// When set, every reply carries this `Location` header (for redirect tests).
@@ -39,8 +40,10 @@ final class FakeHTTPServer: @unchecked Sendable {
     func stop() { listener.cancel() }
 
     var recorded: [String] { lock.lock(); defer { lock.unlock() }; return requests }
+    var connections: Int { lock.lock(); defer { lock.unlock() }; return accepted }
 
     private func accept(_ connection: NWConnection) {
+        lock.lock(); accepted += 1; lock.unlock()
         connection.start(queue: queue)
         read(connection, Data())
     }
