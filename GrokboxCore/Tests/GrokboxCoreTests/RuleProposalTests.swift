@@ -137,6 +137,32 @@ struct RuleProposalTests {
         #expect(draft(proposal)?.address == "deals@megamart.example", "the sentence means MegaMart")
     }
 
+    @Test(arguments: [
+        ("me\u{017F}\u{017F}ages from Not A Sender", "Keep messages from Not A Sender"),
+        ("\u{FF4D}ail from Not A Sender", "Keep mail from Not A Sender"),
+        ("Medium Daily Digest older than 30 days", "Archive Medium Daily Digest older than 30 days"),
+        ("this message from Club Weekly", "Trash this message from Club Weekly"),
+        ("Medium Daily Digest in my work account", "Trash Medium Daily Digest in my work account"),
+        ("mail to Club Weekly", "Trash mail to Club Weekly")
+    ])
+    func aSenderCannotNameItselfIntoARefusedSentence(name: String, request: String) {
+        let spoof = KnownSender(address: "evil@x.example", displayName: name, category: .promotion, supportsOneClickUnsubscribe: true)
+        var rules = Self.rules
+        rules[spoof.address] = .init(decision: .sweep)
+        let proposal = RuleProposal.make(request: request, senders: Self.senders + [spoof], rules: rules,
+                                         folders: Self.folders, policy: .gentle)
+        if case .draft(let draft) = proposal { Issue.record("\(request) drafted \(draft) for a sender named \(name)") }
+        let byAddress = RuleProposal.make(request: "Archive evil@x.example", senders: Self.senders + [spoof], rules: rules,
+                                          folders: Self.folders, policy: .gentle)
+        #expect(draft(byAddress)?.address == spoof.address, "the sender stays reachable by its address")
+    }
+
+    @Test func ordinaryNamesStayTypeable() {
+        for name in ["The Paper", "Life in Pictures", "News from Apple", "PayPal!", "Acme Inc.", "Club 21"] {
+            #expect(RuleProposal.isNameable(RuleProposal.fold(name)), "\(name)")
+        }
+    }
+
     @Test func aNameStartingLikeTheGrammarCannotStandInForAnUnknownSender() {
         let spoof = KnownSender(address: "evil@x.example", displayName: "mail from Not A Sender", category: .promotion,
                                 supportsOneClickUnsubscribe: true)
@@ -237,6 +263,20 @@ struct RuleProposalTests {
     func trashByAnyOtherNameIsNotAFilingFolder(folder: String) {
         let proposal = propose("Put Medium Daily Digest in \(folder)", folders: Self.folders.union([folder]))
         #expect(proposal == .unresolved(.reservedFolder(folder)))
+    }
+
+    @Test(arguments: ["Junk-Mail", "Courrier indésirable", "Gesendete Objekte", "Brouillons"])
+    func localizedSpecialMailboxesAreNotFilingFolders(folder: String) {
+        #expect(propose("Put Medium Daily Digest in \(folder)", folders: Self.folders.union([folder])) == .unresolved(.reservedFolder(folder)))
+    }
+
+    @Test func aLookAlikeSpellingCannotFileIntoTheTrash() {
+        let folders = Self.folders.union(["Trash"])
+        #expect(propose("Put Medium Daily Digest in Tra\u{017F}h", folders: folders) == .unresolved(.reservedFolder("Tra\u{017F}h")),
+                "the long s folds to s, so this is the Trash")
+        let stored = Self.folders.union(["Tra\u{017F}h"])
+        #expect(propose("Put Medium Daily Digest in Trash", folders: stored) == .unresolved(.reservedFolder("Trash")))
+        #expect(propose("Put Medium Daily Digest in Tra\u{017F}h", folders: stored) == .unresolved(.reservedFolder("Tra\u{017F}h")))
     }
 
     /// The executor's Trash lookup and this refusal read one list of names.

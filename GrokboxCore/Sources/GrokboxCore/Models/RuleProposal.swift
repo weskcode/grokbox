@@ -129,40 +129,72 @@ enum RuleProposal: Sendable, Equatable {
 
     private struct Failure: Error { var reason: Unresolved }
 
-    /// Every address and display name, normalized once per request.
+    /// Every address and display name, folded once per request.
     private struct SenderBook {
-        var addresses: Set<String>
-        var names: [(name: String, address: String)]
+        var addresses: [(key: String, address: String)]
+        var names: [(key: String, address: String)]
 
         init(senders: [KnownSender], rules: [String: SenderOverride]) {
-            addresses = Set(senders.map(\.address) + rules.keys)
-            // "Trash mail from X" also reads as a sender named "mail from X".
-            // A display name that starts like that is reachable by address only.
-            names = senders.map { (name: RuleProposal.spaced($0.displayName), address: $0.address) }
-                .filter { entry in
-                    !RequestForm.mailFrom.contains { !$0.isEmpty && entry.name.lowercased().hasPrefix($0 + " ") }
-                }
+            addresses = Set(senders.map(\.address) + rules.keys).map { (key: RuleProposal.fold($0), address: $0) }
+            names = senders.map { (key: RuleProposal.fold($0.displayName), address: $0.address) }
+                .filter { RuleProposal.isNameable($0.key) }
         }
     }
 
-    static func spaced(_ text: String) -> String {
-        text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    /// The one comparison used for every name: compatibility-normalized,
+    /// case- and width-folded, whitespace collapsed. "Traſh" is "trash"
+    /// here, so no check can pass one spelling and resolve another.
+    static func fold(_ text: String) -> String {
+        text.precomposedStringWithCompatibilityMapping
+            .folding(options: [.caseInsensitive, .widthInsensitive], locale: nil)
+            .split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    /// Words that put a condition or a scope on mail. A sender chooses its
+    /// own display name, so a name holding one could swallow the end of a
+    /// sentence ("archive X older than 30 days") and turn a refused request
+    /// into a rule for itself.
+    static let scopeWords: Set<String> = [
+        "older", "newer", "than", "after", "before", "since", "until", "unless", "except", "only", "if", "when",
+        "whenever", "day", "days", "week", "weeks", "month", "months", "year", "years", "today", "yesterday",
+        "tomorrow", "ago", "now", "read", "unread", "subject", "subjects", "contains", "containing", "attachment",
+        "attachments", "message", "messages", "this", "these", "that", "those", "account", "accounts", "my", "me",
+        "every", "any"
+    ]
+
+    /// Starts a name the way a sentence's scope starts: "mail from X",
+    /// "mail to X", "everything from X".
+    static let scopeOpeners: Set<String> = ["mail", "email", "emails", "e-mail", "everything", "all"]
+
+    /// Whether a display name may be typed to target its sender. Any other
+    /// name is reachable by its address only.
+    static func isNameable(_ folded: String) -> Bool {
+        let words = folded.split { !$0.isLetter && !$0.isNumber && $0 != "-" }.map(String.init)
+        guard let first = words.first else { return false }
+        return !scopeOpeners.contains(first) && !words.contains { scopeWords.contains($0) }
     }
 
     /// Mail filed anywhere under one of these is on its way out.
-    static let disposalFolderNames: Set<String> = [IMAPMailbox].trashNames
-        .union(["junk", "junk e-mail", "junk email", "spam"])
+    static let disposalFolderNames: Set<String> = Set([IMAPMailbox].trashNames.union([
+        "junk", "junk e-mail", "junk email", "junk-mail", "junk mail", "spam", "bulk mail", "courrier indésirable",
+        "indésirables", "pourriel", "spamverdacht", "correo no deseado", "posta indesiderata", "ongewenste e-mail",
+        "lixo eletrônico", "skräppost"
+    ]).map(fold))
 
     /// Names a mailbox may not be filed into, whatever the server calls it.
     static let reservedFolderNames: Set<String> = disposalFolderNames.union([
-        "inbox", "sent", "sent items", "sent mail", "sent messages", "drafts", "all mail", "archive", "outbox"
-    ])
+        "inbox", "sent", "sent items", "sent mail", "sent messages", "drafts", "all mail", "archive", "outbox",
+        "envoyés", "messages envoyés", "gesendet", "gesendete objekte", "enviados", "posta inviata", "verzonden",
+        "skickat", "brouillons", "entwürfe", "borradores", "bozze", "concepten", "rascunhos"
+    ].map(fold))
 
     /// Whether filing into `folder` would really be a different action.
     /// Paths split on "/" and on "." (`INBOX.Trash`), and a leading "the"
-    /// is ignored, so "the trash" is the Trash.
+    /// is ignored, so "the trash" is the Trash. A "." inside an ordinary
+    /// name is read as a separator too; the cost is refusing a folder such
+    /// as "bin.packing", which the folder picker can still set.
     static func isReserved(_ folder: String) -> Bool {
-        var name = folder.lowercased()
+        var name = fold(folder)
         if name.hasPrefix("the ") { name.removeFirst(4) }
         if name.hasPrefix("[gmail]") || name.hasPrefix("[google mail]") { return true }
         let parts = name.split { $0 == "/" || $0 == "." }.map { $0.trimmingCharacters(in: .whitespaces) }
@@ -176,9 +208,10 @@ enum RuleProposal: Sendable, Equatable {
         let named = reading.sender
         // Exact address first, then an exact display name. Display names are
         // written by senders, so two that collide are shown, never guessed between.
-        var matches = book.addresses.filter { $0.caseInsensitiveCompare(named) == .orderedSame }
+        let key = fold(named)
+        var matches = Set(book.addresses.filter { $0.key == key }.map(\.address))
         if matches.isEmpty {
-            matches = Set(book.names.filter { $0.name.caseInsensitiveCompare(named) == .orderedSame }.map(\.address))
+            matches = Set(book.names.filter { $0.key == key }.map(\.address))
         }
         if matches.count > 1 { return .failure(Failure(reason: .ambiguousSender(matches.sorted()))) }
         guard let address = matches.first else {
@@ -189,7 +222,7 @@ enum RuleProposal: Sendable, Equatable {
         var folder: String?
         if let typed = reading.folder {
             if isReserved(typed) { return .failure(Failure(reason: .reservedFolder(typed))) }
-            let loose = folders.filter { $0.caseInsensitiveCompare(typed) == .orderedSame }
+            let loose = folders.filter { fold($0) == fold(typed) }
             if folders.contains(typed) {
                 folder = typed
             } else if loose.count == 1 {
@@ -199,6 +232,7 @@ enum RuleProposal: Sendable, Equatable {
             } else {
                 return .failure(Failure(reason: .ambiguousFolder(loose.sorted())))
             }
+            if let folder, isReserved(folder) { return .failure(Failure(reason: .reservedFolder(folder))) }
         }
         return .success(Target(address: address, folder: folder, change: reading.change))
     }
