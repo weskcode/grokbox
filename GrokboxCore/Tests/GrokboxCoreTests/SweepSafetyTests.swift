@@ -443,10 +443,10 @@ extension SweepSafetyTests {
             _ = await writes.next()
             await MainActor.run { store.refuses = { _ in true } }
         }
-        await executor.apply(plan, to: account, recordRules: true, guarded: false)
+        await executor.apply(plan, to: account, recordRules: false, guarded: false)
 
         guard case .failed(let why) = executor.phase else { Issue.record("expected failure, got \(executor.phase.label)"); return }
-        #expect(why.contains("The server made the change"))
+        #expect(why.contains("could not save the result to Activity"))
         #expect(await writes.count == 1, "the run stops at the unsaved outcome")
         #expect(executor.lastOutcome.messages == plan.items[0].cluster.pendingUIDs.count)
     }
@@ -468,7 +468,7 @@ extension SweepSafetyTests {
             Issue.record("an unsaved Stop must not read as a clean one: \(executor.phase.label)"); return
         }
         #expect(why.hasPrefix("Stopped."))
-        #expect(why.contains("could not save it to Activity"))
+        #expect(why.contains("could not save the result to Activity"))
         #expect(executor.lastOutcome.stopped)
     }
 
@@ -489,7 +489,43 @@ extension SweepSafetyTests {
         await executor.undo(action, on: account)
 
         guard case .failed(let why) = executor.phase else { Issue.record("expected failure, got \(executor.phase.label)"); return }
-        #expect(why.contains("The server made the change"))
+        #expect(why.contains("could not save the result to Activity"))
         #expect(Set(action.uids).isSubset(of: inbox(mailbox)), "the undo itself went through")
+    }
+
+    @Test func aStopThatLandsBeforeTheRecordSavesDoesNotClaimTheServerChanged() async throws {
+        let (container, account, mailbox, plan) = try await setUp()
+        defer { DemoRegistry.shared.remove(account.id) }
+        let writes = WriteCounter()
+        mailbox.beforeWrite = { _ in _ = await writes.next() }
+        let store = FailingStore()
+        let executor = store.executor(container.mainContext)
+        store.refuses = { _ in
+            executor.cancel()
+            return true
+        }
+        await executor.apply(plan, to: account, recordRules: true, guarded: false)
+
+        guard case .failed(let why) = executor.phase else { Issue.record("expected failure, got \(executor.phase.label)"); return }
+        #expect(why.contains("stopped before the next change"))
+        #expect(!why.contains("Stopped. Swept"))
+        #expect(await writes.count == 0)
+    }
+
+    @Test func aRefusedWriteWhoseOutcomeCannotBeSavedDoesNotClaimTheServerChanged() async throws {
+        let (container, account, mailbox, plan) = try await setUp()
+        defer { DemoRegistry.shared.remove(account.id) }
+        let store = FailingStore()
+        let executor = store.executor(container.mainContext)
+        mailbox.beforeWrite = { _ in
+            await MainActor.run { store.refuses = { _ in true } }
+            throw IMAPError.commandFailed(command: "UID STORE", response: "NO test refusal")
+        }
+        await executor.apply(plan, to: account, recordRules: false, guarded: false)
+
+        guard case .failed(let why) = executor.phase else { Issue.record("expected failure, got \(executor.phase.label)"); return }
+        #expect(why.contains("could not save the result to Activity"))
+        #expect(!why.contains("made the change"))
+        #expect(executor.lastOutcome.messages == 0)
     }
 }

@@ -92,7 +92,7 @@ public final class PlanExecutor {
             case .notRecordedBeforeWrite(let error):
                 "Grokbox could not save to Activity, so it stopped before the next change. \(error.localizedDescription)"
             case .notSavedAfterWrite(let error):
-                "The server made the change, but Grokbox could not save it to Activity, so Activity may not show it after a restart. \(error.localizedDescription)"
+                "Grokbox could not save the result to Activity, so Activity may not match the mailbox after a restart. \(error.localizedDescription)"
             }
         }
     }
@@ -336,7 +336,7 @@ public final class PlanExecutor {
             } else {
                 phase = .finished(swept)
             }
-        } catch where error is CancellationError || isStopped(token) {
+        } catch where error is CancellationError || (isStopped(token) && !(error is JournalError)) {
             // Includes a write cut off by Stop's grace period: that is the Stop.
             lastOutcome.stopped = true
             let o = lastOutcome
