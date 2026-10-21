@@ -2,7 +2,8 @@
 
 A local-first mail triage tool for macOS, iPhone and iPad. It indexes your
 mailboxes, collapses them into senders, and tells you what is actually filling
-your inbox — without any of it leaving your machine.
+your inbox — with nothing leaving your machine unless you opt in to the Jev
+fallback described below.
 
 Built for the specific problem of the **email pile-up**: tens of thousands of
 messages, most of them machine-sent, and no viable path through them one at a
@@ -46,7 +47,9 @@ claims rather than take them.
 - **Sweep** — the proposed plan grouped by destination folder — Promotions,
   Newsletters, Notifications — never a generic bin. A **guard** holds back
   flagged mail, mail that needs you, and receipts, and says so.
-- **Activity** — every change Grokbox made, newest first, with Undo.
+- **Activity** — every change Grokbox made, newest first, with Undo where the
+  change can be undone (an unsubscribe cannot, and a move needs the server to
+  report where the mail went).
 - **Catch up on older mail** — the reader normally looks back 30 days. Catch-up
   reads the last three months or year, but only from people and
   record-keeping senders (or flagged) — the things an ignored inbox hides.
@@ -58,7 +61,8 @@ claims rather than take them.
 
 Reading uses **Apple's on-device model** (macOS 26+, no setup) or **Ollama**
 (open source, `brew install ollama`; Mac only). Bodies are fetched, read, and
-discarded; only the summary is kept.
+discarded; only the model's summary and signals (importance, reason, action,
+due date) are kept.
 
 ## What it will not do
 
@@ -76,14 +80,16 @@ discarded; only the summary is kept.
 
 ## Privacy
 
-- No network traffic except IMAP to your own mail server and a sender's own
+- No network traffic except IMAP to your own mail server, a sender's own
   unsubscribe link (when you press Unsubscribe, or when automatic unsubscribe is
-  on) — the one opt-in exception is the Jev cloud fallback (off by default, your
+  on), and a domain-only settings lookup when you press "Look up settings" while
+  adding an account — the one opt-in exception is the Jev cloud fallback (off by default, your
   own API key); see [ADR-0023](docs/DECISIONS.md)
 - No telemetry, no analytics, no crash reporting, no accounts
 - No third-party dependencies — the IMAP client is written from scratch
 - Passwords live in the macOS Keychain
-- The local index holds headers and one-sentence summaries, never message bodies
+- The local index holds headers and the model's summaries and signals, never
+  message bodies
 - Sandboxed, with `network.client` as its only entitlement
 
 ## Requirements
@@ -187,24 +193,29 @@ states in one sentence what it will do, above the button that does it.
 | | Gentle (the default) | Balanced | Thorough |
 |---|---|---|---|
 | Swept mail | Filed into folders | Filed into folders | Promotions to your provider's Trash, the rest filed |
-| Marked read | No | Yes | Yes |
+| "Mark swept mail as read" setting | Off | On | On |
 | Kept in the inbox | Last 7 days and the newest 2 per sender | Last 2 days and the newest 1 per sender | Nothing is kept back by age or count |
 | Automatic unsubscribe | Never | Senders with a one-click link, at least 90% unread, 10+ messages, never written to | Senders with a one-click link, at least 75% unread, 5+ messages, no "never written to" condition |
 
-Receipts and security mail are held back in all three, and so are senders you
-have written to unless you approved them, unless you switch those guards off.
-Flagged mail and anything the model says needs you is always held.
+On macOS, the Sweep screen's "Also mark read" switch starts on and decides for
+that sweep, whatever the setting says. Mail that looks like a receipt or
+security mail, judged from its subject, is held back in all three, and so are
+senders you have written to unless you approved them, unless you switch those
+guards off. Flagged mail and anything the model says needs you is always held.
 
 What those settings can and cannot take back:
 
-- **Moves can be undone from Activity** — a move to Trash only for as long as
-  your provider keeps it (often 30 days; providers set their own schedule), and
-  on a plain IMAP server only where it reports where the mail went (UIDPLUS).
+- **Moves can usually be undone from Activity** — a move to Trash only for as
+  long as your provider keeps it (often 30 days; providers set their own
+  schedule), and only where the server reports where the mail went (UIDPLUS on a
+  plain IMAP server). Otherwise Activity says it cannot move the mail back.
 - **An unsubscribe cannot be undone.** The sender receives your request and
   answers on its own terms; Grokbox sees only that its server accepted the
   request, not that your address was removed. Only the sender's one-click link is
-  used, and only for promotion, newsletter and notification senders; anything
-  needing a browser is left for you in Senders.
+  used. The policy applies it only to promotion, newsletter and notification
+  senders, but a sender you set to unsubscribe is unsubscribed whatever its
+  category, if it has a one-click link. Anything needing a browser is left for you
+  in Senders.
 - **Per-sender settings override the policy** in both directions: a sender can be
   set to Trash, archive, a custom folder, or to unsubscribe whenever a one-click
   link exists, under any preset, and "never unsubscribe" holds even under

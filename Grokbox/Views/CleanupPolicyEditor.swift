@@ -80,7 +80,7 @@ struct CleanupPolicyEditor: View {
                     Text("20").tag(20)
                 }
                 Toggle("Only senders you have never written to", isOn: $policy.autoUnsubscribeRequiresNeverContacted)
-                Text("Grokbox only uses the sender's own one-click link (RFC 8058), and only for promotions, newsletters and notifications. Anything needing a browser is left for you in Senders. An unsubscribe cannot be undone. A setting on an individual sender overrides these choices.")
+                Text("Grokbox only uses the sender's own one-click link (RFC 8058), and this policy applies it only to promotions, newsletters and notifications. Anything needing a browser is left for you in Senders. An unsubscribe cannot be undone. A setting on an individual sender overrides these choices, including its category limit.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }

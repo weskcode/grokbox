@@ -74,18 +74,32 @@ struct PhoneSweepView: View {
         .refreshable { plan = buildPlan() }
     }
 
-    /// The policy's sentence, plus Trash named when an enabled sender in this
-    /// plan goes there, whether by the policy or a per-sender setting.
+    /// The policy's sentence, then what this plan does where a per-sender
+    /// setting departs from it: Trash, archive-only, or an unsubscribe the
+    /// policy alone would not make.
     private var policyNotice: String {
-        let trashed = plan?.enabledItems.filter { $0.disposition == .trash }.count ?? 0
-        guard trashed > 0 else { return state.policy.summary }
-        return state.policy.summary + " \(trashed) \(trashed == 1 ? "sender in this plan goes" : "senders in this plan go") to your provider's Trash. \(CleanupPolicy.Disposition.trash.warning ?? "")"
+        let items = plan?.enabledItems ?? []
+        let trashed = items.filter { $0.disposition == .trash }.count
+        let archived = items.filter { $0.disposition == .archiveOnly }.count
+        let unsubscribing = items.filter(\.unsubscribe).count
+        var text = state.policy.summary
+        if trashed > 0 {
+            text += " In this plan, \(trashed) \(trashed == 1 ? "sender goes" : "senders go") to your provider's Trash. The provider deletes mail for good when it empties the Trash; Undo works until then, where the server reported where the mail went."
+        }
+        if archived > 0 {
+            text += " \(archived) \(archived == 1 ? "sender is" : "senders are") archived without a folder."
+        }
+        if unsubscribing > 0, state.policy.unsubscribe == .never {
+            text += " Settings on individual senders still unsubscribe from \(unsubscribing) of them."
+        }
+        return text
     }
 
     /// Where a group's mail actually ends up: its folder, or Trash or the
     /// archive for senders whose disposition says so.
     private func destination(of items: [CleanupPlan.Item], folder: String) -> String {
-        let names = items.map { item -> String in
+        let enabled = items.filter(\.isEnabled)
+        let names = (enabled.isEmpty ? items : enabled).map { item -> String in
             switch item.disposition {
             case .fileIntoFolders: folder
             case .archiveOnly: "Archive"

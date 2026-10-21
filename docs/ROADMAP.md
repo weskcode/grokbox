@@ -58,7 +58,8 @@ not model (odd `LIST` shapes, servers that fold differently, huge mailboxes).
   Thorough unsubscribe automatically from qualifying senders through their
   one-click link, and Thorough moves promotions to the provider's Trash.
 - **Move to Trash** (ADR-0019): a MOVE, undoable while the provider keeps the
-  mail, deleted by the provider when it empties the Trash. Grokbox still never
+  mail and where the server reports where it went, deleted by the provider when
+  it empties the Trash. Grokbox still never
   sets `\Deleted` or sends `EXPUNGE`.
 - **Per-sender overrides** of destination, custom folder and unsubscribe, which
   apply under any preset. Rules and overrides are global across accounts.
@@ -103,6 +104,6 @@ disclosed exception, not a change of direction.
 - **Sending mail.** Out of scope. Grokbox is a triage tool.
 - **Keeping message bodies.** The reader fetches up to 8 KB of a body, passes
   at most 3,000 characters of plain text to the model, and drops it. Only the
-  summary is stored.
+  model's summary and signals are stored.
 - **A hosted or sync service.** There is no server, and adding one would end the
   privacy claim.

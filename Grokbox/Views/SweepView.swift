@@ -57,7 +57,7 @@ struct SweepView: View {
     /// where the messages went.
     private var undoPromise: String {
         switch account.kind {
-        case .gmail, .demo: "Every change to your mail can be undone from Activity."
+        case .gmail, .demo: "Every archive, label and read change can be undone from Activity."
         default: "Every change to your mail is listed in Activity, with Undo wherever this server reports where the mail went."
         }
     }
@@ -71,17 +71,18 @@ struct SweepView: View {
         let unsubscribing = items.filter(\.unsubscribe).count
         var sentences: [String] = []
         if items.isEmpty || items.contains(where: { $0.disposition == .fileIntoFolders }) {
-            sentences.append("Senders set to be filed go into the folder for their kind — Promotions, Newsletters, Notifications — never a generic bin.")
+            sentences.append("Senders set to be filed go into the folder for their kind — Promotions, Newsletters, Notifications — or the folder you chose for that sender, never a generic bin.")
         }
         if items.contains(where: { $0.disposition == .archiveOnly }) {
             sentences.append("Senders set to archive leave the inbox without a folder.")
         }
         if trashed > 0 {
-            sentences.append("\(trashed) \(trashed == 1 ? "sender goes" : "senders go") to your provider's Trash. \(CleanupPolicy.Disposition.trash.warning ?? "")")
+            sentences.append("\(trashed) \(trashed == 1 ? "sender goes" : "senders go") to your provider's Trash. The provider deletes mail for good when it empties the Trash; Undo works until then, where the server reported where the mail went.")
         }
         sentences.append(state.policy.guardTransactional
-                         ? "Flagged mail, mail the model says needs you, and receipts are held back automatically."
+                         ? "Flagged mail, mail the model says needs you, and mail that looks like a receipt or security notice (judged from its subject) are held back automatically."
                          : "Flagged mail and mail the model says needs you are held back automatically.")
+        if markRead { sentences.append("Swept mail is also marked read.") }
         if trashed == 0 { sentences.append("Nothing is deleted.") }
         sentences.append(undoPromise)
         if unsubscribing > 0 {
@@ -159,7 +160,8 @@ struct SweepView: View {
     /// Where a group's mail actually ends up: its folder, or Trash or the
     /// archive for senders whose disposition says so.
     private func destination(of items: [CleanupPlan.Item], folder: String) -> String {
-        let names = items.map { item -> String in
+        let enabled = items.filter(\.isEnabled)
+        let names = (enabled.isEmpty ? items : enabled).map { item -> String in
             switch item.disposition {
             case .fileIntoFolders: folder
             case .archiveOnly: "Archive"

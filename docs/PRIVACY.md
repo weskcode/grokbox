@@ -12,7 +12,7 @@ Ollama is Mac only, so there reading uses Apple's on-device model.
 | **Your IMAP server** (e.g. `imap.gmail.com:993`) | Index, Read, Sweep, Tidy-up. With automatic tidy-up on and "Also when new mail arrives" ticked, one more read-only connection per account stays open, listening to the inbox (IMAP `IDLE`) | IMAP commands. Credentials over TLS, either from the first byte or after a required `STARTTLS`. Header and body reads are `PEEK`, so nothing is marked read by looking. | It is the product; remove the account. Untick "Also when new mail arrives" to close the listening connection. |
 | **`autoconfig.<your domain>`** and **`autoconfig.thunderbird.net`** (Mozilla's ISPDB) | Only when you press "Look up settings" while adding an account | Just the domain of the address you typed — never the full address | Type in server settings by hand instead. |
 | **`127.0.0.1:11434`** (Ollama) | Read, if you chose Ollama | Subject, sender, and up to 3,000 characters of body text per message | Choose Apple's model instead, or none. Loopback only — the code refuses any other host. |
-| **A sender's unsubscribe URL** | When you click Unsubscribe, or automatically during a sweep or an automatic tidy-up for senders that meet the conditions in your cleanup policy. Automatic unsubscribe is on under Balanced and Thorough (including when chosen during account setup), off under Gentle, the default, and can be set for a single sender under any preset. | An RFC 8058 POST to the HTTPS URL the sender put in their own `List-Unsubscribe` header. The sender receives your request and Grokbox cannot take it back. | Do not click it, choose Gentle or "Only when I press it" in Settings, and do not set a sender to unsubscribe when possible. |
+| **A sender's unsubscribe URL** | When you click Unsubscribe, or automatically during a sweep or an automatic tidy-up for senders that meet the conditions in your cleanup policy. Automatic unsubscribe is on under Balanced and Thorough (including when chosen during account setup), off under Gentle, the default, and can be set for a single sender under any preset. | An RFC 8058 POST to the HTTPS URL the sender put in their own `List-Unsubscribe` header. The sender receives your request and Grokbox cannot take it back. One redirect is followed, and only to another public HTTPS host, which then also receives the request. | Do not click it, choose Gentle or "Only when I press it" in Settings, and do not set a sender to unsubscribe when possible. |
 | **`api.typesafe.ai`** (Jev, TypeSafe AI) | Only if you turn on "Jev cloud fallback" in Settings and save your own API key — and then only for a sender the local model still could not categorize | The sender's address and a handful of their subject lines. Never a message body. | Off by default. Turn it off in Settings, or Erase everything, which also deletes the saved key. See ADR-0023. |
 
 That is the complete list of connections Grokbox can make. Autoconfig only
@@ -37,8 +37,8 @@ Ollama, where the whole stack is open source.
 In the app's sandboxed container (`~/Library/Containers/com.wesleykeetch.grokbox/`):
 
 - **Message headers**: sender, subject, date, flags, Message-ID, list headers.
-- **Summaries**: the model's one-sentence summary and importance call, for
-  messages the reader has processed.
+- **Summaries and signals**: the model's one-sentence summary, importance call,
+  reason, action and due date, for messages the reader has processed.
 - **Contacted addresses**: addresses you have sent to, learned from your Sent
   folder.
 - **Rules and the action log**: your decisions and what Grokbox did with them.
