@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 /// The last check before anything is archived: message-level reasons to hold
 /// a message out of a sender-level sweep.
@@ -122,5 +123,25 @@ public enum SweepGuard {
         UserDefaults.standard.object(forKey: "grokbox.guardTransactional") == nil
             ? true
             : UserDefaults.standard.bool(forKey: "grokbox.guardTransactional")
+    }
+}
+
+extension SweepGuard.MessageFacts {
+    /// Facts about these messages as the local index holds them right now.
+    /// Sweep's preview and rule previews feed the guard from this one lookup,
+    /// so both read flags and importance the same way.
+    public static func load(uids: [UInt32], accountID: UUID, in context: ModelContext) -> [SweepGuard.MessageFacts] {
+        var out: [SweepGuard.MessageFacts] = []
+        out.reserveCapacity(uids.count)
+        for start in stride(from: 0, to: uids.count, by: 400) {
+            let chunk = Array(uids[start..<min(start + 400, uids.count)])
+            let descriptor = FetchDescriptor<MessageHeader>(
+                predicate: #Predicate { $0.accountID == accountID && chunk.contains($0.uid) })
+            for message in (try? context.fetch(descriptor)) ?? [] {
+                out.append(.init(uid: message.uid, subject: message.subject, isFlagged: message.isFlagged,
+                                 importance: message.importance, receivedAt: message.receivedAt))
+            }
+        }
+        return out
     }
 }

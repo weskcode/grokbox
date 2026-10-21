@@ -69,8 +69,12 @@ struct FolderPickerSheet: View {
 
     private func choose(_ folder: String?) {
         let trimmed = folder?.trimmingCharacters(in: .whitespaces)
-        RuleStore.setCustomFolder(trimmed?.isEmpty == false ? trimmed : nil, for: address, in: modelContext)
-        dismiss()
+        do {
+            try RuleStore.setCustomFolder(trimmed?.isEmpty == false ? trimmed : nil, for: address, in: modelContext)
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func load() async {

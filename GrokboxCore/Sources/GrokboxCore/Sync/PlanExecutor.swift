@@ -103,7 +103,7 @@ public final class PlanExecutor {
         // would still leave rules behind, and the next tidy-up would sweep the
         // very senders the user stopped.
         let recordRule = { (address: String) in
-            if recordRules { RuleStore.set(.sweep, for: address, in: self.modelContext) }
+            if recordRules { try? RuleStore.set(.sweep, for: address, in: self.modelContext) }
         }
 
         phase = .connecting
