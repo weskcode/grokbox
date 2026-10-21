@@ -8,12 +8,14 @@ heuristic verdicts and unsubscribe links.
 ## v0.2 — Act, read, keep clean (built)
 
 - `GrokboxCore` package with a fake IMAP server; 32 tests, `swift test` in seconds
-- Plan → review → apply, archive + label only, action log with undo
+- Plan → review → apply, archive + label only at this point (Move to Trash came
+  with ADR-0019 and the cleanup policy with ADR-0020), action log with undo
 - Reader pass: Apple on-device model or Ollama; bodies transient, summaries kept
 - Brief screen: Needs you / Worth knowing
 - Sender rules (always sweep / always keep) so decisions stick
 - Tidy-up: index → apply rules → read, on demand or on a timer
-- RFC 8058 one-click unsubscribe
+- RFC 8058 one-click unsubscribe (by button here; automatic under the cleanup
+  policy later, and never undoable)
 - `docs/PRIVACY.md` — the complete outbound inventory
 
 **Not yet verified against a real server.** Every IMAP path is tested against
@@ -48,6 +50,19 @@ not model (odd `LIST` shapes, servers that fold differently, huge mailboxes).
 - Catch-up read over older mail from people and record-keepers
 - Menu-bar presence; tidy-up runs with the window closed
 - Persisted `SenderProfile` and `accountID` column: 40k messages in seconds
+
+## Cleanup policy and iPhone/iPad (built)
+
+- **Gentle, Balanced, Thorough** and every dial behind them (ADR-0020). Gentle is
+  the default and files into folders without unsubscribing. Balanced and
+  Thorough unsubscribe automatically from qualifying senders through their
+  one-click link, and Thorough moves promotions to the provider's Trash.
+- **Move to Trash** (ADR-0019): a MOVE, undoable while the provider keeps the
+  mail, deleted by the provider when it empties the Trash. Grokbox still never
+  sets `\Deleted` or sends `EXPUNGE`.
+- **Per-sender overrides** of destination, custom folder and unsubscribe, which
+  apply under any preset. Rules and overrides are global across accounts.
+- **A native iOS target** (`GrokboxiOS`) on the same engine and store layout.
 
 ## v0.5 — Next
 
@@ -86,6 +101,8 @@ disclosed exception, not a change of direction.
 ## Not planned
 
 - **Sending mail.** Out of scope. Grokbox is a triage tool.
-- **Reading message bodies.** Headers answer every question the tool asks.
+- **Keeping message bodies.** The reader fetches up to 8 KB of a body, passes
+  at most 3,000 characters of plain text to the model, and drops it. Only the
+  summary is stored.
 - **A hosted or sync service.** There is no server, and adding one would end the
   privacy claim.

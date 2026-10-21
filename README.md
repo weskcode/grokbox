@@ -1,8 +1,8 @@
 # Grokbox
 
-A local-first mail triage tool for macOS. It indexes your mailboxes, collapses
-them into senders, and tells you what is actually filling your inbox — without
-any of it leaving your machine.
+A local-first mail triage tool for macOS, iPhone and iPad. It indexes your
+mailboxes, collapses them into senders, and tells you what is actually filling
+your inbox — without any of it leaving your machine.
 
 Built for the specific problem of the **email pile-up**: tens of thousands of
 messages, most of them machine-sent, and no viable path through them one at a
@@ -10,13 +10,16 @@ time.
 
 ## In one paragraph
 
-Grokbox is a **macOS** app, **GPL-3.0**, with **no third-party code**, **no
-telemetry**, **no account**, and **no server of its own**. By default it talks
-to exactly three things: the IMAP servers you add, a language model running on
-this Mac, and — only when you click it — a sender's own unsubscribe URL. One
-optional exception exists: turn on and configure the Jev cloud fallback in
-Settings, and TypeSafe AI's Jev API can categorize senders your local model
-could not place, using your own API key — off unless you set it up (see
+Grokbox is a native **macOS** app with an **iPhone and iPad** target on the same
+engine, **GPL-3.0**, with **no third-party code**, **no telemetry**, **no
+account**, and **no server of its own**. By default it talks to exactly three
+things: the IMAP servers you add, a language model running on this device, and a
+sender's own unsubscribe URL — when you click Unsubscribe, or automatically
+during a sweep if you chose Balanced or Thorough, turned that on, or set a sender
+to it (Gentle, the default, does none of these on its own). One optional
+exception exists: turn on and configure the Jev cloud fallback in Settings, and
+TypeSafe AI's Jev API can categorize senders your local model could not place,
+using your own API key — off unless you set it up (see
 [ADR-0023](docs/DECISIONS.md)). The full list is
 in [docs/PRIVACY.md](docs/PRIVACY.md); what that protects and does not protect
 is in [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md); how to report a problem is
@@ -54,34 +57,40 @@ claims rather than take them.
   what matters. Never sweeps a sender you have not approved.
 
 Reading uses **Apple's on-device model** (macOS 26+, no setup) or **Ollama**
-(open source, `brew install ollama`). Bodies are fetched, read, and discarded;
-only the summary is kept.
+(open source, `brew install ollama`; Mac only). Bodies are fetched, read, and
+discarded; only the summary is kept.
 
 ## What it will not do
 
-- **Delete.** No code path sets `\Deleted` or sends `EXPUNGE`; a test enforces it.
+- **Destroy mail.** No code path sets `\Deleted` or sends `EXPUNGE`; a test
+  enforces it. If you choose Move to Trash (Thorough does for promotions, and a
+  sender can be set to it), the mail moves to your provider's Trash and the
+  provider deletes it when it empties the Trash.
 - **Send mail.** No SMTP.
 - **Act on a sender you have not approved.**
-- **Talk to anything but your mail server, Ollama on loopback, and — when you
-  click it — a sender's own unsubscribe URL** — unless you opt into the Jev
-  cloud fallback in Settings, which is off by default. Full inventory in
+- **Talk to anything but your mail server, Ollama on loopback, and a sender's
+  own unsubscribe URL** (when you click Unsubscribe, or automatically if you
+  turned that on) — unless you opt into the Jev cloud fallback in Settings,
+  which is off by default. Full inventory in
   [docs/PRIVACY.md](docs/PRIVACY.md).
 
 ## Privacy
 
-- No network traffic except IMAP to your own mail server, by default — the one
-  opt-in exception is the Jev cloud fallback (off by default, your own API
-  key); see [ADR-0023](docs/DECISIONS.md)
+- No network traffic except IMAP to your own mail server and a sender's own
+  unsubscribe link (when you press Unsubscribe, or when automatic unsubscribe is
+  on) — the one opt-in exception is the Jev cloud fallback (off by default, your
+  own API key); see [ADR-0023](docs/DECISIONS.md)
 - No telemetry, no analytics, no crash reporting, no accounts
 - No third-party dependencies — the IMAP client is written from scratch
 - Passwords live in the macOS Keychain
-- The local index holds headers, not message contents
+- The local index holds headers and one-sentence summaries, never message bodies
 - Sandboxed, with `network.client` as its only entitlement
 
 ## Requirements
 
 - macOS 26 or later (Apple Intelligence-capable Mac for the built-in model;
-  any Apple Silicon Mac with Ollama otherwise)
+  any Apple Silicon Mac with Ollama otherwise), or iOS 26 or later for the
+  `GrokboxiOS` target
 - Xcode 27
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`)
 
@@ -173,9 +182,39 @@ behind them. Where swept mail goes (filed into folders, archived, or moved to
 your provider's Trash, separately for promotions), how much recent mail is
 protected, how many of each sender's newest messages are kept, and whether
 Grokbox may press a sender's own one-click unsubscribe for you. Every policy
-states in one sentence what it will do, above the button that does it. The
-default is Gentle, and Grokbox never destroys a message: it has no code path
-that deletes or expunges. See [ADR-0019](docs/DECISIONS.md).
+states in one sentence what it will do, above the button that does it.
+
+| | Gentle (the default) | Balanced | Thorough |
+|---|---|---|---|
+| Swept mail | Filed into folders | Filed into folders | Promotions to your provider's Trash, the rest filed |
+| Marked read | No | Yes | Yes |
+| Kept in the inbox | Last 7 days and the newest 2 per sender | Last 2 days and the newest 1 per sender | Nothing is kept back by age or count |
+| Automatic unsubscribe | Never | Senders with a one-click link, at least 90% unread, 10+ messages, never written to | Senders with a one-click link, at least 75% unread, 5+ messages, no "never written to" condition |
+
+Receipts and security mail are held back in all three, and so are senders you
+have written to unless you approved them, unless you switch those guards off.
+Flagged mail and anything the model says needs you is always held.
+
+What those settings can and cannot take back:
+
+- **Moves can be undone from Activity** — a move to Trash only for as long as
+  your provider keeps it (often 30 days; providers set their own schedule), and
+  on a plain IMAP server only where it reports where the mail went (UIDPLUS).
+- **An unsubscribe cannot be undone.** The sender receives your request and
+  answers on its own terms; Grokbox sees only that its server accepted the
+  request, not that your address was removed. Only the sender's one-click link is
+  used, and only for promotion, newsletter and notification senders; anything
+  needing a browser is left for you in Senders.
+- **Per-sender settings override the policy** in both directions: a sender can be
+  set to Trash, archive, a custom folder, or to unsubscribe whenever a one-click
+  link exists, under any preset, and "never unsubscribe" holds even under
+  Thorough. Sender rules are global across your accounts, keyed by address.
+- **Approving a sender in Sweep writes a rule** once its mail has been swept.
+  Later tidy-ups sweep that sender's new mail without asking, under whichever
+  policy is in force then, including any automatic unsubscribe.
+
+Grokbox never destroys a message itself: it has no code path that deletes or
+expunges. See [ADR-0019](docs/DECISIONS.md).
 
 ## Works with any IMAP server
 

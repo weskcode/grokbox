@@ -57,9 +57,38 @@ struct SweepView: View {
     /// where the messages went.
     private var undoPromise: String {
         switch account.kind {
-        case .gmail, .demo: "Every action can be undone from Activity."
-        default: "Every action is listed in Activity, with Undo wherever this server reports where the mail went."
+        case .gmail, .demo: "Every change to your mail can be undone from Activity."
+        default: "Every change to your mail is listed in Activity, with Undo wherever this server reports where the mail went."
         }
+    }
+
+    /// What this plan will do, in the words of the choices behind it: folders,
+    /// archive, Trash and unsubscribe are each named only when an enabled
+    /// sender actually gets them.
+    private func approvalNotice(for plan: CleanupPlan?) -> String {
+        let items = plan?.enabledItems ?? []
+        let trashed = items.filter { $0.disposition == .trash }.count
+        let unsubscribing = items.filter(\.unsubscribe).count
+        var sentences: [String] = []
+        if items.isEmpty || items.contains(where: { $0.disposition == .fileIntoFolders }) {
+            sentences.append("Senders set to be filed go into the folder for their kind — Promotions, Newsletters, Notifications — never a generic bin.")
+        }
+        if items.contains(where: { $0.disposition == .archiveOnly }) {
+            sentences.append("Senders set to archive leave the inbox without a folder.")
+        }
+        if trashed > 0 {
+            sentences.append("\(trashed) \(trashed == 1 ? "sender goes" : "senders go") to your provider's Trash. \(CleanupPolicy.Disposition.trash.warning ?? "")")
+        }
+        sentences.append(state.policy.guardTransactional
+                         ? "Flagged mail, mail the model says needs you, and receipts are held back automatically."
+                         : "Flagged mail and mail the model says needs you are held back automatically.")
+        if trashed == 0 { sentences.append("Nothing is deleted.") }
+        sentences.append(undoPromise)
+        if unsubscribing > 0 {
+            sentences.append("Once their mail is swept, Grokbox will also unsubscribe from \(unsubscribing) \(unsubscribing == 1 ? "sender" : "senders") through their own one-click link. That cannot be undone.")
+        }
+        sentences.append("Approving a sender writes a rule, so later tidy-ups handle that sender's new mail without asking, under the policy in force then.")
+        return sentences.joined(separator: " ")
     }
 
     private var header: some View {
@@ -97,7 +126,7 @@ struct SweepView: View {
                                     onStop: { state.stop() })
                 }
             }
-            Text("Each sender is filed into the folder for its kind — Promotions, Newsletters, Notifications — never a generic bin. Flagged mail, mail the model says needs you, and receipts are held back automatically. Nothing is deleted. \(undoPromise) Approving a sender writes a rule so future mail is filed the same way.")
+            Text(approvalNotice(for: plan))
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 16).padding(.vertical, 12)
@@ -114,7 +143,7 @@ struct SweepView: View {
                     HStack(spacing: 8) {
                         Image(systemName: group.category.icon).accessibilityHidden(true)
                         Text(group.category.label)
-                        Text("→ \(group.folder)").foregroundStyle(.secondary)
+                        Text("→ \(destination(of: group.items, folder: group.folder))").foregroundStyle(.secondary)
                         Spacer()
                         Text("\(group.items.count) senders · \(group.items.reduce(0) { $0 + $1.messageCount }.formatted()) messages")
                             .foregroundStyle(.secondary)
@@ -127,6 +156,19 @@ struct SweepView: View {
         }
     }
 
+    /// Where a group's mail actually ends up: its folder, or Trash or the
+    /// archive for senders whose disposition says so.
+    private func destination(of items: [CleanupPlan.Item], folder: String) -> String {
+        let names = items.map { item -> String in
+            switch item.disposition {
+            case .fileIntoFolders: folder
+            case .archiveOnly: "Archive"
+            case .trash: "Trash"
+            }
+        }
+        return names.reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }.joined(separator: ", ")
+    }
+
     private func itemRow(_ item: CleanupPlan.Item) -> some View {
         Group {
                 HStack(spacing: 12) {
@@ -134,7 +176,7 @@ struct SweepView: View {
                     // reads: this checkbox is the consent for a bulk move (GB-006).
                     Toggle("Include \(item.cluster.displayName)", isOn: binding(for: item.id))
                         .labelsHidden()
-                        .accessibilityValue(item.isEnabled ? "Will be archived" : "Excluded")
+                        .accessibilityValue(item.isEnabled ? (item.disposition == .trash ? "Will be moved to Trash" : "Will be archived") : "Excluded")
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 6) {
                             Button(item.cluster.displayName) { drillDown = profiles.first { $0.address == item.cluster.address } }

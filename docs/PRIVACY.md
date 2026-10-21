@@ -4,12 +4,15 @@
 
 ## Every byte that leaves this Mac
 
+The same list applies on iPhone and iPad, with the device in place of the Mac.
+Ollama is Mac only, so there reading uses Apple's on-device model.
+
 | Destination | When | What | Can you turn it off? |
 |---|---|---|---|
 | **Your IMAP server** (e.g. `imap.gmail.com:993`) | Index, Read, Sweep, Tidy-up. With automatic tidy-up on and "Also when new mail arrives" ticked, one more read-only connection per account stays open, listening to the inbox (IMAP `IDLE`) | IMAP commands. Credentials over TLS, either from the first byte or after a required `STARTTLS`. Header and body reads are `PEEK`, so nothing is marked read by looking. | It is the product; remove the account. Untick "Also when new mail arrives" to close the listening connection. |
 | **`autoconfig.<your domain>`** and **`autoconfig.thunderbird.net`** (Mozilla's ISPDB) | Only when you press "Look up settings" while adding an account | Just the domain of the address you typed — never the full address | Type in server settings by hand instead. |
 | **`127.0.0.1:11434`** (Ollama) | Read, if you chose Ollama | Subject, sender, and up to 3,000 characters of body text per message | Choose Apple's model instead, or none. Loopback only — the code refuses any other host. |
-| **A sender's unsubscribe URL** | When you click Unsubscribe, or — only if you turn it on in Settings — automatically during a sweep for senders that meet the conditions you set | An RFC 8058 POST to the HTTPS URL the sender put in their own `List-Unsubscribe` header | Do not click it. |
+| **A sender's unsubscribe URL** | When you click Unsubscribe, or automatically during a sweep or an automatic tidy-up for senders that meet the conditions in your cleanup policy. Automatic unsubscribe is on under Balanced and Thorough (including when chosen during account setup), off under Gentle, the default, and can be set for a single sender under any preset. | An RFC 8058 POST to the HTTPS URL the sender put in their own `List-Unsubscribe` header. The sender receives your request and Grokbox cannot take it back. | Do not click it, choose Gentle or "Only when I press it" in Settings, and do not set a sender to unsubscribe when possible. |
 | **`api.typesafe.ai`** (Jev, TypeSafe AI) | Only if you turn on "Jev cloud fallback" in Settings and save your own API key — and then only for a sender the local model still could not categorize | The sender's address and a handful of their subject lines. Never a message body. | Off by default. Turn it off in Settings, or Erase everything, which also deletes the saved key. See ADR-0023. |
 
 That is the complete list of connections Grokbox can make. Autoconfig only
@@ -55,11 +58,19 @@ key, under its own service, `com.wesleykeetch.grokbox.jev`.
 
 ## What Grokbox will not do to your mail
 
-- **Delete.** There is no code path that sets `\Deleted` or sends `EXPUNGE`.
+- **Destroy mail.** There is no code path that sets `\Deleted` or sends `EXPUNGE`.
   A test (`archiveSendsGmailLabelRemoval`) fails the build if one appears.
+  Move to Trash is a separate, opt-in choice: Thorough applies it to promotions,
+  and a single sender can be set to it. The mail goes to your provider's Trash,
+  Grokbox can move it back from Activity until the provider empties the Trash
+  (often 30 days; the provider sets the schedule) where the server reports
+  where the mail went, and then the provider deletes it.
 - **Send.** No SMTP anywhere.
 - **Act without approval.** Sweeps run only on senders you approved in the
   Sweep screen. Tidy-up applies existing rules and never creates new ones.
+  An approved sender is handled under the policy in force at the time, so a
+  tidy-up under Balanced or Thorough can also unsubscribe from it. Rules are
+  global across your accounts, keyed by sender address.
 - **Render HTML.** Bodies are stripped to plain text (`BodyExtractor.stripHTML`)
   before anything touches a model or a screen. Tracking pixels and scripts
   cannot run because nothing ever renders HTML — see `LinkHygiene.swift`.

@@ -22,7 +22,7 @@ struct PhoneSweepView: View {
     var body: some View {
         List {
             Section {
-                Text(state.policy.summary)
+                Text(policyNotice)
                     .font(.footnote).foregroundStyle(.secondary)
                 if let plan, plan.heldMessageCount > 0 {
                     Label("Holding back \(plan.heldMessageCount.formatted()) message\(plan.heldMessageCount == 1 ? "" : "s") under this policy.", systemImage: "hand.raised")
@@ -51,7 +51,7 @@ struct PhoneSweepView: View {
             }
             if let plan {
                 ForEach(plan.byFolder, id: \.folder) { group in
-                    Section("\(group.category.label) → \(group.folder)") {
+                    Section("\(group.category.label) → \(destination(of: group.items, folder: group.folder))") {
                         ForEach(group.items) { item in
                             Toggle(isOn: binding(for: item.id)) {
                                 VStack(alignment: .leading, spacing: 2) {
@@ -72,6 +72,27 @@ struct PhoneSweepView: View {
         .onChange(of: profiles.map(\.updatedAt)) { plan = buildPlan() }
         .onChange(of: rules.count) { plan = buildPlan() }
         .refreshable { plan = buildPlan() }
+    }
+
+    /// The policy's sentence, plus Trash named when an enabled sender in this
+    /// plan goes there, whether by the policy or a per-sender setting.
+    private var policyNotice: String {
+        let trashed = plan?.enabledItems.filter { $0.disposition == .trash }.count ?? 0
+        guard trashed > 0 else { return state.policy.summary }
+        return state.policy.summary + " \(trashed) \(trashed == 1 ? "sender in this plan goes" : "senders in this plan go") to your provider's Trash. \(CleanupPolicy.Disposition.trash.warning ?? "")"
+    }
+
+    /// Where a group's mail actually ends up: its folder, or Trash or the
+    /// archive for senders whose disposition says so.
+    private func destination(of items: [CleanupPlan.Item], folder: String) -> String {
+        let names = items.map { item -> String in
+            switch item.disposition {
+            case .fileIntoFolders: folder
+            case .archiveOnly: "Archive"
+            case .trash: "Trash"
+            }
+        }
+        return names.reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }.joined(separator: ", ")
     }
 
     private func buildPlan() -> CleanupPlan {
