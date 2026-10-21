@@ -54,6 +54,9 @@ enum RuleProposal: Sendable, Equatable {
             }
         }
         guard targets.count <= 1 else { return .unresolved(.ambiguousRequest) }
+        // Sender names are chosen by senders, so one reading that resolves
+        // cannot outvote another that found two senders or folders.
+        if let ambiguity = failures.first(where: \.isAmbiguity) { return .unresolved(ambiguity) }
         guard let target = targets.first else {
             return .unresolved(failures.min { $0.rank < $1.rank } ?? .unsupported)
         }
@@ -136,6 +139,13 @@ private extension RuleProposal.Unresolved {
         case .wholeDomain: 3
         case .unknownSender: 4
         default: 5
+        }
+    }
+
+    var isAmbiguity: Bool {
+        switch self {
+        case .ambiguousSender, .ambiguousFolder: true
+        default: false
         }
     }
 }

@@ -118,6 +118,14 @@ struct RuleProposalTests {
         #expect(proposal == .unresolved(.ambiguousRequest))
     }
 
+    @Test func aSenderNamedLikeAFormCannotOutvoteARealAmbiguity() {
+        let senders = Self.senders + [KnownSender(address: "spoof@x.example", displayName: "everything from PayPal",
+                                                  category: .promotion, supportsOneClickUnsubscribe: true)]
+        let proposal = RuleProposal.make(request: "Keep everything from PayPal", senders: senders, rules: Self.rules,
+                                         folders: Self.folders, policy: .gentle)
+        #expect(proposal == .unresolved(.ambiguousSender(["service@paypa1.example", "service@paypal.example"])))
+    }
+
     // MARK: - Only whole supported sentences
 
     @Test(arguments: [
