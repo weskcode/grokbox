@@ -14,8 +14,9 @@ No measured limitation needs a provider API. Two problems are real:
 
 - Grokbox cannot sign in to Outlook.com or Exchange Online. Its only sign-in
   method, IMAP `LOGIN`, is turned off there. This is an authentication gap, not
-  an IMAP gap. The fix is OAuth 2.0 over the existing IMAP code (`AUTHENTICATE
-  XOAUTH2`), not Graph.
+  an IMAP gap. The fix would be OAuth 2.0 over the existing IMAP code
+  (`AUTHENTICATE XOAUTH2`), not Graph. The owner decided on 2026-10-21 not to
+  add it, so Microsoft accounts stay unsupported.
 - Incremental sync misses changes made in other clients. This is a client gap.
   Plain IMAP commands that every server supports can close it.
 
@@ -147,7 +148,8 @@ None of these is started. Each needs its own task.
    the empty-mailbox and lowest-UID cases in `indexFully`. No auth, schema or
    dependency change. Cost per pass on a 40,000-message mailbox
    needs measuring before choosing how often to run it.
-2. **Microsoft sign-in through `XOAUTH2`.** Needs named approval for auth, an
+2. **Microsoft sign-in through `XOAUTH2`.** Declined by the owner on
+   2026-10-21; not planned. If revisited, it needs named approval for auth, an
    Entra app registration, a publisher verification decision, a new outbound host
    (`login.microsoftonline.com`) in `PRIVACY.md`, token storage in the
    Keychain, and a sign-in UI design. Choose between `ASWebAuthenticationSession`
@@ -155,8 +157,8 @@ None of these is started. Each needs its own task.
 3. **Correct the Outlook guidance.** `SETUP-ACCOUNTS.md` and the Outlook entry
    in `CredentialGuide.swift` say an app password still works. Microsoft's
    servers advertise `LOGINDISABLED` and Microsoft documents password access as
-   retired, so the guidance should say Outlook cannot be added until follow-up
-   2 ships.
+   retired, so the guidance should say Outlook.com and Microsoft 365 accounts
+   are not supported.
 4. **Mark ADR-0002's `batchModify` comparison as out of date** when ADR-0002 is
    next revised.
 
