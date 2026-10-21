@@ -4,27 +4,31 @@ import Testing
 
 struct RuleProposalTests {
     static let senders: [KnownSender] = [
-        .init(address: "digest@medium.example", displayName: "Medium Daily Digest", supportsOneClickUnsubscribe: true),
-        .init(address: "deals@megamart.example", displayName: "MegaMart", supportsOneClickUnsubscribe: true),
-        .init(address: "weekly@club.example", displayName: "Club Weekly", supportsOneClickUnsubscribe: false),
-        .init(address: "news@paper.example", displayName: "The Paper", supportsOneClickUnsubscribe: false),
-        .init(address: "alerts@bank.example", displayName: "Bank", supportsOneClickUnsubscribe: false),
-        .init(address: "service@paypal.example", displayName: "PayPal", supportsOneClickUnsubscribe: false),
-        .init(address: "service@paypa1.example", displayName: "PayPal", supportsOneClickUnsubscribe: true)
+        .init(address: "digest@medium.example", displayName: "Medium Daily Digest", category: .newsletter, supportsOneClickUnsubscribe: true),
+        .init(address: "deals@megamart.example", displayName: "MegaMart", category: .promotion, supportsOneClickUnsubscribe: true),
+        .init(address: "offers@shop.example", displayName: "Shop Offers", category: .promotion, supportsOneClickUnsubscribe: false),
+        .init(address: "weekly@club.example", displayName: "Club Weekly", category: .newsletter, supportsOneClickUnsubscribe: false),
+        .init(address: "news@paper.example", displayName: "The Paper", category: .newsletter, supportsOneClickUnsubscribe: false),
+        .init(address: "alerts@bank.example", displayName: "Bank", category: .transactional, supportsOneClickUnsubscribe: false),
+        .init(address: "service@paypal.example", displayName: "PayPal", category: .transactional, supportsOneClickUnsubscribe: false),
+        .init(address: "service@paypa1.example", displayName: "PayPal", category: .promotion, supportsOneClickUnsubscribe: true)
     ]
 
     static let rules: [String: SenderOverride] = [
         "digest@medium.example": .init(decision: .sweep, disposition: .archiveOnly),
         "deals@megamart.example": .init(decision: .sweep, disposition: .fileIntoFolders, autoUnsubscribe: false, customFolder: "Shopping"),
+        "offers@shop.example": .init(decision: .sweep, disposition: .fileIntoFolders),
         "weekly@club.example": .init(decision: .sweep),
         "alerts@bank.example": .init(decision: .keep)
     ]
 
-    static let folders: Set<String> = Set(SenderCategory.allCases.map(\.folderName)).union(["Shopping", "Reading"])
+    static let folders: Set<String> = Set(SenderCategory.allCases.map(\.folderName)).union(["Shopping", "Reading", "Read"])
 
     private func propose(_ request: String, _ reading: RuleReading,
-                         rules: [String: SenderOverride] = RuleProposalTests.rules) -> RuleProposal {
-        RuleProposal.make(from: reading, request: request, senders: Self.senders, rules: rules, folders: Self.folders)
+                         folders: Set<String> = RuleProposalTests.folders,
+                         policy: CleanupPolicy = .gentle) -> RuleProposal {
+        RuleProposal.make(from: reading, request: request, senders: Self.senders, rules: Self.rules,
+                          folders: folders, policy: policy)
     }
 
     private func draft(_ proposal: RuleProposal, sourceLocation: SourceLocation = #_sourceLocation) -> RuleDraft? {
@@ -35,12 +39,19 @@ struct RuleProposalTests {
         return draft
     }
 
+    private func isUnsupported(_ proposal: RuleProposal) -> Bool {
+        if case .unresolved(.unsupported) = proposal { true } else { false }
+    }
+
+    private func isConflict(_ proposal: RuleProposal) -> Bool {
+        if case .unresolved(.conflict) = proposal { true } else { false }
+    }
+
     // MARK: - Approved senders
 
     @Test func approvedSenderGetsAnExistingFolderAndKeepsEverythingElse() {
-        let proposal = propose("File Medium Daily Digest under Reading",
-                               RuleReading(sender: "Medium Daily Digest", folder: "reading"))
-        let result = draft(proposal)
+        let result = draft(propose("File Medium Daily Digest under reading",
+                                   RuleReading(sender: "Medium Daily Digest", folder: "reading")))
         #expect(result?.address == "digest@medium.example")
         #expect(result?.after == SenderOverride(decision: .sweep, disposition: .fileIntoFolders, customFolder: "Reading"),
                 "the folder takes its stored spelling and implies filing, as RuleStore.setCustomFolder does")
@@ -48,10 +59,15 @@ struct RuleProposalTests {
     }
 
     @Test func unsubscribeEditPreservesFolderAndDecision() {
-        let result = draft(propose("Unsubscribe me from MegaMart",
-                                   RuleReading(sender: "MegaMart", unsubscribe: "always")))
+        let result = draft(propose("Unsubscribe me from MegaMart", RuleReading(sender: "MegaMart", unsubscribe: "always")))
         #expect(result?.after == SenderOverride(decision: .sweep, disposition: .fileIntoFolders, autoUnsubscribe: true, customFolder: "Shopping"))
         #expect(result?.irreversibleEffects.count == 1, "an unsubscribe request cannot be unsent")
+    }
+
+    @Test func explicitUnsubscribeWarnsEvenWhereThePolicyMightAlready() {
+        let result = draft(propose("Unsubscribe me from Medium Daily Digest",
+                                   RuleReading(sender: "Medium Daily Digest", unsubscribe: "always"), policy: .balanced))
+        #expect(result?.irreversibleEffects.count == 1, "an explicit yes skips the policy's qualifying checks")
     }
 
     @Test func trashingAnApprovedSenderSaysItCanEndInLoss() {
@@ -65,15 +81,30 @@ struct RuleProposalTests {
         let result = draft(propose("Let Medium Daily Digest follow my policy",
                                    RuleReading(sender: "Medium Daily Digest", destination: "policy")))
         #expect(result?.after == SenderOverride(decision: .sweep))
+        #expect(result?.irreversibleEffects.isEmpty == true, "Gentle files newsletters")
+    }
+
+    @Test func followPolicyUnderThoroughWarnsThatPromotionsGoToTrash() {
+        let result = draft(propose("Let Shop Offers follow my policy",
+                                   RuleReading(sender: "Shop Offers", destination: "policy"), policy: .thorough))
+        #expect(result?.after == SenderOverride(decision: .sweep))
+        #expect(result?.irreversibleEffects == [CleanupPolicy.Disposition.trash.warning].compactMap { $0 },
+                "the policy, not the rule, sends this promotion to Trash")
+    }
+
+    @Test func archiveOnlyIsTheAppsOwnWordingNotACondition() {
+        let result = draft(propose("Set Club Weekly to Archive only", RuleReading(sender: "Club Weekly", destination: "archive")))
+        #expect(result?.after.disposition == .archiveOnly)
     }
 
     @Test func addressMatchIgnoresCase() {
-        let result = draft(propose("Archive DIGEST@MEDIUM.EXAMPLE",
-                                   RuleReading(sender: "DIGEST@MEDIUM.EXAMPLE", destination: "folders")))
+        let result = draft(propose("Move DIGEST@MEDIUM.EXAMPLE to the trash",
+                                   RuleReading(sender: "digest@medium.example", destination: "trash")))
         #expect(result?.address == "digest@medium.example")
+        #expect(result?.after.disposition == .trash)
     }
 
-    // MARK: - Conditions a sender rule cannot hold
+    // MARK: - Every word accounted for
 
     @Test func ageConditionTheModelReportedCreatesNothing() {
         let proposal = propose("Archive Medium Daily Digest older than 30 days",
@@ -81,44 +112,64 @@ struct RuleProposalTests {
         #expect(proposal == .unresolved(.unsupported("older than 30 days")))
     }
 
-    @Test func ageConditionTheModelDroppedStillCreatesNothing() {
-        let proposal = propose("Archive Medium Daily Digest older than 30 days",
-                               RuleReading(sender: "Medium Daily Digest", destination: "archive"))
-        guard case .unresolved(.unsupported) = proposal else {
-            Issue.record("a dropped age condition must not widen into a rule for all mail: \(proposal)")
-            return
-        }
-    }
-
     @Test(arguments: [
+        "Archive Medium Daily Digest older than 30 days",
+        "Trash Medium Daily Digest from yesterday",
+        "Trash Medium Daily Digest in my work account",
         "File Medium Daily Digest under Reading and mark it read",
         "Archive Medium Daily Digest unless the subject mentions billing",
         "Archive Medium Daily Digest after 2 weeks",
-        "Only archive Medium Daily Digest on weekends"
+        "Only archive Medium Daily Digest on weekends",
+        "Trash Medium Daily Digest from now on"
     ])
-    func perMessageConditionsAreRefused(request: String) {
-        let proposal = propose(request, RuleReading(sender: "Medium Daily Digest", destination: "archive"))
-        guard case .unresolved(.unsupported) = proposal else {
-            Issue.record("\(request) → \(proposal)")
-            return
-        }
+    func wordsTheModelDroppedStillCreateNothing(request: String) {
+        let reading = RuleReading(sender: "Medium Daily Digest",
+                                  destination: request.lowercased().hasPrefix("trash") ? "trash" : "archive",
+                                  folder: request.contains("Reading") ? "Reading" : nil)
+        #expect(isUnsupported(propose(request, reading)), "\(request) must not widen into a rule for all mail")
+    }
+
+    @Test func aFolderNameIsMatchedAsWholeWordsInOnePlace() {
+        let proposal = propose("File unread Medium Daily Digest into Read",
+                               RuleReading(sender: "Medium Daily Digest", folder: "Read"))
+        #expect(isUnsupported(proposal), "\"unread\" is a condition, not part of the folder \"Read\": \(proposal)")
     }
 
     @Test func aFolderNameThatLooksLikeAConditionIsNotOne() {
-        let folders = Self.folders.union(["Reading 2026"])
-        let proposal = RuleProposal.make(from: RuleReading(sender: "Medium Daily Digest", folder: "Reading 2026"),
-                                         request: "File Medium Daily Digest under Reading 2026",
-                                         senders: Self.senders, rules: Self.rules, folders: folders)
+        let proposal = propose("File Medium Daily Digest under Reading 2026",
+                               RuleReading(sender: "Medium Daily Digest", folder: "Reading 2026"),
+                               folders: Self.folders.union(["Reading 2026"]))
         #expect(draft(proposal)?.after.customFolder == "Reading 2026")
     }
 
     @Test func wholeDomainsAreNotRules() {
-        let proposal = propose("Archive everything from @medium.example",
-                               RuleReading(sender: "@medium.example", destination: "archive"))
-        guard case .unresolved(.unsupported) = proposal else {
-            Issue.record("\(proposal)")
-            return
-        }
+        #expect(isUnsupported(propose("Archive everything from @medium.example",
+                                      RuleReading(sender: "@medium.example", destination: "archive"))))
+    }
+
+    // MARK: - The model's slots must match the words
+
+    @Test func aSlotTheRequestNeverAskedForIsAMisread() {
+        #expect(propose("Archive Medium Daily Digest", RuleReading(sender: "Medium Daily Digest", destination: "trash"))
+                == .unresolved(.misread))
+    }
+
+    @Test func aPhraseTheModelIgnoredIsAMisread() {
+        #expect(propose("Trash Medium Daily Digest and unsubscribe", RuleReading(sender: "Medium Daily Digest", destination: "trash"))
+                == .unresolved(.misread))
+    }
+
+    @Test func aSenderTheRequestNeverNamedIsRefused() {
+        #expect(propose("Keep PayPal", RuleReading(sender: "service@paypa1.example", decision: "keep"))
+                == .unresolved(.notInRequest("service@paypa1.example")),
+                "the model cannot pick one PayPal for the person")
+        #expect(propose("Sweep the newsletter", RuleReading(sender: "promo@attacker.example", decision: "sweep"))
+                == .unresolved(.notInRequest("promo@attacker.example")))
+    }
+
+    @Test func aFolderTheRequestNeverNamedIsRefused() {
+        #expect(propose("File Medium Daily Digest", RuleReading(sender: "Medium Daily Digest", folder: "Reading"))
+                == .unresolved(.notInRequest("Reading")))
     }
 
     // MARK: - No approval by typing
@@ -152,11 +203,6 @@ struct RuleProposalTests {
         #expect(result?.after == SenderOverride(decision: .keep, disposition: .fileIntoFolders, autoUnsubscribe: false, customFolder: "Shopping"))
     }
 
-    @Test func anInventedAddressResolvesToNothing() {
-        #expect(propose("Sweep the newsletter", RuleReading(sender: "promo@attacker.example", decision: "sweep"))
-                == .unresolved(.unknownSender("promo@attacker.example")))
-    }
-
     @Test func aSenderNobodyIndexedIsUnknown() {
         #expect(propose("Trash Spammy", RuleReading(sender: "Spammy", destination: "trash"))
                 == .unresolved(.unknownSender("Spammy")))
@@ -173,6 +219,7 @@ struct RuleProposalTests {
         RuleReading(sender: "Medium Daily Digest", decision: "approve"),
         RuleReading(sender: "Medium Daily Digest", destination: "delete"),
         RuleReading(sender: "Medium Daily Digest", destination: "forward:someone@else.example"),
+        RuleReading(sender: "Medium Daily Digest", unsubscribe: "policy"),
         RuleReading(sender: "Medium Daily Digest", unsubscribe: "yes please")
     ])
     func valuesOutsideTheSlotsAreMalformed(reading: RuleReading) {
@@ -187,6 +234,16 @@ struct RuleProposalTests {
                 == .unresolved(.unknownFolder("Secret")))
     }
 
+    @Test func foldersThatDifferOnlyByCaseAreNotGuessedBetween() {
+        let both = Self.folders.union(["reading"])
+        #expect(draft(propose("File Medium Daily Digest under Reading",
+                              RuleReading(sender: "Medium Daily Digest", folder: "Reading"), folders: both))?.after.customFolder == "Reading",
+                "an exact spelling wins")
+        #expect(propose("File Medium Daily Digest under READING",
+                        RuleReading(sender: "Medium Daily Digest", folder: "READING"), folders: both)
+                == .unresolved(.ambiguousFolder(["Reading", "reading"])))
+    }
+
     @Test func anEmptyReadingChangesNothing() {
         #expect(propose("Hello", RuleReading(sender: "Medium Daily Digest")) == .unresolved(.nothingToChange))
     }
@@ -194,34 +251,29 @@ struct RuleProposalTests {
     // MARK: - Collisions
 
     @Test func folderAndTrashTogetherContradict() {
-        guard case .unresolved(.conflict) = propose("File Medium Daily Digest under Reading and trash it",
-                                                    RuleReading(sender: "Medium Daily Digest", destination: "trash", folder: "Reading")) else {
-            Issue.record("expected a conflict")
-            return
-        }
+        #expect(isConflict(propose("File Medium Daily Digest under Reading and trash it",
+                                   RuleReading(sender: "Medium Daily Digest", destination: "trash", folder: "Reading"))))
     }
 
     @Test func trashingASenderWithACustomFolderIsAVisibleCollision() {
-        guard case .unresolved(.conflict) = propose("Trash MegaMart", RuleReading(sender: "MegaMart", destination: "trash")) else {
-            Issue.record("the Shopping folder would be silently ignored")
-            return
-        }
+        #expect(isConflict(propose("Trash MegaMart", RuleReading(sender: "MegaMart", destination: "trash"))),
+                "the Shopping folder would be silently ignored")
+    }
+
+    @Test func followPolicyThatWouldIgnoreACustomFolderIsAVisibleCollision() {
+        let proposal = propose("Let MegaMart follow my policy", RuleReading(sender: "MegaMart", destination: "policy"), policy: .thorough)
+        #expect(isConflict(proposal), "Thorough trashes promotions, which would skip Shopping: \(proposal)")
+        #expect(draft(propose("Let MegaMart follow my policy", RuleReading(sender: "MegaMart", destination: "policy")))?.after.customFolder == "Shopping",
+                "under Gentle the folder still applies")
     }
 
     @Test func keepWithADestinationContradicts() {
-        guard case .unresolved(.conflict) = propose("Keep MegaMart in Reading",
-                                                    RuleReading(sender: "MegaMart", decision: "keep", folder: "Reading")) else {
-            Issue.record("expected a conflict")
-            return
-        }
+        #expect(isConflict(propose("Keep MegaMart in Reading", RuleReading(sender: "MegaMart", decision: "keep", folder: "Reading"))))
     }
 
     @Test func unsubscribeNeedsAOneClickLink() {
-        guard case .unresolved(.unsupported) = propose("Unsubscribe from Club Weekly",
-                                                       RuleReading(sender: "Club Weekly", unsubscribe: "always")) else {
-            Issue.record("an override cannot invent an endpoint")
-            return
-        }
+        #expect(isUnsupported(propose("Unsubscribe from Club Weekly", RuleReading(sender: "Club Weekly", unsubscribe: "always"))),
+                "an override cannot invent an endpoint")
     }
 
     @Test func askingForWhatIsAlreadyTrueChangesNothing() {
@@ -229,23 +281,34 @@ struct RuleProposalTests {
                 == .unresolved(.nothingToChange))
     }
 
-    // MARK: - Whole corpus
+    // MARK: - Whole matrix
 
-    /// Whatever the model says, a typed request never ends with a sender
-    /// swept that was not swept before.
+    /// Whatever slots the model fills, and with the request worded to match
+    /// them, a typed request never ends with a sender swept that was not
+    /// swept before.
     @Test func noReadingApprovesASender() {
-        let decisions = [nil, "sweep", "keep"]
-        let destinations = [nil, "policy", "folders", "archive", "trash"]
-        let unsubscribes = [nil, "policy", "never", "always"]
-        let folders = [nil, "Reading", "Shopping"]
+        let decisions: [(String?, String)] = [(nil, ""), ("sweep", "sweep"), ("keep", "keep")]
+        let destinations: [(String?, String)] = [(nil, ""), ("policy", "follow my policy"), ("folders", "file"), ("archive", "archive"), ("trash", "trash")]
+        let unsubscribes: [(String?, String)] = [(nil, ""), ("never", "never unsubscribe"), ("always", "unsubscribe")]
+        let folders: [String?] = [nil, "Reading", "Shopping"]
+        var unapprovedKeeps = 0
+        var approvedEdits = 0
         for sender in Self.senders.map(\.displayName) + Self.senders.map(\.address) {
             for decision in decisions { for destination in destinations { for unsubscribe in unsubscribes { for folder in folders {
-                let reading = RuleReading(sender: sender, decision: decision, destination: destination, folder: folder, unsubscribe: unsubscribe)
-                guard case .draft(let draft) = propose("Change \(sender)", reading) else { continue }
-                if draft.before?.decision != .sweep {
-                    #expect(draft.after.decision == .keep, "\(reading) approved \(draft.address)")
+                let request = [decision.1, destination.1, unsubscribe.1, sender, folder.map { "under \($0)" } ?? ""]
+                    .filter { !$0.isEmpty }.joined(separator: " ")
+                let reading = RuleReading(sender: sender, decision: decision.0, destination: destination.0,
+                                          folder: folder, unsubscribe: unsubscribe.0)
+                guard case .draft(let draft) = propose(request, reading) else { continue }
+                if draft.before?.decision == .sweep {
+                    approvedEdits += 1
+                } else {
+                    #expect(draft.after.decision == .keep, "\(request) approved \(draft.address)")
+                    unapprovedKeeps += 1
                 }
             } } } }
         }
+        #expect(unapprovedKeeps > 0, "the matrix must reach senders without a sweep rule")
+        #expect(approvedEdits > 0, "the matrix must reach approved senders")
     }
 }
