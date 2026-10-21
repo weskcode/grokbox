@@ -21,9 +21,9 @@ domain-only lookup, not an ongoing connection. The one opt-in exception is
 the Jev row above — a third-party API you must explicitly enable and supply
 your own key for; ADR-0023 explains why it exists and exactly what it is
 scoped to. The demo mailboxes run
-inside the app's process and are served on a socket bound to `127.0.0.1` only,
-so no other machine can reach them; the app has no `network.server`
-entitlement. There is no telemetry, no crash reporter, no update check, no analytics,
+entirely inside the app's process — there is no listening socket anywhere in
+the shipped app, and the sandbox has no `network.server` entitlement to allow
+one. There is no telemetry, no crash reporter, no update check, no analytics,
 no "anonymous usage statistics", no account with us. The app has one network
 entitlement, `network.client`, and the sandbox refuses anything else.
 
