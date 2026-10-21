@@ -92,7 +92,7 @@ struct PhoneSweepView: View {
             text += " \(own) \(own == 1 ? "sender in this plan follows its own setting" : "senders in this plan follow their own settings") instead; the group headings below show where each goes."
         }
         if trashed > 0 {
-            text += " In this plan, \(trashed) \(trashed == 1 ? "sender goes" : "senders go") to your provider's Trash. The provider deletes mail for good when it empties the Trash; Undo works until then, where the server reported where the mail went."
+            text += " In this plan, \(trashed) \(trashed == 1 ? "sender goes" : "senders go") to your provider's Trash. The provider deletes mail for good when it empties the Trash; Undo works only while the mail is still in Trash and that folder is unchanged, and only where the server reported where the mail went."
         }
         if archived > 0 {
             text += " \(archived) \(archived == 1 ? "sender is" : "senders are") archived without a folder."

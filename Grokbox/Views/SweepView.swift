@@ -77,7 +77,7 @@ struct SweepView: View {
             sentences.append("Senders set to archive leave the inbox without a folder.")
         }
         if trashed > 0 {
-            sentences.append("\(trashed) \(trashed == 1 ? "sender goes" : "senders go") to your provider's Trash. The provider deletes mail for good when it empties the Trash; Undo works until then, where the server reported where the mail went.")
+            sentences.append("\(trashed) \(trashed == 1 ? "sender goes" : "senders go") to your provider's Trash. The provider deletes mail for good when it empties the Trash; Undo works only while the mail is still in Trash and that folder is unchanged, and only where the server reported where the mail went.")
         }
         sentences.append(state.policy.guardTransactional
                          ? "Flagged mail, mail the model says needs you, and mail that looks like a receipt or security notice (judged from its subject) are held back automatically."
