@@ -124,8 +124,6 @@ public final class MessageHeader {
 }
 
 extension MessageHeader {
-    /// Fills the reply ids from a fetch, once. A row indexed before they were
-    /// fetched gets them on the next full pass; a known value is never replaced.
     func recordReplyHeadersIfUnknown(from header: FetchedHeader) {
         guard inReplyTo == nil || referenceIDs == nil else { return }
         inReplyTo = MessageIDList.encode(header.inReplyTo)
@@ -133,15 +131,10 @@ extension MessageHeader {
     }
 }
 
-/// A message the user sent, kept only so replies can be matched to it and so
-/// Grokbox knows which addresses are the user's. Headers only, like
-/// `MessageHeader`; recipients stay in `ContactedAddress`.
 @Model
 public final class SentMessageHeader {
     #Index<SentMessageHeader>([\.accountID], [\.messageID])
 
-    /// `"<accountID>|<mailbox>|<uidValidity>|<uid>"`, so a repeated walk updates
-    /// rather than duplicates.
     @Attribute(.unique) public var key: String = ""
     public var accountID: UUID = UUID()
     public var mailbox: String = ""

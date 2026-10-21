@@ -51,8 +51,6 @@ public enum BriefRanking {
 
 extension Array where Element == BriefItem {
     /// One row per conversation; the highest-ranked message keeps the row.
-    /// Conversations come from reply headers, falling back to sender and
-    /// subject for mail without them (`ConversationIdentity`).
     public func collapsedByThread() -> [BriefItem] {
         var out: [BriefItem] = []
         var index: [String: Int] = [:]

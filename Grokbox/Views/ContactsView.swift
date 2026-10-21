@@ -4,7 +4,7 @@ import GrokboxCore
 
 /// Who you have actually written to, ranked by how often — the strongest
 /// "this matters" signal in an inbox, and Grokbox already computes it
-/// (`SyncEngine.learnContacts`). This view only reads it: no new model, no
+/// (`SyncEngine.walkSent`). This view only reads it: no new model, no
 /// new sync work, no network connection.
 struct ContactsView: View {
     @Environment(\.dismiss) private var dismiss

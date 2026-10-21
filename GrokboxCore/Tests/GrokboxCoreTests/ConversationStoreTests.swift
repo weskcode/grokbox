@@ -276,35 +276,110 @@ struct ReplyHeaderStorageTests {
         message.recordReplyHeadersIfUnknown(from: fetched(uid: 1, inReplyTo: ["a0@friend.example"], references: ["a0@friend.example"]))
         #expect(message.referenceIDs == "", "a known value is not replaced")
     }
+}
 
-    @Test func sentHistoryFollowsTheMailboxAndItsNumbering() throws {
+/// Serves a Sent mailbox and nothing else. It can cancel the task that is
+/// walking it at a chosen point, the way Stop does mid-sync.
+private struct SentMailbox: MailProvider {
+    enum CancelAt { case never, open, lastBatch }
+    var uidValidity: UInt32?
+    var headers: [FetchedHeader]
+    var cancelAt = CancelAt.never
+
+    var capabilities: IMAPCapabilities { IMAPCapabilities(raw: []) }
+    func discoverMailboxes() async throws -> [IMAPMailbox] { [] }
+    func openReadOnly(_ mailbox: String) async throws -> MailboxStatus {
+        if cancelAt == .open { withUnsafeCurrentTask { $0?.cancel() } }
+        return MailboxStatus(exists: headers.count, uidValidity: uidValidity)
+    }
+    func headers(from start: Int, to end: Int) async throws -> [FetchedHeader] {
+        if cancelAt == .lastBatch, end >= headers.count { withUnsafeCurrentTask { $0?.cancel() } }
+        return Array(headers[(start - 1)..<min(end, headers.count)])
+    }
+    func headers(uidsFrom start: UInt32) async throws -> [FetchedHeader] { [] }
+    func flags(from start: Int, to end: Int) async throws -> [FlagUpdate] { [] }
+    func bodyExcerpt(uid: UInt32) async throws -> Data? { nil }
+    func waitForNewMail(maxWait: Duration) async throws -> Bool { false }
+    func openReadWrite(_ mailbox: String) async throws -> MailboxStatus { throw CancellationError() }
+    func setFlags(uids: [UInt32], _ change: IMAPClient.FlagChange, flags: [String]) async throws { throw CancellationError() }
+    func setGmailLabels(uids: [UInt32], _ change: IMAPClient.FlagChange, labels: [String]) async throws { throw CancellationError() }
+    func move(uids: [UInt32], to mailbox: String) async throws -> MoveResult { throw CancellationError() }
+    func ensureMailbox(_ name: String) async throws { throw CancellationError() }
+    func finish() async {}
+    func abort() async {}
+}
+
+@MainActor
+struct SentWalkTests {
+    private let account = UUID()
+    private let sent = IMAPMailbox(name: "Sent", attributes: ["\\Sent"])
+
+    private func header(_ uid: UInt32, to recipient: String = "alice@friend.example") -> FetchedHeader {
+        var h = FetchedHeader(uid: uid, subject: "Re: Plan", senderName: "", senderAddress: "me@work.example", recipients: [recipient],
+                              date: Date(timeIntervalSince1970: 1_800_000_000), isUnread: false, isFlagged: false, gmailLabels: nil,
+                              listUnsubscribe: nil, listUnsubscribePost: nil, listID: nil, messageID: "<s\(uid)@work.example>")
+        h.references = ["a0@friend.example"]
+        return h
+    }
+
+    private func seeded() throws -> ModelContext {
         let context = ModelContext(ModelContainer.grokboxTestContainer())
-        let account = UUID(), other = UUID()
-        func uids() throws -> [UInt32] {
-            try context.fetch(FetchDescriptor<SentMessageHeader>(predicate: #Predicate { $0.accountID == account }, sortBy: [SortDescriptor(\.uid)])).map(\.uid)
+        for (mailbox, validity, uid) in [("Sent", UInt32(5), UInt32(1)), ("Sent", 5, 2), ("Sent", 5, 7), ("Old Sent", 5, 1)] {
+            context.insert(SentMessageHeader(accountID: account, mailbox: mailbox, uidValidity: validity, header: header(uid)))
         }
+        context.insert(SentMessageHeader(accountID: UUID(), mailbox: "Sent", uidValidity: 5, header: header(1)))
+        try context.save()
+        return context
+    }
 
-        try SentHistory.reconcile(accountID: account, mailbox: "Sent", uidValidity: 5, isEmpty: false, in: context)
-        for uid in [1, 2, 3] as [UInt32] { SentHistory.record(fetched(uid: uid, references: ["a0@friend.example"]), accountID: account, mailbox: "Sent", uidValidity: 5, in: context) }
-        SentHistory.record(fetched(uid: 9), accountID: other, mailbox: "Sent", uidValidity: 5, in: context)
-        try SentHistory.prune(accountID: account, mailbox: "Sent", keeping: [1, 2, 3], in: context)
-        #expect(try uids() == [1, 2, 3])
+    private func rows(_ context: ModelContext) throws -> [String] {
+        try SentHistory.rows(accountID: account, in: context).map { "\($0.mailbox)|\($0.uidValidity)|\($0.uid)" }.sorted()
+    }
 
-        for uid in [1, 2, 3] as [UInt32] { SentHistory.record(fetched(uid: uid), accountID: account, mailbox: "Sent", uidValidity: 5, in: context) }
-        #expect(try uids() == [1, 2, 3], "a repeated walk does not duplicate")
-        let row = try #require(try context.fetch(FetchDescriptor<SentMessageHeader>(predicate: #Predicate { $0.uid == 1 && $0.accountID == account })).first)
+    private func walk(_ provider: SentMailbox, in context: ModelContext) async -> Bool {
+        let engine = SyncEngine(modelContext: context)
+        let task = Task { @MainActor in try await engine.walkSent(sent, using: provider, accountID: account) }
+        do { try await task.value; return true } catch { return false }
+    }
+
+    @Test func aCompletedWalkKeepsExactlyWhatItSaw() async throws {
+        let context = try seeded()
+        #expect(await walk(SentMailbox(uidValidity: 5, headers: [header(1), header(2), header(3)]), in: context))
+        #expect(try rows(context) == ["Sent|5|1", "Sent|5|2", "Sent|5|3"], "UID 7 is gone from the server and the old folder is gone")
+        #expect(try context.fetchCount(FetchDescriptor<SentMessageHeader>()) == 4, "another account's rows stay")
+        let row = try #require(try SentHistory.rows(accountID: account, in: context).first { $0.uid == 3 })
         #expect(MessageIDList.decode(row.referenceIDs) == ["a0@friend.example"] && row.fromAddress == "me@work.example")
+        #expect(try context.fetchCount(FetchDescriptor<ContactedAddress>()) == 1)
+    }
 
-        try SentHistory.prune(accountID: account, mailbox: "Sent", keeping: [1, 3], in: context)
-        #expect(try uids() == [1, 3], "a message gone from inside the walked range is dropped")
+    @Test func aRenumberedMailboxReplacesItsRows() async throws {
+        let context = try seeded()
+        #expect(await walk(SentMailbox(uidValidity: 6, headers: [header(1), header(2)]), in: context))
+        #expect(try rows(context) == ["Sent|6|1", "Sent|6|2"])
+    }
 
-        try SentHistory.reconcile(accountID: account, mailbox: "Sent", uidValidity: 6, isEmpty: false, in: context)
-        #expect(try uids() == [], "a renumbered mailbox invalidates every row")
+    @Test func anEmptySentFolderKeepsNothing() async throws {
+        let context = try seeded()
+        #expect(await walk(SentMailbox(uidValidity: 5, headers: []), in: context))
+        #expect(try rows(context) == [])
+    }
 
-        SentHistory.record(fetched(uid: 4), accountID: account, mailbox: "Sent", uidValidity: 6, in: context)
-        try SentHistory.reconcile(accountID: account, mailbox: "Sent", uidValidity: 6, isEmpty: true, in: context)
-        #expect(try uids() == [], "an empty mailbox keeps nothing")
-        #expect(try context.fetchCount(FetchDescriptor<SentMessageHeader>()) == 1, "other accounts are untouched")
+    @Test func stopDeletesNothing() async throws {
+        for cancelAt in [SentMailbox.CancelAt.open, .lastBatch] {
+            let context = try seeded()
+            let before = try rows(context)
+            #expect(await walk(SentMailbox(uidValidity: 6, headers: [header(1)], cancelAt: cancelAt), in: context) == false)
+            try? context.save()
+            #expect(Set(before).isSubset(of: Set(try rows(context))), "cancelled at \(cancelAt)")
+        }
+    }
+
+    @Test func noUIDValidityLeavesTheHistoryAlone() async throws {
+        let context = try seeded()
+        let before = try rows(context)
+        #expect(await walk(SentMailbox(uidValidity: nil, headers: [header(1, to: "bob@else.example"), header(9)]), in: context))
+        #expect(try rows(context) == before)
+        #expect(try context.fetchCount(FetchDescriptor<ContactedAddress>()) == 2, "contacts are still learned")
     }
 }
 

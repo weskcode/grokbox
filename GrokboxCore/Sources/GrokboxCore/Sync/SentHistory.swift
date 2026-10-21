@@ -1,34 +1,42 @@
 import Foundation
 import SwiftData
 
-/// Keeps `SentMessageHeader` rows matching the Sent mailbox: what a completed
-/// walk saw, under the mailbox's current UIDVALIDITY, and nothing else.
 enum SentHistory {
-    /// Runs before anything is fetched. Rows from an older numbering are wrong
-    /// whatever the walk finds, and an empty mailbox has nothing to keep.
-    static func reconcile(accountID: UUID, mailbox: String, uidValidity: UInt32, isEmpty: Bool, in context: ModelContext) throws {
-        let stale = try rows(accountID: accountID, mailbox: mailbox, in: context)
-            .filter { isEmpty || $0.uidValidity != uidValidity }
-        for row in stale { context.delete(row) }
-    }
+    /// One walk of the Sent mailbox. Rows are only ever added while it runs;
+    /// `finish` is the one place that deletes, and only a completed walk calls it.
+    struct Walk {
+        let accountID: UUID
+        let mailbox: String
+        let uidValidity: UInt32
+        private var known: Set<String>
+        private var seen: Set<UInt32> = []
 
-    static func record(_ header: FetchedHeader, accountID: UUID, mailbox: String, uidValidity: UInt32, in context: ModelContext) {
-        let key = SentMessageHeader.key(accountID: accountID, mailbox: mailbox, uidValidity: uidValidity, uid: header.uid)
-        let existing = try? context.fetch(FetchDescriptor<SentMessageHeader>(predicate: #Predicate { $0.key == key })).first
-        if existing == nil {
-            context.insert(SentMessageHeader(accountID: accountID, mailbox: mailbox, uidValidity: uidValidity, header: header))
+        init(accountID: UUID, mailbox: String, uidValidity: UInt32, in context: ModelContext) throws {
+            self.accountID = accountID
+            self.mailbox = mailbox
+            self.uidValidity = uidValidity
+            self.known = Set(try SentHistory.rows(accountID: accountID, in: context).map(\.key))
+        }
+
+        mutating func record(_ header: FetchedHeader, in context: ModelContext) {
+            seen.insert(header.uid)
+            let key = SentMessageHeader.key(accountID: accountID, mailbox: mailbox, uidValidity: uidValidity, uid: header.uid)
+            if known.insert(key).inserted {
+                context.insert(SentMessageHeader(accountID: accountID, mailbox: mailbox, uidValidity: uidValidity, header: header))
+            }
+        }
+
+        /// Keeps only what this walk saw: same folder, same numbering. Rows from
+        /// a renamed or replaced Sent folder go too.
+        func finish(in context: ModelContext) throws {
+            for row in try SentHistory.rows(accountID: accountID, in: context)
+            where row.mailbox != mailbox || row.uidValidity != uidValidity || !seen.contains(row.uid) {
+                context.delete(row)
+            }
         }
     }
 
-    /// Only after a walk finished: anything it did not see is gone from the
-    /// server or older than the walk reaches.
-    static func prune(accountID: UUID, mailbox: String, keeping seen: Set<UInt32>, in context: ModelContext) throws {
-        for row in try rows(accountID: accountID, mailbox: mailbox, in: context) where !seen.contains(row.uid) {
-            context.delete(row)
-        }
-    }
-
-    private static func rows(accountID: UUID, mailbox: String, in context: ModelContext) throws -> [SentMessageHeader] {
-        try context.fetch(FetchDescriptor<SentMessageHeader>(predicate: #Predicate { $0.accountID == accountID && $0.mailbox == mailbox }))
+    static func rows(accountID: UUID, in context: ModelContext) throws -> [SentMessageHeader] {
+        try context.fetch(FetchDescriptor<SentMessageHeader>(predicate: #Predicate { $0.accountID == accountID }))
     }
 }

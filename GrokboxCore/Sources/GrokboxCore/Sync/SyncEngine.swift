@@ -148,7 +148,7 @@ public final class SyncEngine {
             var shouldLearnContacts = isFirstIndex
             if case .full = mode { shouldLearnContacts = true }
             if shouldLearnContacts, let sent = mailboxes.sentMailbox {
-                try await learnContacts(from: sent, using: provider, accountID: accountID)
+                try await walkSent(sent, using: provider, accountID: accountID)
             }
             try Task.checkCancellation()
 
@@ -183,20 +183,21 @@ public final class SyncEngine {
         }
     }
 
-    /// Walks the Sent mailbox recording every address the user has written to,
-    /// and the headers that let replies be matched to what was sent.
+    /// Walks the Sent mailbox for who the user writes to and what they sent.
     /// Capped, because recent correspondence is what carries the signal.
-    private func learnContacts(from mailbox: IMAPMailbox, using provider: MailProvider, accountID: UUID) async throws {
+    func walkSent(_ mailbox: IMAPMailbox, using provider: MailProvider, accountID: UUID) async throws {
         let status = try await provider.openReadOnly(mailbox.name)
+        try Task.checkCancellation()
         let total = status.exists
-        let uidValidity = status.uidValidity ?? 0
-        try SentHistory.reconcile(accountID: accountID, mailbox: mailbox.name, uidValidity: uidValidity, isEmpty: total == 0, in: modelContext)
-        guard total > 0 else { try modelContext.save(); return }
+        // Without UIDVALIDITY a UID may name a different message next time, so
+        // the Sent history is left as it is; contacts need no UIDs.
+        var history = try status.uidValidity.map {
+            try SentHistory.Walk(accountID: accountID, mailbox: mailbox.name, uidValidity: $0, in: modelContext)
+        }
 
         let cap = 2_000
         let start = max(1, total - cap + 1)
         var processed = 0
-        var seen = Set<UInt32>()
 
         var index = start
         while index <= total {
@@ -208,8 +209,7 @@ public final class SyncEngine {
                 for address in header.recipients {
                     recordContact(address, at: header.date)
                 }
-                SentHistory.record(header, accountID: accountID, mailbox: mailbox.name, uidValidity: uidValidity, in: modelContext)
-                seen.insert(header.uid)
+                history?.record(header, in: modelContext)
             }
 
             processed += batch.count
@@ -217,7 +217,8 @@ public final class SyncEngine {
             index = end + 1
         }
 
-        try SentHistory.prune(accountID: accountID, mailbox: mailbox.name, keeping: seen, in: modelContext)
+        try Task.checkCancellation()
+        try history?.finish(in: modelContext)
         try modelContext.save()
     }
 
