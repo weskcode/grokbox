@@ -1,6 +1,7 @@
 import Foundation
 
-/// A sender Grokbox has indexed, as the proposal step needs it.
+/// A sender Grokbox has indexed, as the proposal step needs it. One address
+/// can appear once per account.
 struct KnownSender: Sendable, Equatable {
     var address: String
     var displayName: String
@@ -18,7 +19,7 @@ enum RuleProposal: Sendable, Equatable {
     enum Unresolved: Sendable, Equatable {
         /// The sentence is not one of the forms in `RequestForm.all`.
         case unsupported
-        /// The sentence fits more than one form with different results.
+        /// The sentence fits more than one form or name with different results.
         case ambiguousRequest
         case wholeDomain(String)
         case unknownSender(String)
@@ -28,40 +29,44 @@ enum RuleProposal: Sendable, Equatable {
         case notApproved(String)
         case unknownFolder(String)
         case ambiguousFolder([String])
+        /// The inbox, Trash, Junk, Sent, Drafts, All Mail or Archive: filing
+        /// into one would be a different action wearing a folder's name.
+        case reservedFolder(String)
         case noOneClickLink(String)
         case conflict(String)
         case nothingToChange
     }
 
+    /// Longer than any supported sentence with long names; refused unread.
+    static let wordLimit = 40
+
     /// Reads a request against the senders, rules, folders and policy that
-    /// exist now.
+    /// exist now. `folders` are filing destinations: category folders, folders
+    /// rules already use, and server mailboxes that are not special-use.
     ///
     /// The whole sentence must be one supported form. Anything else, such as
     /// "trash this message from Medium" or "archive Medium older than 30
     /// days", creates nothing rather than a broader rule than was asked for.
     static func make(request: String, senders: [KnownSender], rules: [String: SenderOverride],
                      folders: Set<String>, policy: CleanupPolicy) -> RuleProposal {
-        let words = RequestForm.words(in: request)
+        let words = request.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard words.count <= wordLimit else { return .unresolved(.unsupported) }
         let readings = RequestForm.all.flatMap { $0.readings(of: words) }
         guard !readings.isEmpty else { return .unresolved(.unsupported) }
 
+        let book = SenderBook(senders: senders, rules: rules)
         var targets: Set<Target> = []
         var failures: [Unresolved] = []
-        for reading in readings {
-            switch target(for: reading, senders: senders, rules: rules, folders: folders) {
+        for reading in Set(readings) {
+            switch target(for: reading, in: book, folders: folders) {
             case .success(let target): targets.insert(target)
             case .failure(let failure): failures.append(failure.reason)
             }
         }
-        guard targets.count <= 1 else { return .unresolved(.ambiguousRequest) }
-        // Sender names are chosen by senders, so one reading that resolves
-        // cannot outvote another that found two senders or folders.
-        if let ambiguity = failures.first(where: \.isAmbiguity) { return .unresolved(ambiguity) }
-        guard let target = targets.first else {
-            return .unresolved(failures.min { $0.rank < $1.rank } ?? .unsupported)
-        }
+        if let failure = verdict(targets: targets, failures: failures) { return .unresolved(failure) }
+        guard let target = targets.first else { return .unresolved(.unsupported) }
 
-        let sender = senders.first { $0.address == target.address }
+        let entries = senders.filter { $0.address == target.address }
         let before = rules[target.address]
         if before?.decision != .sweep, target.change != .decide(.keep) {
             return .unresolved(.notApproved(target.address))
@@ -72,7 +77,9 @@ enum RuleProposal: Sendable, Equatable {
         case .decide(let decision): after.decision = decision
         case .destination(let disposition): after.disposition = disposition
         case .unsubscribe(let allowed):
-            if allowed, sender?.supportsOneClickUnsubscribe != true { return .unresolved(.noOneClickLink(target.address)) }
+            if allowed, !entries.contains(where: \.supportsOneClickUnsubscribe) {
+                return .unresolved(.noOneClickLink(target.address))
+            }
             after.autoUnsubscribe = allowed
         case .folder:
             after.customFolder = target.folder
@@ -80,12 +87,39 @@ enum RuleProposal: Sendable, Equatable {
         }
         if after == before { return .unresolved(.nothingToChange) }
 
-        let effects = Effects(sender: sender, policy: policy)
-        if after.decision == .sweep, let kept = after.customFolder, effects.disposition(after) != .fileIntoFolders {
-            return .unresolved(.conflict("This sender files into \(kept); \(effects.disposition(after).label.lowercased()) would ignore that folder."))
+        // A folder means nothing unless the sender's mail is filed, and the
+        // policy can change after this draft. Only a change that makes or
+        // touches the mismatch is refused; an old one does not block an
+        // unrelated edit.
+        if let kept = Self.unusedFolder(after), target.change.touchesWhereMailGoes || Self.unusedFolder(before) == nil {
+            return .unresolved(.conflict("This sender files into \(kept). Clear that folder before changing where its mail goes."))
         }
+
+        let effects = Effects(categories: Set(entries.map(\.category)), policy: policy)
         return .draft(RuleDraft(address: target.address, before: before, after: after,
                                 irreversibleEffects: effects.irreversible(from: before, to: after)))
+    }
+
+    private static func unusedFolder(_ rule: SenderOverride?) -> String? {
+        guard let rule, rule.decision == .sweep, let folder = rule.customFolder, rule.disposition != .fileIntoFolders else { return nil }
+        return folder
+    }
+
+    /// Sender names are chosen by senders, so a reading that resolves cannot
+    /// outvote another that found two senders or folders. The candidates of
+    /// every ambiguous reading are shown together.
+    private static func verdict(targets: Set<Target>, failures: [Unresolved]) -> Unresolved? {
+        var senders: [String] = []
+        var folders: [String] = []
+        for failure in failures {
+            if case .ambiguousSender(let candidates) = failure { senders += candidates }
+            if case .ambiguousFolder(let candidates) = failure { folders += candidates }
+        }
+        if targets.count > 1 || (!targets.isEmpty && !(senders.isEmpty && folders.isEmpty)) { return .ambiguousRequest }
+        if !targets.isEmpty { return nil }
+        if !senders.isEmpty { return .ambiguousSender(Array(Set(senders)).sorted()) }
+        if !folders.isEmpty { return .ambiguousFolder(Array(Set(folders)).sorted()) }
+        return failures.min { $0.rank < $1.rank } ?? .unsupported
     }
 
     private struct Target: Hashable {
@@ -96,24 +130,49 @@ enum RuleProposal: Sendable, Equatable {
 
     private struct Failure: Error { var reason: Unresolved }
 
-    /// Resolves the words the person typed, spelled as they typed them.
-    private static func target(for reading: RequestForm.Reading, senders: [KnownSender],
-                               rules: [String: SenderOverride], folders: Set<String>) -> Result<Target, Failure> {
-        let named = reading.sender
-        if named.hasPrefix("@") || named.contains("*") { return .failure(Failure(reason: .wholeDomain(named))) }
+    /// Every address and display name, normalized once per request.
+    private struct SenderBook {
+        var addresses: Set<String>
+        var names: [(name: String, address: String)]
 
+        init(senders: [KnownSender], rules: [String: SenderOverride]) {
+            addresses = Set(senders.map(\.address) + rules.keys)
+            names = senders.map { (name: RuleProposal.spaced($0.displayName), address: $0.address) }
+        }
+    }
+
+    static func spaced(_ text: String) -> String {
+        text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    /// Names a mailbox may not be filed into, whatever the server calls it.
+    static let reservedFolderNames: Set<String> = [
+        "inbox", "trash", "bin", "deleted items", "deleted messages", "junk", "junk e-mail", "junk email", "spam",
+        "sent", "sent items", "sent mail", "sent messages", "drafts", "all mail", "archive", "outbox"
+    ]
+
+    /// Resolves the words the person typed, spelled as they typed them.
+    private static func target(for reading: RequestForm.Reading, in book: SenderBook,
+                               folders: Set<String>) -> Result<Target, Failure> {
+        let named = reading.sender
         // Exact address first, then an exact display name. Display names are
         // written by senders, so two that collide are shown, never guessed between.
-        let addresses = Set(senders.map(\.address) + rules.keys)
-        var matches = addresses.filter { $0.caseInsensitiveCompare(named) == .orderedSame }
+        var matches = book.addresses.filter { $0.caseInsensitiveCompare(named) == .orderedSame }
         if matches.isEmpty {
-            matches = Set(senders.filter { $0.displayName.caseInsensitiveCompare(named) == .orderedSame }.map(\.address))
+            matches = Set(book.names.filter { $0.name.caseInsensitiveCompare(named) == .orderedSame }.map(\.address))
         }
         if matches.count > 1 { return .failure(Failure(reason: .ambiguousSender(matches.sorted()))) }
-        guard let address = matches.first else { return .failure(Failure(reason: .unknownSender(named))) }
+        guard let address = matches.first else {
+            let looksLikeDomain = !named.contains(" ") && (named.hasPrefix("@") || named.contains("*") || (named.contains(".") && !named.contains("@")))
+            return .failure(Failure(reason: looksLikeDomain ? .wholeDomain(named) : .unknownSender(named)))
+        }
 
         var folder: String?
         if let typed = reading.folder {
+            let leaf = typed.split(separator: "/").last.map(String.init) ?? typed
+            if reservedFolderNames.contains(leaf.lowercased()) || typed.lowercased().hasPrefix("[gmail]") {
+                return .failure(Failure(reason: .reservedFolder(typed)))
+            }
             let loose = folders.filter { $0.caseInsensitiveCompare(typed) == .orderedSame }
             if folders.contains(typed) {
                 folder = typed
@@ -133,19 +192,11 @@ private extension RuleProposal.Unresolved {
     /// Which failure explains a request best when every reading of it failed.
     var rank: Int {
         switch self {
-        case .ambiguousSender: 0
-        case .ambiguousFolder: 1
-        case .unknownFolder: 2
-        case .wholeDomain: 3
-        case .unknownSender: 4
-        default: 5
-        }
-    }
-
-    var isAmbiguity: Bool {
-        switch self {
-        case .ambiguousSender, .ambiguousFolder: true
-        default: false
+        case .reservedFolder: 0
+        case .unknownFolder: 1
+        case .wholeDomain: 2
+        case .unknownSender: 3
+        default: 4
         }
     }
 }
@@ -159,6 +210,13 @@ struct RequestForm: Sendable {
         case destination(CleanupPolicy.Disposition?)
         case folder
         case unsubscribe(Bool)
+
+        var touchesWhereMailGoes: Bool {
+            switch self {
+            case .destination, .folder: true
+            case .decide, .unsubscribe: false
+            }
+        }
     }
 
     enum Piece: Sendable, Equatable {
@@ -167,7 +225,7 @@ struct RequestForm: Sendable {
         case folder
     }
 
-    struct Reading: Sendable, Equatable {
+    struct Reading: Sendable, Hashable {
         var change: Change
         var sender: String
         var folder: String?
@@ -197,7 +255,9 @@ struct RequestForm: Sendable {
             ("always trash <s>", .destination(.trash), true),
             ("bin <s>", .destination(.trash), true),
             ("send <s> to the trash", .destination(.trash), true),
+            ("send <s> to trash", .destination(.trash), true),
             ("move <s> to the trash", .destination(.trash), true),
+            ("move <s> to trash", .destination(.trash), true),
             ("set <s> to move to trash", .destination(.trash), false),
             ("file <s> into folders", .destination(.fileIntoFolders), true),
             ("set <s> to file into folders", .destination(.fileIntoFolders), false),
@@ -214,7 +274,9 @@ struct RequestForm: Sendable {
             ("never unsubscribe me from <s>", .unsubscribe(false), false),
             ("never unsubscribe from <s>", .unsubscribe(false), false),
             ("don't unsubscribe me from <s>", .unsubscribe(false), false),
-            ("stop unsubscribing me from <s>", .unsubscribe(false), false)
+            ("don't unsubscribe from <s>", .unsubscribe(false), false),
+            ("stop unsubscribing me from <s>", .unsubscribe(false), false),
+            ("stop unsubscribing from <s>", .unsubscribe(false), false)
         ]
         return forms.flatMap { text, change, takesMailFrom in
             (takesMailFrom ? RequestForm.mailFrom : [""]).flatMap { prefix in
@@ -232,19 +294,26 @@ struct RequestForm: Sendable {
         }
     }()
 
-    /// The request split on spaces, keeping each word as typed, without the
-    /// sentence's closing punctuation.
-    static func words(in request: String) -> [String] {
-        var text = request.replacingOccurrences(of: "\u{2019}", with: "'").trimmingCharacters(in: .whitespacesAndNewlines)
-        while let last = text.last, ".!".contains(last) { text.removeLast() }
-        return text.split(whereSeparator: \.isWhitespace).map(String.init)
-    }
-
-    /// Every way the words fit this form. A sender or folder whose name
-    /// contains one of the form's words ("Life in Pictures") can fit more
-    /// than one way; the caller keeps only readings that name real things.
+    /// Every way the words fit this form. Form words are compared loosely
+    /// (case, a curly apostrophe, a closing "." or "!"); sender and folder
+    /// names are kept exactly as typed. A name that ends the sentence is
+    /// read both with and without its closing punctuation, since "Yahoo!" may
+    /// be a name. A name containing a form word ("Life in Pictures") can fit
+    /// more than one way; the caller keeps only readings that name real things.
     func readings(of words: [String]) -> [Reading] {
         var found: [Reading] = []
+        func loose(_ index: Int) -> String {
+            var word = words[index].lowercased().replacingOccurrences(of: "\u{2019}", with: "'")
+            if index == words.count - 1 { while let last = word.last, ".!".contains(last) { word.removeLast() } }
+            return word
+        }
+        func names(_ range: Range<Int>) -> [String] {
+            let typed = words[range].joined(separator: " ")
+            guard range.upperBound == words.count else { return [typed] }
+            var bare = typed
+            while let last = bare.last, ".!".contains(last) { bare.removeLast() }
+            return bare == typed || bare.isEmpty ? [typed] : [typed, bare]
+        }
         func match(_ piece: Int, _ word: Int, sender: String?, folder: String?) {
             if piece == pieces.count {
                 if word == words.count, let sender { found.append(Reading(change: change, sender: sender, folder: folder)) }
@@ -252,17 +321,18 @@ struct RequestForm: Sendable {
             }
             switch pieces[piece] {
             case .word(let expected):
-                guard word < words.count, words[word].lowercased() == expected else { return }
+                guard word < words.count, loose(word) == expected else { return }
                 match(piece + 1, word + 1, sender: sender, folder: folder)
             case .sender, .folder:
                 let wordsAfter = pieces.count - piece - 1
                 guard word < words.count - wordsAfter else { return }
                 for end in (word + 1)...(words.count - wordsAfter) {
-                    let name = words[word..<end].joined(separator: " ")
-                    if pieces[piece] == .sender {
-                        match(piece + 1, end, sender: name, folder: folder)
-                    } else {
-                        match(piece + 1, end, sender: sender, folder: name)
+                    for name in names(word..<end) {
+                        if pieces[piece] == .sender {
+                            match(piece + 1, end, sender: name, folder: folder)
+                        } else {
+                            match(piece + 1, end, sender: sender, folder: name)
+                        }
                     }
                 }
             }
@@ -273,17 +343,17 @@ struct RequestForm: Sendable {
 }
 
 /// What a rule actually does once the policy fills in what it leaves open.
+/// With no indexed category, every category is assumed, so a warning errs
+/// toward showing.
 private struct Effects {
-    var sender: KnownSender?
+    var categories: Set<SenderCategory>
     var policy: CleanupPolicy
-
-    func disposition(_ rule: SenderOverride) -> CleanupPolicy.Disposition {
-        rule.disposition ?? policy.disposition(for: sender?.category ?? .unknown)
-    }
 
     private func trashes(_ rule: SenderOverride?) -> Bool {
         guard let rule, rule.decision == .sweep else { return false }
-        return disposition(rule) == .trash
+        if let disposition = rule.disposition { return disposition == .trash }
+        let possible = categories.isEmpty ? Set(SenderCategory.allCases) : categories
+        return possible.contains { policy.disposition(for: $0) == .trash }
     }
 
     /// Effects a person cannot take back from Activity alone: the provider

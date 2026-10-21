@@ -64,7 +64,7 @@ struct RuleProposalTests {
     @Test func neverUnsubscribeIsANegationNotAFolder() {
         let result = draft(propose("Never unsubscribe from Medium Daily Digest"))
         #expect(result?.after == SenderOverride(decision: .sweep, disposition: .archiveOnly, autoUnsubscribe: false),
-                "a folder called Never changes nothing here")
+                "no unsubscribe form has a folder, so a folder called Never cannot take the word")
     }
 
     @Test func explicitUnsubscribeWarnsEvenWhereThePolicyMightAlready() {
@@ -123,7 +123,17 @@ struct RuleProposalTests {
                                                   category: .promotion, supportsOneClickUnsubscribe: true)]
         let proposal = RuleProposal.make(request: "Keep everything from PayPal", senders: senders, rules: Self.rules,
                                          folders: Self.folders, policy: .gentle)
-        #expect(proposal == .unresolved(.ambiguousSender(["service@paypa1.example", "service@paypal.example"])))
+        #expect(proposal == .unresolved(.ambiguousRequest))
+    }
+
+    @Test func twoSpoofedNamesCannotHideTheRealSender() {
+        let spoofs = ["a", "b"].map {
+            KnownSender(address: "\($0)@spoof.example", displayName: "everything from MegaMart", category: .promotion,
+                        supportsOneClickUnsubscribe: true)
+        }
+        let proposal = RuleProposal.make(request: "Keep everything from MegaMart", senders: Self.senders + spoofs, rules: Self.rules,
+                                         folders: Self.folders, policy: .gentle)
+        #expect(proposal == .unresolved(.ambiguousRequest), "MegaMart is a real reading, so a list of spoofs alone would mislead")
     }
 
     // MARK: - Only whole supported sentences
@@ -168,9 +178,65 @@ struct RuleProposalTests {
                 "\"PayPal!\" is a different name and is not offered as one of them")
     }
 
-    /// A closing "!" is sentence punctuation, so this is the shared name.
-    @Test func closingPunctuationIsNotPartOfAName() {
-        #expect(propose("Keep PayPal!") == .unresolved(.ambiguousSender(["service@paypa1.example", "service@paypal.example"])))
+    @Test func aClosingBangCanBePartOfANameOrTheSentence() {
+        #expect(propose("Keep PayPal!") == .unresolved(.ambiguousRequest),
+                "\"PayPal!\" is one sender and \"PayPal\" is two others")
+
+        let yahooBang = KnownSender(address: "y1@yahoo.example", displayName: "Yahoo!", category: .newsletter, supportsOneClickUnsubscribe: false)
+        let yahoo = KnownSender(address: "y2@yahoo.example", displayName: "Yahoo", category: .newsletter, supportsOneClickUnsubscribe: false)
+        let rules: [String: SenderOverride] = [yahooBang.address: .init(decision: .sweep)]
+        #expect(RuleProposal.make(request: "Stop sweeping Yahoo!", senders: [yahooBang, yahoo], rules: rules,
+                                  folders: Self.folders, policy: .gentle) == .unresolved(.ambiguousRequest))
+        let only = RuleProposal.make(request: "Stop sweeping Yahoo!", senders: [yahooBang], rules: rules,
+                                     folders: Self.folders, policy: .gentle)
+        #expect(draft(only)?.address == yahooBang.address)
+    }
+
+    @Test func namesAreKeptAsTypedButFormWordsAreRead() {
+        let acme = KnownSender(address: "news@acme.example", displayName: "Acme Inc.", category: .newsletter, supportsOneClickUnsubscribe: false)
+        let spaced = KnownSender(address: "w@medium.example", displayName: "Medium  Weekly ", category: .newsletter, supportsOneClickUnsubscribe: false)
+        let starred = KnownSender(address: "d@deals.example", displayName: "*NEW* Deals", category: .promotion, supportsOneClickUnsubscribe: false)
+        let rules: [String: SenderOverride] = [acme.address: .init(decision: .sweep), spaced.address: .init(decision: .sweep),
+                                               starred.address: .init(decision: .sweep)]
+        func make(_ request: String) -> RuleProposal {
+            RuleProposal.make(request: request, senders: Self.senders + [acme, spaced, starred], rules: rules,
+                              folders: Self.folders, policy: .gentle)
+        }
+        #expect(draft(make("Archive Acme Inc."))?.address == acme.address)
+        #expect(draft(make("Archive Medium Weekly"))?.address == spaced.address)
+        #expect(draft(make("Archive *NEW* Deals"))?.address == starred.address)
+        #expect(make("Archive medium.example") == .unresolved(.wholeDomain("medium.example")))
+        #expect(draft(make("Don\u{2019}t sweep The Paper"))?.after == SenderOverride(decision: .keep))
+        #expect(draft(make("Please trash Medium Daily Digest."))?.after.disposition == .trash)
+    }
+
+    @Test func specialMailboxesAreNotFilingFolders() {
+        let folders = Self.folders.union(["Trash", "INBOX", "[Gmail]/Spam"])
+        #expect(propose("Put MegaMart in trash", folders: folders) == .unresolved(.reservedFolder("trash")),
+                "filing into Trash would trash without the warning")
+        #expect(propose("File Medium Daily Digest under INBOX", folders: folders) == .unresolved(.reservedFolder("INBOX")))
+        #expect(propose("File Medium Daily Digest under [Gmail]/Spam", folders: folders) == .unresolved(.reservedFolder("[Gmail]/Spam")))
+    }
+
+    @Test func intoFoldersIsTheCategoryFolderUnlessAFolderHasThatName() {
+        #expect(draft(propose("File Club Weekly into folders"))?.after == SenderOverride(decision: .sweep, disposition: .fileIntoFolders))
+        #expect(propose("File Club Weekly into folders", folders: Self.folders.union(["Folders"])) == .unresolved(.ambiguousRequest))
+    }
+
+    @Test func aRuleWithNoIndexedSenderAssumesTheWorstCategory() {
+        var rules = Self.rules
+        rules["old@promo.example"] = .init(decision: .sweep, disposition: .fileIntoFolders)
+        func make(_ policy: CleanupPolicy) -> RuleProposal {
+            RuleProposal.make(request: "Let old@promo.example follow my policy", senders: Self.senders, rules: rules,
+                              folders: Self.folders, policy: policy)
+        }
+        #expect(draft(make(.thorough))?.irreversibleEffects.count == 1, "it might be a promotion, which Thorough trashes")
+        #expect(draft(make(.gentle))?.irreversibleEffects.isEmpty == true)
+    }
+
+    @Test func overlongRequestsAreRefusedUnread() {
+        let request = "File Medium Daily Digest under " + Array(repeating: "under", count: RuleProposal.wordLimit).joined(separator: " ")
+        #expect(propose(request) == .unresolved(.unsupported))
     }
 
     @Test func foldersThatDifferOnlyByCaseAreNotGuessedBetween() {
@@ -222,9 +288,20 @@ struct RuleProposalTests {
         #expect(isConflict(propose("Trash MegaMart")), "the Shopping folder would be silently ignored")
     }
 
-    @Test func followPolicyThatWouldIgnoreACustomFolderIsAVisibleCollision() {
+    @Test func followPolicyOnASenderWithACustomFolderIsAVisibleCollision() {
         #expect(isConflict(propose("Let MegaMart follow my policy", policy: .thorough)), "Thorough trashes promotions, skipping Shopping")
-        #expect(draft(propose("Let MegaMart follow my policy"))?.after.customFolder == "Shopping", "under Gentle the folder still applies")
+        #expect(isConflict(propose("Let MegaMart follow my policy")), "a later policy change could skip Shopping silently")
+    }
+
+    @Test func anOldCollisionDoesNotBlockAnUnrelatedEdit() {
+        let legacy = KnownSender(address: "legacy@x.example", displayName: "Legacy", category: .promotion, supportsOneClickUnsubscribe: false)
+        var rules = Self.rules
+        rules[legacy.address] = .init(decision: .sweep, disposition: .trash, customFolder: "Shopping")
+        func make(_ request: String) -> RuleProposal {
+            RuleProposal.make(request: request, senders: Self.senders + [legacy], rules: rules, folders: Self.folders, policy: .gentle)
+        }
+        #expect(draft(make("Never unsubscribe from Legacy"))?.after.autoUnsubscribe == false)
+        #expect(isConflict(make("Archive Legacy")), "changing where its mail goes meets the collision")
     }
 
     @Test func unsubscribeNeedsAOneClickLink() {
