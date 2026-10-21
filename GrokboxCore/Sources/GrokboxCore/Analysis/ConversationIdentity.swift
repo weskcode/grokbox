@@ -1,28 +1,28 @@
 import Foundation
 
-/// The `<id@host>` tokens in a Message-ID, In-Reply-To or References value.
-///
-/// Only bracketed tokens with an `@` count: In-Reply-To written by old clients
-/// can carry prose ("your message of 3 May") or a second, unrelated id, and a
-/// folded References line can put whitespace anywhere. Brackets are dropped and
-/// whitespace inside a token removed, so the same id written two ways compares
-/// equal. Case is kept and ids compare as written.
+/// The `<id@host>` tokens in a Message-ID, In-Reply-To or References value,
+/// read with the RFC 5322 grammar: comments and quoted phrases outside the
+/// brackets are skipped, folding whitespace inside an id is dropped, and a
+/// quoted local part that needs no quotes compares equal to the bare form
+/// (RFC 5256 §6.4). Old clients put prose and stray addresses in In-Reply-To;
+/// only well-formed `local@domain` ids survive. Case is kept and ids compare as written.
 public enum MessageIDList {
-    /// A References chain is kept whole up to this length. Past it, the first id
-    /// (the conversation root) and the most recent ones are what link a message.
-    public static let maxReferences = 50
-
     public static func parse(_ raw: String?) -> [String] {
         guard let raw, !raw.isEmpty else { return [] }
+        let chars = Array(raw)
         var ids: [String] = []
         var seen = Set<String>()
-        var rest = Substring(raw)
-        while let open = rest.firstIndex(of: "<") {
-            let afterOpen = rest[rest.index(after: open)...]
-            guard let close = afterOpen.firstIndex(of: ">") else { break }
-            let id = String(afterOpen[..<close].filter { !$0.isWhitespace })
-            if id.contains("@"), !id.hasPrefix("@"), !id.hasSuffix("@"), seen.insert(id).inserted { ids.append(id) }
-            rest = afterOpen[afterOpen.index(after: close)...]
+        var i = 0
+        while i < chars.count {
+            switch chars[i] {
+            case "(": i = skipComment(chars, from: i)
+            case "\"": i = skipQuoted(chars, from: i)
+            case "<":
+                let (id, next) = scanID(chars, from: i + 1)
+                if let id, seen.insert(id).inserted { ids.append(id) }
+                i = next
+            default: i += 1
+            }
         }
         return ids
     }
@@ -32,16 +32,64 @@ public enum MessageIDList {
     public static func messageID(_ raw: String?) -> String? {
         if let first = parse(raw).first { return first }
         guard let bare = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !bare.isEmpty,
-              !bare.contains(where: { $0.isWhitespace || $0 == "<" || $0 == ">" }),
+              !bare.contains(where: { $0.isWhitespace || "<>()\"".contains($0) }),
               let at = bare.firstIndex(of: "@"), at != bare.startIndex, bare.index(after: at) != bare.endIndex
         else { return nil }
         return bare
     }
 
-    public static func references(_ raw: String?) -> [String] {
-        let ids = parse(raw)
-        guard ids.count > maxReferences else { return ids }
-        return [ids[0]] + ids.suffix(maxReferences - 1)
+    private static let atext = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!#$%&'*+-/=?^_`{|}~.")
+
+    private static func skipComment(_ c: [Character], from start: Int) -> Int {
+        var depth = 0, i = start
+        while i < c.count {
+            switch c[i] {
+            case "\\": i += 1
+            case "(": depth += 1
+            case ")": depth -= 1; if depth == 0 { return i + 1 }
+            default: break
+            }
+            i += 1
+        }
+        return i
+    }
+
+    private static func skipQuoted(_ c: [Character], from start: Int) -> Int {
+        var i = start + 1
+        while i < c.count {
+            if c[i] == "\\" { i += 2; continue }
+            if c[i] == "\"" { return i + 1 }
+            i += 1
+        }
+        return i
+    }
+
+    /// Reads up to the closing `>`. The local part keeps quoted content exactly,
+    /// including spaces; everything else drops whitespace.
+    private static func scanID(_ c: [Character], from start: Int) -> (String?, Int) {
+        var local = "", domain = "", inDomain = false, inQuotes = false, needsQuotes = false
+        var i = start
+        while i < c.count {
+            let ch = c[i]
+            if inQuotes {
+                if ch == "\\", i + 1 < c.count { i += 1; local.append(c[i]); if !atext.contains(c[i]) { needsQuotes = true } }
+                else if ch == "\"" { inQuotes = false }
+                else if !(ch.isNewline) { local.append(ch); if !atext.contains(ch) { needsQuotes = true } }
+            } else if ch == ">" {
+                guard !local.isEmpty, !domain.isEmpty else { return (nil, i + 1) }
+                let left = needsQuotes ? "\"" + local.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\"" : local
+                return (left + "@" + domain, i + 1)
+            } else if ch == "<" {
+                return (nil, i)
+            } else if !ch.isWhitespace {
+                if !inDomain && ch == "\"" { inQuotes = true }
+                else if !inDomain && ch == "@" { inDomain = true }
+                else if inDomain { domain.append(ch) }
+                else { local.append(ch) }
+            }
+            i += 1
+        }
+        return (nil, i)
     }
 }
 
@@ -50,8 +98,10 @@ public enum MessageIDList {
 /// no reply headers at all.
 ///
 /// The result depends only on the set of messages given, never on their order,
-/// so a duplicate fetch, an out-of-order sync or a renumbered mailbox (which
-/// changes UIDs, not Message-IDs) produces the same grouping.
+/// so an out-of-order sync or a renumbered mailbox (which changes UIDs, not
+/// Message-IDs) produces the same grouping. Copies are recognised by Message-ID
+/// and always share one assignment; two inputs without a Message-ID are two
+/// messages, because nothing in their headers can tell a copy from a lookalike.
 public enum ConversationIdentity {
     public struct Input: Sendable, Equatable {
         public var accountID: UUID
@@ -102,6 +152,19 @@ public enum ConversationIdentity {
 
     /// One assignment per input, in input order.
     public static func assign(_ inputs: [Input]) -> [Assignment] {
+        var copiesOf: [[Int]] = []
+        var messageOf: [Int] = []
+        var messageByID: [String: Int] = [:]
+        for (i, input) in inputs.enumerated() {
+            if let id = input.messageID {
+                let scoped = "\(input.accountID.uuidString)|\(id)"
+                if let m = messageByID[scoped] { copiesOf[m].append(i); messageOf.append(m); continue }
+                messageByID[scoped] = copiesOf.count
+            }
+            messageOf.append(copiesOf.count)
+            copiesOf.append([i])
+        }
+
         var parent: [String: String] = [:]
         func find(_ node: String) -> String {
             var root = node
@@ -116,40 +179,44 @@ public enum ConversationIdentity {
             if ra < rb { parent[rb] = ra } else { parent[ra] = rb }
         }
 
-        let nodes: [[String]] = inputs.map { input in
-            let ids = ([input.messageID].compactMap(\.self) + input.inReplyTo + input.references)
-            return ids.map { "\(input.accountID.uuidString)|\($0)" }
+        // RFC 5256 §6.4: References when present, else only the first In-Reply-To id.
+        // Old clients append the sender's address to In-Reply-To, and linking it
+        // would join every conversation that address ever replied in.
+        func parents(_ input: Input) -> [String] {
+            input.references.isEmpty ? Array(input.inReplyTo.prefix(1)) : input.references
+        }
+        let nodes: [[String]] = copiesOf.map { copies in
+            copies.flatMap { i in
+                ([inputs[i].messageID].compactMap(\.self) + parents(inputs[i])).map { "\(inputs[i].accountID.uuidString)|\($0)" }
+            }
         }
         for ids in nodes {
             for id in ids where parent[id] == nil { parent[id] = id }
             for id in ids.dropFirst() { joinKeepingSmallerRoot(ids[0], id) }
         }
 
-        // Copies of one message (All Mail and Sent, or a duplicate fetch) share a
-        // Message-ID and must count once, or a copy alone would look like a reply.
-        let messages: [String] = inputs.indices.map { i in
-            inputs[i].messageID.map { "\(inputs[i].accountID.uuidString)|\($0)" } ?? "#\(i)"
-        }
         let roots: [String?] = nodes.map { $0.first.map(find) }
-        var messagesPerRoot: [String: Set<String>] = [:]
-        for (i, root) in roots.enumerated() { if let root { messagesPerRoot[root, default: []].insert(messages[i]) } }
+        var messagesPerRoot: [String: Int] = [:]
+        for root in roots.compactMap(\.self) { messagesPerRoot[root, default: 0] += 1 }
 
         enum Link { case linked(root: String), unlinkedReply(root: String), headerless(key: String) }
-        let links: [Link] = inputs.indices.map { i in
-            let input = inputs[i]
-            if let root = roots[i], (messagesPerRoot[root]?.count ?? 0) > 1 { return .linked(root: root) }
-            if input.hasReplyHeaders, let root = roots[i] { return .unlinkedReply(root: root) }
-            return .headerless(key: "subject|" + ThreadKey.key(accountID: input.accountID, senderAddress: input.senderAddress, subject: input.subject))
+        let links: [Link] = copiesOf.indices.map { m in
+            let copies = copiesOf[m].map { inputs[$0] }
+            if let root = roots[m], (messagesPerRoot[root] ?? 0) > 1 { return .linked(root: root) }
+            if let root = roots[m], copies.contains(where: \.hasReplyHeaders) { return .unlinkedReply(root: root) }
+            let keys = copies.map { "subject|" + ThreadKey.key(accountID: $0.accountID, senderAddress: $0.senderAddress, subject: $0.subject) }
+            return .headerless(key: keys.min() ?? "")
         }
-        var messagesPerFallback: [String: Set<String>] = [:]
-        for (i, link) in links.enumerated() { if case .headerless(let key) = link { messagesPerFallback[key, default: []].insert(messages[i]) } }
+        var messagesPerFallback: [String: Int] = [:]
+        for case .headerless(let key) in links { messagesPerFallback[key, default: 0] += 1 }
 
-        return links.map { link in
+        let perMessage: [Assignment] = links.map { link in
             switch link {
             case .linked(let root): Assignment(key: "headers|" + root, evidence: .headers)
             case .unlinkedReply(let root): Assignment(key: "headers|" + root, evidence: .single)
-            case .headerless(let key): Assignment(key: key, evidence: (messagesPerFallback[key]?.count ?? 0) > 1 ? .subjectFallback : .single)
+            case .headerless(let key): Assignment(key: key, evidence: (messagesPerFallback[key] ?? 0) > 1 ? .subjectFallback : .single)
             }
         }
+        return messageOf.map { perMessage[$0] }
     }
 }

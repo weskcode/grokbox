@@ -191,7 +191,7 @@ enum IMAPResponseParser {
             listID: headers["list-id"],
             messageID: headers["message-id"],
             inReplyTo: MessageIDList.parse(headers["in-reply-to"]),
-            references: MessageIDList.references(headers["references"])
+            references: MessageIDList.parse(headers["references"])
         )
     }
 

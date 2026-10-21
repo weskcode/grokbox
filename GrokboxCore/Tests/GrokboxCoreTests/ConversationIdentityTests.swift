@@ -25,13 +25,30 @@ struct MessageIDListTests {
         #expect(MessageIDList.messageID(nil) == nil)
     }
 
-    @Test func overlongReferencesKeepTheRootAndTheNewest() {
-        let raw = (0..<80).map { "<r\($0)@mail.example>" }.joined(separator: " ")
-        let kept = MessageIDList.references(raw)
-        #expect(kept.count == MessageIDList.maxReferences)
-        #expect(kept.first == "r0@mail.example")
-        #expect(kept.last == "r79@mail.example")
-        #expect(!kept.contains("r1@mail.example"))
+    @Test func commentsAndQuotedPhrasesAreNotIDs() {
+        #expect(MessageIDList.parse("(old thread <old@mail.example>) <parent@mail.example>") == ["parent@mail.example"])
+        #expect(MessageIDList.parse("(nested (deeper <x@y.example>) still) <p@mail.example>") == ["p@mail.example"])
+        #expect(MessageIDList.parse("\"Bob <bob@else.example>\" <p@mail.example>") == ["p@mail.example"])
+    }
+
+    @Test func quotedLocalPartsCompareByMeaning() {
+        #expect(MessageIDList.parse("<\"01KF8JCEOCBS0045PS\"@xxx.yyy.example>") == ["01KF8JCEOCBS0045PS@xxx.yyy.example"])
+        let spaced = MessageIDList.parse("<\"a b\"@mail.example>")
+        let joined = MessageIDList.parse("<\"ab\"@mail.example>")
+        #expect(spaced == ["\"a b\"@mail.example"])
+        #expect(joined == ["ab@mail.example"])
+        #expect(spaced != joined, "a space inside quotes is part of the id")
+    }
+
+    @Test func aLongChainLinksThroughAnyOfItsIDs() {
+        let chain = (0..<80).map { "r\($0)@mail.example" }
+        #expect(MessageIDList.parse(chain.map { "<\($0)>" }.joined(separator: " ")) == chain)
+        let account = UUID()
+        let result = ConversationIdentity.assign([
+            .init(accountID: account, messageID: "r1@mail.example", senderAddress: "a@mail.example", subject: "Plan"),
+            .init(accountID: account, messageID: "r80@mail.example", references: chain, senderAddress: "b@mail.example", subject: "Re: Plan"),
+        ])
+        #expect(result[0].key == result[1].key)
     }
 
     @Test func fetchLineCarriesReplyHeaders() throws {
@@ -186,6 +203,31 @@ struct ConversationIdentityTests {
         let withCopy = ConversationIdentity.assign([n1, n2, n1])
         #expect(Set(withCopy.map(\.key)).count == 1)
         #expect(withCopy.allSatisfy { $0.evidence == .subjectFallback }, "a copy must not pull its original out of the fallback group")
+    }
+
+    @Test func copiesThatDisagreeStillShareOneAssignment() {
+        let original = message("n@news.example", from: "news@news.example", "Weekly")
+        let relabelled = message("n@news.example", from: "News@Other.example", "[List] Weekly")
+        #expect(Set(ConversationIdentity.assign([original, relabelled]).map(\.key)).count == 1)
+
+        let withHeaders = message("r@else.example", from: "bob@else.example", "Re: Plan", references: ["gone@friend.example"])
+        let stripped = message("r@else.example", from: "bob@else.example", "Re: Plan")
+        for order in [[withHeaders, stripped], [stripped, withHeaders]] {
+            let result = ConversationIdentity.assign(order)
+            #expect(result[0] == result[1], "a copy that lost its reply headers stays with its original")
+            #expect(result[0].evidence == .single)
+        }
+    }
+
+    @Test func aStrayAddressInInReplyToJoinsNothing() {
+        let mail = [
+            message("x1@else.example", from: "bob@else.example", "Re: A",
+                    inReplyTo: ["a0@friend.example", "me@home.example"], references: ["a0@friend.example"]),
+            message("x2@else.example", from: "carol@else.example", "Re: B",
+                    inReplyTo: ["b0@friend.example", "me@home.example"], references: ["b0@friend.example"]),
+            message("x3@else.example", from: "dave@else.example", "Re: C", inReplyTo: ["c0@friend.example", "me@home.example"]),
+        ]
+        #expect(Set(ConversationIdentity.assign(mail).map(\.key)).count == 3)
     }
 
     @Test func accountsNeverShareAConversation() {
