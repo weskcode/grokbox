@@ -528,3 +528,41 @@ recommended automation tool; exporting anything beyond what
 `SenderCluster` already computes on-device.
 
 ---
+
+## ADR-0025 — A model's answer is data to check, never authority
+
+**Status:** accepted
+
+The reading model and the sender categorizer are small, local and sometimes
+wrong. A hostile sender can also write to them. Grokbox's prompt tells the
+model to treat the email as text to describe, but a prompt is a request, and
+on the first real evaluation the on-device model sometimes obeyed an
+instruction in an email anyway. So the rules about what a model may influence
+live in code, and tests prove them with a scripted model.
+
+What a model result may do: set one of three importance labels, a display
+action, a quick flag, a deadline phrase and a one-line summary on a message,
+and a category on a sender. What it may not do: add a sender to a sweep,
+create a rule, change a policy, switch a guard off, or name an action
+beyond the six display ones. The result types carry no field that could, and a
+test fails if one is added. Mail from senders already in the sweep plan never
+reaches the model at all.
+
+Two checks were added because the code relied only on the prompt. A deadline
+phrase is kept only if it appears in the message the model was shown, since a
+wrong deadline ranks mail and shows a red label, which is worse than none.
+And the prompt fence is rebuilt until no marker is left, with the subject and
+sender name reduced to one line, since a sender controls all three.
+
+Semantic quality is measured separately (`docs/AI-QUALITY.md`) against the
+real backend, on original synthetic mail, and reported per backend, model and
+corpus revision. A passing containment test says nothing about a model, and a
+model is not said to pass because the test files exist. Prompt wording
+changes are accepted only on a better report with no regression in the
+controls; the one tried so far was worse.
+
+**Not done here, and not planned:** cloud evaluation, telemetry on model
+answers, or letting a model's agreement stand in for the reader's approval of
+a sender.
+
+---

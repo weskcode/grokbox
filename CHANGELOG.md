@@ -7,6 +7,13 @@ All notable changes to Grokbox are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- A quality gate for the local reading model. Tests prove that, whatever a
+  model says, it cannot change which senders are swept, create a rule or
+  turn a guard off. A separate evaluation, run on request, reads original
+  synthetic mail (urgent-looking marketing, a real bill carrying an
+  instruction, invented deadlines, quoted old requests, injections in the
+  subject, body and sender name) against the real on-device model and records
+  what it did wrong. See docs/AI-QUALITY.md.
 - STARTTLS, which Proton Mail Bridge uses by default and many servers offer
   on port 143. The upgrade is required: if a server does not offer it,
   refuses it, sends data before encryption starts, or presents a certificate
@@ -90,6 +97,17 @@ All notable changes to Grokbox are recorded here. The format follows
 - Continuous integration on GitHub Actions (macOS 26).
 
 ### Fixed
+- A sender could rebuild the marker around the message body by nesting it,
+  and could put a marker or a line break in the subject or sender name. The
+  reading model now sees one fence and a three-line header whatever the sender
+  writes, and a sender's subjects can no longer add lines to the sender
+  categorization prompt.
+- A deadline phrase the reading model returned that is not in the message is
+  no longer stored, so it cannot move a message up the Brief or add a due
+  label.
+- With Ollama, an importance label outside needsYou, worthKnowing and noise
+  was filed as a real reading ("worth knowing"). It now shows as unreadable,
+  like any other failure. Spelling variants such as "Needs You" are accepted.
 - Removing an account left its sweep rules behind. Rules are global on
   purpose, but a rule about a sender no remaining account receives from is
   dead weight, and sweep rules from a removed demo mailbox stayed live against
