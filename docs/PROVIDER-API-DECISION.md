@@ -99,11 +99,11 @@ is an API and persistence change, not a swap behind the seam.
 | Providers | Any IMAP server, Proton via Bridge | Adds Outlook.com and Microsoft 365; optional for Gmail | Gmail only | Outlook.com and Microsoft 365 only |
 | Scopes | None | Microsoft: `https://outlook.office.com/IMAP.AccessAsUser.All`, `offline_access`. Gmail: `https://mail.google.com/` | `gmail.modify` for labels and `batchModify`; `history.list` also needs a restricted scope | `Mail.ReadWrite` delegated, no admin consent required |
 | Scope class | n/a | Gmail `https://mail.google.com/` is restricted. Microsoft IMAP scope has no Google-style assessment | Every Gmail read or sync scope is restricted | Not restricted |
-| Verification | None | Microsoft: an Entra app registration. Publisher verification is optional but needed where a tenant only allows consent to verified publishers. It is free and needs a Microsoft AI Cloud Partner Program account | Restricted-scope verification for any public release. A CASA security assessment applies if restricted data is stored on or sent through a server, which includes a third-party server. Unverified apps stop at 100 users for the life of the project | As for XOAUTH2 |
-| Recurring cost | None | None | If assessed: every 12 months, paid by the developer to the assessor. Projects created on or after May 1, 2026 also face an 80,000,000-unit daily project threshold, with billing details not yet published | None documented |
+| Verification | None | Microsoft: an Entra app registration. Publisher verification is optional but needed where a tenant only allows consent to verified publishers. It is free and needs a Microsoft AI Cloud Partner Program account. Gmail: the same restricted-scope verification and assessment rules as the Gmail API column | Restricted-scope verification for any public release. A CASA security assessment applies if restricted data is stored on or sent through a server, which includes a third-party server. Unverified apps stop at 100 users for the life of the project | As for XOAUTH2 |
+| Recurring cost | None | Microsoft: none. Gmail: as for the Gmail API, apart from API quota | If assessed: every 12 months, paid by the developer to the assessor. Projects created on or after May 1, 2026 also face an 80,000,000-unit daily project threshold, with billing details not yet published | None documented |
 | Hosting | None | None; a native public client needs no secret | None | None |
 | New code | None | SASL `AUTHENTICATE`, token refresh, Keychain token storage, sign-in sheet | A second provider: REST client, label model, history sync, quota handling | A second provider: REST client, folder model, delta sync, throttling |
-| Initial index, 5,000 messages | 20 header `FETCH` commands | Same | About 100,000 quota units (`messages.get` at 20 units each). Under the quota for projects created on or after May 1, 2026, 6,000 units per user per minute, that is at least 17 minutes | `messages/delta` pages; 10,000 requests per 10 minutes per mailbox |
+| Initial index, 5,000 messages | 20 header `FETCH` commands | Same | About 100,000 quota units (`messages.get` at 20 units each). Under the quota for projects created on or after May 1, 2026, 6,000 units per user per minute, that is roughly 17 minutes of quota. Elapsed time was not measured | `messages/delta` pages; 10,000 requests per 10 minutes per mailbox |
 
 Sources:
 
@@ -129,7 +129,9 @@ The Gmail API also collides with an existing feature. The opt-in Jev fallback
 (ADR-0023, `PRIVACY.md`) sends a sender's address and subject lines to
 `api.typesafe.ai`. If those came from a restricted Gmail scope, restricted data
 would pass through a third-party server, which is the case Google's security
-assessment covers. Having no Grokbox server is not enough to avoid it.
+assessment covers. Having no Grokbox server is not enough to avoid it. The same
+applies to Gmail OAuth over IMAP, because Google's rules follow the restricted
+scope and where its data goes, not the protocol.
 
 Graph has no Google-style assessment, but it reaches only Microsoft accounts,
 which `XOAUTH2` over IMAP also reaches. A second backend would double the
