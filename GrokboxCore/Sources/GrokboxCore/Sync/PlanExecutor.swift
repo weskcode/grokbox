@@ -83,6 +83,20 @@ public final class PlanExecutor {
     private let modelContext: ModelContext
     private let save: (ModelContext) throws -> Void
 
+    enum JournalError: LocalizedError {
+        case notRecordedBeforeWrite(any Error)
+        case notSavedAfterWrite(any Error)
+
+        var errorDescription: String? {
+            switch self {
+            case .notRecordedBeforeWrite(let error):
+                "Grokbox could not save to Activity, so it stopped before the next change. \(error.localizedDescription)"
+            case .notSavedAfterWrite(let error):
+                "The server made the change, but Grokbox could not save it to Activity, so Activity may not show it after a restart. \(error.localizedDescription)"
+            }
+        }
+    }
+
     public convenience init(modelContext: ModelContext) {
         self.init(modelContext: modelContext, save: { try $0.save() })
     }
@@ -198,8 +212,8 @@ public final class PlanExecutor {
                 var confirmed: [UInt32] = []
 
                 if item.markRead {
-                    let action = record(.markRead, for: item, uids: uids, account: account, uidValidity: openValidity)
-                    confirmed = await run(action) {
+                    let action = try record(.markRead, for: item, uids: uids, account: account, uidValidity: openValidity)
+                    confirmed = try await run(action) {
                         try await provider.setFlags(uids: uids, .add, flags: ["\\Seen"])
                         return nil
                     }
@@ -215,18 +229,18 @@ public final class PlanExecutor {
                         // \\Deleted flag and never EXPUNGE. The provider empties
                         // it on its own schedule; until then this is undoable.
                         let target = trashName ?? "Trash"
-                        let action = record(.trash, for: item, uids: uids, account: account, labelName: target, uidValidity: openValidity)
+                        let action = try record(.trash, for: item, uids: uids, account: account, labelName: target, uidValidity: openValidity)
                         action.heldUIDs = verdict.held.map(\.uid)
                         action.heldSummary = verdict.summary
                         action.targetMailbox = target
-                        confirmed = await run(action) { try await provider.move(uids: uids, to: target) }
+                        confirmed = try await run(action) { try await provider.move(uids: uids, to: target) }
                         itemFailed = itemFailed || action.errorMessage != nil
 
                     case .archiveOnly where isGmail:
-                        let archive = record(.archive, for: item, uids: uids, account: account, uidValidity: openValidity)
+                        let archive = try record(.archive, for: item, uids: uids, account: account, uidValidity: openValidity)
                         archive.heldUIDs = verdict.held.map(\.uid)
                         archive.heldSummary = verdict.summary
-                        confirmed = await run(archive) {
+                        confirmed = try await run(archive) {
                             try await provider.setGmailLabels(uids: uids, .remove, labels: ["\\Inbox"])
                             return nil
                         }
@@ -234,16 +248,16 @@ public final class PlanExecutor {
 
                     case .archiveOnly:
                         let target = archiveName ?? "Archive"
-                        let archive = record(.archive, for: item, uids: uids, account: account, labelName: target, uidValidity: openValidity)
+                        let archive = try record(.archive, for: item, uids: uids, account: account, labelName: target, uidValidity: openValidity)
                         archive.heldUIDs = verdict.held.map(\.uid)
                         archive.heldSummary = verdict.summary
                         archive.targetMailbox = target
-                        confirmed = await run(archive) { try await provider.move(uids: uids, to: target) }
+                        confirmed = try await run(archive) { try await provider.move(uids: uids, to: target) }
                         itemFailed = itemFailed || archive.errorMessage != nil
 
                     case .fileIntoFolders where isGmail:
-                        let label = record(.label, for: item, uids: uids, account: account, labelName: item.folder, uidValidity: openValidity)
-                        let labelled = await run(label) {
+                        let label = try record(.label, for: item, uids: uids, account: account, labelName: item.folder, uidValidity: openValidity)
+                        let labelled = try await run(label) {
                             try await provider.setGmailLabels(uids: uids, .add, labels: [item.folder])
                             return nil
                         }
@@ -252,10 +266,10 @@ public final class PlanExecutor {
                         // \Inbox off mail whose label failed would file it nowhere.
                         guard !labelled.isEmpty else { break }
                         try checkStopped(token)
-                        let archive = record(.archive, for: item, uids: labelled, account: account, uidValidity: openValidity)
+                        let archive = try record(.archive, for: item, uids: labelled, account: account, uidValidity: openValidity)
                         archive.heldUIDs = verdict.held.map(\.uid)
                         archive.heldSummary = verdict.summary
-                        confirmed = await run(archive) {
+                        confirmed = try await run(archive) {
                             try await provider.setGmailLabels(uids: labelled, .remove, labels: ["\\Inbox"])
                             return nil
                         }
@@ -266,11 +280,11 @@ public final class PlanExecutor {
                         // UIDPLUS report them (COPYUID), and that is what makes the
                         // move undoable; without it the action is recorded as final.
                         let target = serverFolder[item.folder] ?? item.folder
-                        let archive = record(.archive, for: item, uids: uids, account: account, labelName: item.folder, uidValidity: openValidity)
+                        let archive = try record(.archive, for: item, uids: uids, account: account, labelName: item.folder, uidValidity: openValidity)
                         archive.heldUIDs = verdict.held.map(\.uid)
                         archive.heldSummary = verdict.summary
                         archive.targetMailbox = target
-                        confirmed = await run(archive) { try await provider.move(uids: uids, to: target) }
+                        confirmed = try await run(archive) { try await provider.move(uids: uids, to: target) }
                         itemFailed = itemFailed || archive.errorMessage != nil
                     }
                     if !confirmed.isEmpty { markSwept(uids: confirmed, in: account, swept: true, address: item.cluster.address) }
@@ -281,7 +295,7 @@ public final class PlanExecutor {
                 // never happen for mail that is still sitting in the inbox, nor
                 // after the user pressed Stop.
                 if item.unsubscribe, !itemFailed, !isStopped(token), unsubscribed.insert(item.cluster.address).inserted {
-                    let action = record(.unsubscribe, for: item, uids: [], account: account,
+                    let action = try record(.unsubscribe, for: item, uids: [], account: account,
                                         labelName: item.cluster.address, uidValidity: 0)
                     let outcome = await UnsubscribeService.unsubscribe(from: item.cluster)
                     switch outcome {
@@ -307,7 +321,7 @@ public final class PlanExecutor {
                 }
                 lastOutcome = Outcome(messages: touched, senders: done, failedSenders: failedSenders)
                 phase = .applying(done: done + failedSenders, total: items.count)
-                try save(modelContext)
+                try saveOutcome()
                 if let lostConnection { throw lostConnection }
             }
             // A Stop that landed during the last sender still counts as a Stop.
@@ -324,10 +338,15 @@ public final class PlanExecutor {
             }
         } catch where error is CancellationError || isStopped(token) {
             // Includes a write cut off by Stop's grace period: that is the Stop.
-            try? save(modelContext)
             lastOutcome.stopped = true
             let o = lastOutcome
-            phase = .finished("Stopped. Swept \(o.messages.formatted()) messages from \(o.senders) senders; the rest were left alone.")
+            let stopped = "Stopped. Swept \(o.messages.formatted()) messages from \(o.senders) senders; the rest were left alone."
+            do {
+                try saveOutcome()
+                phase = .finished(stopped)
+            } catch {
+                phase = .failed("\(stopped) \(error.localizedDescription)")
+            }
         } catch {
             try? save(modelContext)
             phase = .failed(error.localizedDescription)
@@ -400,7 +419,7 @@ public final class PlanExecutor {
                 }
             }
             action.undoneAt = Date()
-            try save(modelContext)
+            try saveOutcome()
             phase = .finished("Undid \(action.kind.label.lowercased()) for \(action.senderName)")
         } catch {
             phase = .failed(error.localizedDescription)
@@ -442,7 +461,7 @@ public final class PlanExecutor {
         account: MailAccount,
         labelName: String? = nil,
         uidValidity: UInt32 = 0
-    ) -> CleanupAction {
+    ) throws -> CleanupAction {
         let action = CleanupAction(
             accountID: account.id,
             kind: kind,
@@ -458,8 +477,17 @@ public final class PlanExecutor {
         // mid-command, Activity says so instead of showing a clean success.
         action.errorMessage = Self.interrupted
         modelContext.insert(action)
-        try? save(modelContext)
+        do {
+            try save(modelContext)
+        } catch {
+            modelContext.delete(action)
+            throw JournalError.notRecordedBeforeWrite(error)
+        }
         return action
+    }
+
+    private func saveOutcome() throws {
+        do { try save(modelContext) } catch { throw JournalError.notSavedAfterWrite(error) }
     }
 
     static let interrupted = "Interrupted before the server confirmed it."
@@ -468,7 +496,7 @@ public final class PlanExecutor {
     /// server confirmed. Returns the UIDs that actually changed: all of them,
     /// the chunks before a failure, or none. The operation returns the MOVE
     /// result for a move and nil for a flag or label change.
-    private func run(_ action: CleanupAction, _ operation: () async throws -> MoveResult?) async -> [UInt32] {
+    private func run(_ action: CleanupAction, _ operation: () async throws -> MoveResult?) async throws -> [UInt32] {
         let requested = action.uids
         // A flag or label change can be reversed whether or not it landed, so
         // it is undoable from the moment it is sent; if the app dies before
@@ -476,7 +504,13 @@ public final class PlanExecutor {
         // be reversed once the server says where the messages went.
         let reversibleIfUnsure = action.targetMailbox == nil
         action.isUndoable = reversibleIfUnsure
-        try? save(modelContext)
+        do {
+            try save(modelContext)
+        } catch {
+            action.isUndoable = false
+            action.errorMessage = "Not sent: Grokbox could not save to Activity first."
+            throw JournalError.notRecordedBeforeWrite(error)
+        }
         do {
             settle(action, confirmed: requested, moved: try await operation())
             return requested
