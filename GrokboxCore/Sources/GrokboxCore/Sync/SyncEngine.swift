@@ -482,8 +482,9 @@ public final class SyncEngine {
                     message.importance = result.importance
                     message.importanceReason = result.reason
                     message.actionType = result.importance == .needsYou ? result.actionType : .none
-                    message.dueHint = result.dueHint
-                    message.dueAt = DueDateParser.parse(result.dueHint, relativeTo: message.receivedAt)
+                    let deadline = request.groundedDeadline(result.dueHint)
+                    message.dueHint = deadline
+                    message.dueAt = DueDateParser.parse(deadline, relativeTo: message.receivedAt)
                     message.isQuick = result.isQuick && result.importance == .needsYou
                     consecutiveModelFailures = 0
                 } catch {

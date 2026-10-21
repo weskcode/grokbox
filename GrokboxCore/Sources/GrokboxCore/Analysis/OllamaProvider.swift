@@ -60,10 +60,13 @@ public struct OllamaProvider: TextModel {
         let envelope = try JSONDecoder().decode(GenerateResponse.self, from: data)
         let parsed = try JSONDecoder().decode(ModelOutput.self, from: Data(envelope.response.utf8))
 
+        guard let importance = Self.spellingInsensitiveImportance(parsed.importance) else {
+            throw ModelError.generation("the model answered with an importance Grokbox does not recognise")
+        }
         let due = (parsed.due ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         return ReadResult(
             summary: parsed.summary.trimmingCharacters(in: .whitespacesAndNewlines),
-            importance: Importance(rawValue: parsed.importance) ?? .worthKnowing,
+            importance: importance,
             reason: parsed.reason,
             actionType: parsed.action.flatMap(ActionType.init(rawValue:)) ?? .none,
             dueHint: due.isEmpty || due.lowercased() == "none" || due.lowercased() == "null" ? nil : due,
@@ -89,6 +92,11 @@ public struct OllamaProvider: TextModel {
         let envelope = try JSONDecoder().decode(GenerateResponse.self, from: data)
         let parsed = try JSONDecoder().decode(CategoryOutput.self, from: Data(envelope.response.utf8))
         return CategorizeResult(category: SenderCategory(rawValue: parsed.kind) ?? .unknown, reason: parsed.reason ?? "")
+    }
+
+    static func spellingInsensitiveImportance(_ label: String) -> Importance? {
+        func letters(_ text: String) -> String { text.lowercased().filter(\.isLetter) }
+        return Importance.allCases.first { letters($0.rawValue) == letters(label) }
     }
 
     private struct CategoryOutput: Decodable {

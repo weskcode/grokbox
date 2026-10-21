@@ -28,18 +28,38 @@ public struct ReadRequest: Sendable {
         // The body is written by the sender, who may be hostile. It goes
         // between markers the sender cannot forge, so the model can tell the
         // email apart from its instructions (GB-029).
-        let fenced = bodyExcerpt
-            .replacingOccurrences(of: Self.bodyStart, with: "")
-            .replacingOccurrences(of: Self.bodyEnd, with: "")
+        let fenced = Self.removingMarkers(from: bodyExcerpt)
         return """
-        From: \(senderName) <\(senderAddress)>\(senderIsKnownContact ? " (someone the reader has written to before)" : "")
+        From: \(Self.oneLine(senderName)) <\(Self.oneLine(senderAddress))>\(senderIsKnownContact ? " (someone the reader has written to before)" : "")
         Date: \(formatter.string(from: receivedAt))
-        Subject: \(subject)
+        Subject: \(Self.oneLine(subject))
 
         \(Self.bodyStart)
         \(fenced)
         \(Self.bodyEnd)
         """
+    }
+
+    static func removingMarkers(from text: String) -> String {
+        var text = text
+        while text.contains(bodyStart) || text.contains(bodyEnd) {
+            text = text.replacingOccurrences(of: bodyStart, with: "")
+                .replacingOccurrences(of: bodyEnd, with: "")
+        }
+        return text
+    }
+
+    static func oneLine(_ text: String) -> String {
+        removingMarkers(from: text).split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    func groundedDeadline(_ hint: String?) -> String? {
+        func fold(_ text: String) -> String {
+            text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+                .split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        }
+        guard let hint, !fold(hint).isEmpty else { return nil }
+        return fold(subject + " " + bodyExcerpt).contains(fold(hint)) ? hint : nil
     }
 
     static let bodyStart = "<<<EMAIL BODY"
@@ -124,10 +144,10 @@ public struct CategorizeRequest: Sendable {
 
     public var rendered: String {
         """
-        Sender: \(displayName) <\(address)>
+        Sender: \(ReadRequest.oneLine(displayName)) <\(ReadRequest.oneLine(address))>
         Messages: \(messageCount), \(Int(unreadRatio * 100))% never opened, \(hasUnsubscribeLink ? "has" : "no") unsubscribe link
         Recent subjects:
-        \(sampleSubjects.map { "- " + $0 }.joined(separator: "\n"))
+        \(sampleSubjects.map { "- " + ReadRequest.oneLine($0) }.joined(separator: "\n"))
         """
     }
 }
