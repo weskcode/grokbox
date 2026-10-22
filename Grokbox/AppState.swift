@@ -264,6 +264,7 @@ final class AppState {
         if options.selftest {
             await selfTest()
         }
+        Log.note("launch options applied")
     }
 
     /// Exercises, from inside the sandbox, exactly what a real account needs:
@@ -491,12 +492,12 @@ final class AppState {
 /// Local notifications only. Nothing here talks to a push service.
 enum NotificationService {
     static func requestPermission() {
-        guard !LaunchIsolation.isDemoOnly else { return }
+        guard (try? LaunchIsolation.refuse(.notifications)) != nil else { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
     static func post(title: String, body: String) {
-        guard !LaunchIsolation.isDemoOnly else { return }
+        guard (try? LaunchIsolation.refuse(.notifications)) != nil else { return }
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body

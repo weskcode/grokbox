@@ -20,7 +20,8 @@ public enum LaunchIsolation {
     /// demo-only mode without changing what concurrently running tests see.
     @TaskLocal public static var override: Bool?
 
-    public static var isDemoOnly: Bool { override ?? processWide }
+    /// A test override can only switch isolation on, never clear the process's own decision.
+    public static var isDemoOnly: Bool { processWide || override == true }
 
     private static let processWide = requested(bundleIdentifier: Bundle.main.bundleIdentifier,
                                                arguments: CommandLine.arguments)
@@ -37,6 +38,7 @@ public enum LaunchIsolation {
         case unsubscribe = "unsubscribe requests"
         case autoconfig = "account autoconfiguration"
         case modelBackend = "a model backend"
+        case notifications = "notifications"
     }
 
     public struct Refusal: LocalizedError, Equatable, Sendable {
@@ -86,14 +88,14 @@ public enum LaunchIsolation {
 
     /// What this process will and will not do, one `key=value` per line,
     /// written to the log before any scene exists so a run can check it.
-    public static func attestation(bundleIdentifier: String?, storeInMemory: Bool, logPath: String) -> [String] {
+    public static func attestation(bundleIdentifier: String?, storeConfiguration: String, logPath: String) -> [String] {
         func state(_ surface: Surface) -> String {
             do { try refuse(surface); return "open" } catch { return "refused" }
         }
         return [
             "demoOnly=\(isDemoOnly)",
             "bundleID=\(bundleIdentifier ?? "none")",
-            "store=\(storeInMemory ? "inMemory(groupContainer: none, cloudKit: none)" : "disk")",
+            "store=\(storeConfiguration)",
             "defaults=\(GrokboxDefaults.store === UserDefaults.standard ? "standard" : defaultsSuiteName)",
             "logPath=\(logPath)",
             "logSubsystem=\(isDemoOnly ? logSubsystem : "com.wesleykeetch.grokbox")",
@@ -102,6 +104,7 @@ public enum LaunchIsolation {
             "unsubscribe=\(state(.unsubscribe))",
             "autoconfig=\(state(.autoconfig))",
             "modelBackend=\(state(.modelBackend))",
+            "notifications=\(state(.notifications))",
         ]
     }
 }

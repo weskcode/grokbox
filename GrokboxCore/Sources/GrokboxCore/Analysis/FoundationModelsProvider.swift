@@ -12,6 +12,9 @@ public struct FoundationModelsProvider: TextModel {
     public init() {}
 
     public func availability() async -> ModelAvailability {
+        if LaunchIsolation.isDemoOnly {
+            return .unavailable(reason: LaunchIsolation.Refusal(surface: .modelBackend).localizedDescription)
+        }
         // Off the main actor on purpose: the availability getter blocks its
         // calling thread on an XPC reply that is delivered via the main run
         // loop. Called on the main thread inside a GUI app, it deadlocks.
@@ -26,6 +29,7 @@ public struct FoundationModelsProvider: TextModel {
     }
 
     public func read(_ request: ReadRequest) async throws -> ReadResult {
+        try LaunchIsolation.refuse(.modelBackend)
         // A fresh session per message: the on-device context window is small,
         // and each email is independent of the last.
         let session = LanguageModelSession(instructions: ReaderPrompt.instructions)
@@ -48,6 +52,7 @@ public struct FoundationModelsProvider: TextModel {
     }
 
     public func categorize(_ request: CategorizeRequest) async throws -> CategorizeResult {
+        try LaunchIsolation.refuse(.modelBackend)
         let session = LanguageModelSession(instructions: ReaderPrompt.categorizeInstructions)
         let response: LanguageModelSession.Response<GeneratedCategory>
         do {

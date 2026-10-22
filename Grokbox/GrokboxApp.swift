@@ -14,10 +14,13 @@ enum AppEnvironment {
     /// could not be reset from inside itself.
     static let opened: GrokboxStore.Opened = {
         let demoOnly = LaunchIsolation.isDemoOnly
+        // The decision is logged before the store is opened, the attestation after,
+        // from what was actually opened.
+        if demoOnly { Log.note("isolation: decision demoOnly=true bundleID=\(Bundle.main.bundleIdentifier ?? "none")") }
         let opened = GrokboxStore.open(inMemory: demoOnly)
         if demoOnly {
             for line in LaunchIsolation.attestation(bundleIdentifier: Bundle.main.bundleIdentifier,
-                                                    storeInMemory: opened.isEphemeral, logPath: Log.fileURL.path) {
+                                                    storeConfiguration: opened.configuration, logPath: Log.fileURL.path) {
                 Log.note("isolation: \(line)")
             }
         }

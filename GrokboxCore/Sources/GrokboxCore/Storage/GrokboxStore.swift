@@ -49,7 +49,11 @@ public enum GrokboxStore {
         public let recovery: String?
         /// True when nothing could be persisted and this session is memory-only.
         public let isEphemeral: Bool
+        /// How the store was actually configured, for the isolation attestation.
+        public let configuration: String
     }
+
+    static let inMemoryConfiguration = "inMemory(groupContainer: none, cloudKit: none)"
 
     public static func open(inMemory: Bool = false) -> Opened {
         let schema = Schema(versionedSchema: GrokboxSchemaV1.self)
@@ -63,7 +67,7 @@ public enum GrokboxStore {
             // there is no fallback left and crashing is honest.
             return Opened(container: try! ModelContainer(for: schema, migrationPlan: GrokboxMigrationPlan.self,
                                                          configurations: config),
-                          recovery: nil, isEphemeral: true)
+                          recovery: nil, isEphemeral: true, configuration: inMemoryConfiguration)
         }
 
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
@@ -71,7 +75,7 @@ public enum GrokboxStore {
         // 1. The normal path.
         if let container = try? ModelContainer(for: schema, migrationPlan: GrokboxMigrationPlan.self,
                                                configurations: config) {
-            return Opened(container: container, recovery: nil, isEphemeral: false)
+            return Opened(container: container, recovery: nil, isEphemeral: false, configuration: "disk")
         }
 
         // 2. Move the unreadable store aside and start a fresh one. Nothing is
@@ -85,18 +89,19 @@ public enum GrokboxStore {
                 recovery: moved
                     ? "Grokbox could not read its index, so it started a new one. Your mail is untouched — re-index to rebuild. The old index was kept alongside it."
                     : "Grokbox could not read its index and started a new one. Re-index to rebuild.",
-                isEphemeral: false)
+                isEphemeral: false, configuration: "disk")
         }
 
         // 3. Nothing can be written. Run in memory so the app still opens and can
         //    explain itself.
-        let memory = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let memory = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true,
+                                        groupContainer: .none, cloudKitDatabase: .none)
         let container = try! ModelContainer(for: schema, migrationPlan: GrokboxMigrationPlan.self,
                                             configurations: memory)
         return Opened(
             container: container,
             recovery: "Grokbox cannot write to its container, so nothing will be saved this session. Check disk space and permissions.",
-            isEphemeral: true)
+            isEphemeral: true, configuration: inMemoryConfiguration)
     }
 
     /// Where SwiftData puts the default store inside the sandbox.

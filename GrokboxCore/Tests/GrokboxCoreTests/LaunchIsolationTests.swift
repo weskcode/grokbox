@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import SwiftData
+import Synchronization
 @testable import GrokboxCore
 
 private actor Calls {
@@ -9,6 +10,18 @@ private actor Calls {
 }
 
 private struct Sentinel: Error {}
+
+/// Counts every request a session is asked to make, and fails each one.
+private final class RecordingURLProtocol: URLProtocol, @unchecked Sendable {
+    static let seen = Mutex(0)
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        Self.seen.withLock { $0 += 1 }
+        client?.urlProtocol(self, didFailWithError: URLError(.cannotConnectToHost))
+    }
+    override func stopLoading() {}
+}
 
 /// Runs `body` in demo-only mode for this task only, so tests running beside
 /// it see the process as it really is.
@@ -136,11 +149,20 @@ struct LaunchIsolationTests {
     }
 
     @Test func autoconfigurationMakesNoRequestInIsolation() async {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [RecordingURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        RecordingURLProtocol.seen.withLock { $0 = 0 }
         await demoOnly {
             await #expect(throws: LaunchIsolation.Refusal.self) {
-                _ = try await AutoconfigService.discover(email: "someone@example.com")
+                _ = try await AutoconfigService.discover(email: "someone@example.com", session: session, verifyGuess: false)
             }
         }
+        #expect(RecordingURLProtocol.seen.withLock { $0 } == 0, "no request was created")
+
+        // Control: outside isolation the same call does create requests.
+        _ = try? await AutoconfigService.discover(email: "someone@example.com", session: session, verifyGuess: false)
+        #expect(RecordingURLProtocol.seen.withLock { $0 } >= 1)
     }
 
     @Test func modelBackendsMakeNoRequestInIsolation() async {
@@ -158,6 +180,12 @@ struct LaunchIsolationTests {
             await #expect(throws: LaunchIsolation.Refusal.self) { _ = try await ollama.read(read) }
             await #expect(throws: LaunchIsolation.Refusal.self) { _ = try await ollama.categorize(categorize) }
             await #expect(throws: LaunchIsolation.Refusal.self) { _ = try await jev.categorize(categorize) }
+            let onDevice = FoundationModelsProvider()
+            guard case .unavailable(let onDeviceWhy) = await onDevice.availability(), onDeviceWhy.contains("Demo-only") else {
+                Issue.record("the on-device model was probed in isolation"); return
+            }
+            await #expect(throws: LaunchIsolation.Refusal.self) { _ = try await onDevice.read(read) }
+            await #expect(throws: LaunchIsolation.Refusal.self) { _ = try await onDevice.categorize(categorize) }
         }
     }
 
@@ -218,6 +246,34 @@ struct LaunchIsolationTests {
         #expect(GrokboxDefaults.store === UserDefaults.standard, "outside isolation nothing changes")
     }
 
+    /// A value seeded into the real (standard) persistent domain is neither read
+    /// nor overwritten in demo-only mode. `grokbox.readLimit` is read only by
+    /// `Maintainer.Settings.load()` in the app, so no other test sees the seed.
+    /// The argument domain cannot be set from inside a test; a launch passes
+    /// none, and a suite would still search it, like the registration domain below.
+    @Test func aValueInTheRealDefaultsIsNeitherReadNorOverwritten() async {
+        let key = "grokbox.readLimit"
+        let original = UserDefaults.standard.object(forKey: key)
+        UserDefaults.standard.set(7_777, forKey: key)
+        defer {
+            if let original { UserDefaults.standard.set(original, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
+        }
+        await demoOnly {
+            #expect(Maintainer.Settings.load().readLimit == Maintainer.Settings.defaults.readLimit, "the real value is not read")
+            GrokboxDefaults.store.set(11, forKey: key)
+            #expect(Maintainer.Settings.load().readLimit == 11)
+            GrokboxDefaults.store.removeObject(forKey: key)
+        }
+        #expect(UserDefaults.standard.integer(forKey: key) == 7_777, "the real value was not written")
+        #expect(Maintainer.Settings.load().readLimit == 7_777, "outside isolation nothing changes")
+    }
+
+    @Test func aFalseOverrideCannotClearTheProcessDecision() async {
+        await LaunchIsolation.$override.withValue(false) {
+            #expect(LaunchIsolation.isDemoOnly == LaunchIsolation.requested(bundleIdentifier: Bundle.main.bundleIdentifier, arguments: CommandLine.arguments))
+        }
+    }
+
     /// States which domains isolation does not exclude: a `UserDefaults` suite
     /// still searches the registration domain, so registered values show through.
     /// A unique key keeps this from touching anything the app reads.
@@ -233,15 +289,15 @@ struct LaunchIsolationTests {
 
     @Test func theAttestationReportsWhatIsRefused() async {
         let isolated = await demoOnly {
-            LaunchIsolation.attestation(bundleIdentifier: LaunchIsolation.isolatedBundleIdentifier, storeInMemory: true, logPath: "/tmp/x.log")
+            LaunchIsolation.attestation(bundleIdentifier: LaunchIsolation.isolatedBundleIdentifier, storeConfiguration: GrokboxStore.inMemoryConfiguration, logPath: "/tmp/x.log")
         }
         for expected in ["demoOnly=true", "bundleID=com.wesleykeetch.grokbox.isolation", "store=inMemory(groupContainer: none, cloudKit: none)",
                          "defaults=com.wesleykeetch.grokbox.isolated-demo", "keychain=refused", "mailServer=refused",
-                         "unsubscribe=refused", "autoconfig=refused", "modelBackend=refused", "logSubsystem=com.wesleykeetch.grokbox.isolated-demo"] {
+                         "unsubscribe=refused", "autoconfig=refused", "modelBackend=refused", "notifications=refused", "logSubsystem=com.wesleykeetch.grokbox.isolated-demo"] {
             #expect(isolated.contains(expected), "\(expected) in \(isolated)")
         }
-        let normal = LaunchIsolation.attestation(bundleIdentifier: "com.wesleykeetch.grokbox", storeInMemory: false, logPath: "/tmp/x.log")
-        for expected in ["demoOnly=false", "store=disk", "defaults=standard", "keychain=open", "mailServer=open", "unsubscribe=open"] {
+        let normal = LaunchIsolation.attestation(bundleIdentifier: "com.wesleykeetch.grokbox", storeConfiguration: "disk", logPath: "/tmp/x.log")
+        for expected in ["demoOnly=false", "store=disk", "defaults=standard", "keychain=open", "mailServer=open", "unsubscribe=open", "notifications=open"] {
             #expect(normal.contains(expected), "\(expected) in \(normal)")
         }
     }
