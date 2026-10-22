@@ -171,6 +171,13 @@ struct LaunchIsolationTests {
             Issue.record("expected a refusal, got \(viaSender)"); return
         }
 
+        // A sender with no one-click support would normally be handed to the
+        // browser; in isolation nothing is offered either.
+        var manual = cluster()
+        manual.supportsOneClickUnsubscribe = false
+        let browser = await demoOnly { await UnsubscribeService.unsubscribe(from: manual) }
+        guard case .failed = browser else { Issue.record("expected a refusal, got \(browser)"); return }
+
         // Control: outside isolation the same call does reach the resolver.
         _ = await UnsubscribeService.performOneClick(to: url, allowingLoopbackForTests: false, resolver: resolver, timeout: .seconds(1))
         #expect(await lookups.count == 1)
