@@ -366,8 +366,10 @@ struct RuleProposalTests {
 @MainActor
 @Suite(.serialized)
 struct RuleProposalStoreTests {
+    private let container = ModelContainer.grokboxTestContainer()
+
     private func store() throws -> ModelContext {
-        let context = ModelContainer.grokboxTestContainer().mainContext
+        let context = container.mainContext
         let profile = SenderProfile(accountID: UUID(), address: "deals@x.example")
         profile.category = .promotion
         profile.supportsOneClickUnsubscribe = true

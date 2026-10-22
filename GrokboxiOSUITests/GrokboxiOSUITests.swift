@@ -102,10 +102,11 @@ final class GrokboxiOSUITests: XCTestCase {
         wait(app.navigationBars["Senders"], 20)
         wait(app.staticTexts.matching(NSPredicate(format: "label ENDSWITH 'senders'")).firstMatch, 90)
         // One sender for the whole test: rows re-sort as indexing settles.
-        let first = app.cells.element(boundBy: 1)   // the index bar is the first cell
-        wait(first, 60)
-        let name = String(first.label.prefix { $0 != "," })
-        let row = app.cells.matching(NSPredicate(format: "label BEGINSWITH %@", name + ",")).firstMatch
+        let summary = app.cells.element(boundBy: 1)   // the index bar is the first cell
+            .descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS ' messages, '")).firstMatch
+        wait(summary, 60)
+        let name = String(summary.label.prefix { $0 != "," })
+        let row = app.cells.containing(NSPredicate(format: "label BEGINSWITH %@", name + ",")).firstMatch
         wait(row, 10)
 
         func describe(_ request: String) {
