@@ -121,7 +121,7 @@ struct DemoFlowTests {
 
         // 6. Maintenance applies the rule again — and only the rule
         let maintainer = Maintainer(modelContext: context, engine: engine, executor: executor)
-        RuleStore.set(.keep, for: "hello@morningdigest.example", in: context)
+        try RuleStore.set(.keep, for: "hello@morningdigest.example", in: context)
         let digestInboxBefore = server.messages(in: "INBOX").filter { $0.fromAddress == "hello@morningdigest.example" }.count
         await maintainer.run(accounts: [account], model: nil, settings: .init(isAutoEnabled: false, intervalMinutes: 30, readLimit: 10, indexDepth: 100), policy: sweepEverything)
         guard case .finished = maintainer.phase else { Issue.record("maintain failed: \(maintainer.phase.label)"); return }
