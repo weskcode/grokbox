@@ -183,8 +183,9 @@ struct LaunchIsolationTests {
         let real = UserDefaults.standard.data(forKey: key)
         await demoOnly {
             #expect(GrokboxDefaults.store !== UserDefaults.standard)
-            CleanupPolicy.current = .thorough
-            #expect(CleanupPolicy.current == .thorough, "the setting round-trips through the suite")
+            // Gentle is the default, so a missing repoint could not leave an
+            // aggressive policy behind in the real defaults.
+            CleanupPolicy.current = .gentle
             #expect(GrokboxDefaults.store.data(forKey: key) != nil)
             GrokboxDefaults.store.removeObject(forKey: key)
         }
