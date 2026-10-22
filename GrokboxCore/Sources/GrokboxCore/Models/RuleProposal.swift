@@ -134,10 +134,8 @@ enum RuleProposal: Sendable, Equatable {
         .union(["messages envoyés", "inbox", "drafts", "all mail", "archive", "outbox", "brouillons", "entwürfe",
                 "borradores", "bozze", "concepten", "rascunhos"].map(fold))
 
-    /// Words that put a condition or a second action on a request. A folder
-    /// name holding one is not read from a sentence, because its existence
-    /// cannot show the words were meant as a name ("Reading older than 30
-    /// days"); the folder picker can still set it.
+    /// Words that put a condition on a request. A bare one-word folder name
+    /// that is one of these is not read as a name; quoted, it is.
     static let conditionWords: Set<String> = [
         "older", "newer", "than", "after", "before", "since", "until", "unless", "except", "only", "if", "when",
         "whenever", "day", "days", "week", "weeks", "month", "months", "year", "years", "today", "yesterday",
@@ -168,7 +166,6 @@ enum RuleProposal: Sendable, Equatable {
     private static func target(for reading: RequestForm.Reading, folders: Set<String>) -> Result<Target, Failure> {
         guard let typed = reading.folder else { return .success(Target(folder: nil, change: reading.change)) }
         if isReserved(typed) { return .failure(Failure(reason: .reservedFolder(typed))) }
-        if holdsCondition(typed) { return .failure(Failure(reason: .unsupported)) }
         let loose = folders.filter { fold($0) == fold(typed) }
         let folder: String
         if folders.contains(typed) {
@@ -295,10 +292,13 @@ struct RequestForm: Sendable {
 
     /// Every way the words fit this form. Form words are compared loosely
     /// (case, a curly apostrophe, a closing "." or "!"); the folder name is
-    /// kept as typed apart from the sentence's closing punctuation. "Folders"
-    /// is never a folder name, since "file them into folders" already means
-    /// the filing disposition, and neither is a name ending in "too", which
-    /// only ever follows a form.
+    /// kept as typed apart from the sentence's closing punctuation.
+    ///
+    /// A bare folder name is one word or path ("Reading", "Clients/VIP"). A
+    /// name of several words must be quoted ("Reading 2026" in quotes), so
+    /// trailing words such as "from last Tuesday" can never be taken for
+    /// part of a name. A bare "folders" means the filing disposition, and a
+    /// bare word that is itself a condition ("unread") is not a name.
     func readings(of words: [String]) -> [Reading] {
         var found: [Reading] = []
         func loose(_ index: Int) -> String {
@@ -309,8 +309,14 @@ struct RequestForm: Sendable {
         func name(_ range: Range<Int>) -> String? {
             var typed = words[range].joined(separator: " ")
             if range.upperBound == words.count { while let last = typed.last, ".!".contains(last) { typed.removeLast() } }
-            let folded = RuleProposal.fold(typed)
-            return typed.isEmpty || folded == "folders" || folded.hasSuffix(" too") ? nil : typed
+            let quotes = "\"\u{201C}\u{201D}"
+            if typed.count > 2, let first = typed.first, let last = typed.last,
+               "\"\u{201C}".contains(first), "\"\u{201D}".contains(last) {
+                let inner = typed.dropFirst().dropLast().trimmingCharacters(in: .whitespaces)
+                return inner.isEmpty || inner.contains(where: { quotes.contains($0) }) ? nil : inner
+            }
+            guard range.count == 1, !typed.contains(where: { quotes.contains($0) }) else { return nil }
+            return RuleProposal.fold(typed) == "folders" || RuleProposal.holdsCondition(typed) ? nil : typed
         }
         func match(_ piece: Int, _ word: Int, folder: String?) {
             if piece == pieces.count {
