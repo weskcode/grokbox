@@ -492,12 +492,12 @@ final class AppState {
 /// Local notifications only. Nothing here talks to a push service.
 enum NotificationService {
     static func requestPermission() {
-        guard (try? LaunchIsolation.refuse(.notifications)) != nil else { return }
+        do { try LaunchIsolation.refuse(.notifications) } catch { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
     static func post(title: String, body: String) {
-        guard (try? LaunchIsolation.refuse(.notifications)) != nil else { return }
+        do { try LaunchIsolation.refuse(.notifications) } catch { return }
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
