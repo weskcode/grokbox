@@ -100,8 +100,13 @@ final class GrokboxiOSUITests: XCTestCase {
     func testDescribedChangeIsDraftedPreviewedAndSavedOnlyOnRequest() {
         app.tabBars.buttons["Senders"].tap()
         wait(app.navigationBars["Senders"], 20)
-        let row = app.cells.element(boundBy: 1)   // the index bar is the first cell
-        wait(row, 60)
+        wait(app.staticTexts.matching(NSPredicate(format: "label ENDSWITH 'senders'")).firstMatch, 90)
+        // One sender for the whole test: rows re-sort as indexing settles.
+        let first = app.cells.element(boundBy: 1)   // the index bar is the first cell
+        wait(first, 60)
+        let name = String(first.label.prefix { $0 != "," })
+        let row = app.cells.matching(NSPredicate(format: "label BEGINSWITH %@", name + ",")).firstMatch
+        wait(row, 10)
 
         func describe(_ request: String) {
             row.press(forDuration: 1.2)

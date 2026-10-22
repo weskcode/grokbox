@@ -92,7 +92,7 @@ public enum RuleProposal: Sendable, Equatable {
         // touches the mismatch is refused, even when it restates what is
         // stored; an old one does not block an unrelated edit.
         if let kept = unusedFolder(after), target.change.touchesWhereMailGoes || unusedFolder(before) == nil {
-            return .unresolved(.conflict("This sender files into \(kept). Clear that folder before changing where its mail goes."))
+            return .unresolved(.conflict("This sender files into “\(kept)”. Clear that folder before changing where its mail goes."))
         }
         if after == before { return .unresolved(.nothingToChange) }
 
@@ -406,9 +406,9 @@ extension RuleProposal.Unresolved {
         case .notApproved:
             "This sender isn't swept yet. Approve it with Always sweep first; a typed request can only keep it."
         case .unknownFolder(let folder):
-            "There's no folder called “\(folder)”. Use Choose folder… to make a new one."
+            "There's no folder called “\(folder)”, and a typed request can't make one."
         case .ambiguousFolder(let folders):
-            "More than one folder matches: \(folders.joined(separator: ", ")). Type the name exactly."
+            "More than one folder matches: \(folders.map { "“\($0)”" }.joined(separator: ", ")). Type the name exactly."
         case .reservedFolder(let folder):
             "“\(folder)” is a special mailbox, so mail can't be filed into it here."
         case .noOneClickLink:
