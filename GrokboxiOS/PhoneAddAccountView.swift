@@ -61,6 +61,10 @@ struct PhoneAddAccountView: View {
     private func save() async {
         guard let portNumber = Int(port) else { return }
         errorMessage = nil
+        if LaunchIsolation.isDemoOnly {
+            errorMessage = LaunchIsolation.Refusal(surface: .mailServer).localizedDescription
+            return
+        }
         let cleanUsername = username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let cleanPassword = kind == .gmail ? password.replacingOccurrences(of: " ", with: "") : password
         if accounts.contains(where: { $0.username == cleanUsername && $0.host == host }) { errorMessage = "That mailbox is already added."; return }

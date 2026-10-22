@@ -172,13 +172,13 @@ public struct CleanupPolicy: Codable, Sendable, Equatable {
         set { save(newValue) }
     }
 
-    public static func load(from defaults: UserDefaults = .standard) -> CleanupPolicy {
+    public static func load(from defaults: UserDefaults = GrokboxDefaults.store) -> CleanupPolicy {
         guard let data = defaults.data(forKey: defaultsKey),
               let policy = try? JSONDecoder().decode(CleanupPolicy.self, from: data) else { return .gentle }
         return policy
     }
 
-    public static func save(_ policy: CleanupPolicy, to defaults: UserDefaults = .standard) {
+    public static func save(_ policy: CleanupPolicy, to defaults: UserDefaults = GrokboxDefaults.store) {
         guard let data = try? JSONEncoder().encode(policy) else { return }
         defaults.set(data, forKey: defaultsKey)
     }

@@ -135,6 +135,10 @@ struct AddAccountSheet: View {
     private func save() async {
         guard let portNumber = Int(port) else { return }
         errorMessage = nil
+        if LaunchIsolation.isDemoOnly {
+            errorMessage = LaunchIsolation.Refusal(surface: .mailServer).localizedDescription
+            return
+        }
 
         let cleanUsername = username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         // Google shows App Passwords in four groups; people paste the spaces too.

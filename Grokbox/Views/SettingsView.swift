@@ -10,14 +10,14 @@ struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \SenderRule.createdAt, order: .reverse) private var rules: [SenderRule]
 
-    @AppStorage("grokbox.preferredModel") private var preferredModel = ""
-    @AppStorage("grokbox.ollamaModel") private var ollamaModel = OllamaProvider.defaultModel
-    @AppStorage("grokbox.autoMaintain") private var autoMaintain = false
-    @AppStorage("grokbox.autoIntervalMinutes") private var intervalMinutes = 30
-    @AppStorage("grokbox.autoOnNewMail") private var runsOnNewMail = true
-    @AppStorage("grokbox.readLimit") private var readLimit = 25
-    @AppStorage("grokbox.indexDepth") private var indexDepth = 1_000
-    @AppStorage("grokbox.notify") private var notify = false
+    @AppStorage("grokbox.preferredModel", store: GrokboxDefaults.store) private var preferredModel = ""
+    @AppStorage("grokbox.ollamaModel", store: GrokboxDefaults.store) private var ollamaModel = OllamaProvider.defaultModel
+    @AppStorage("grokbox.autoMaintain", store: GrokboxDefaults.store) private var autoMaintain = false
+    @AppStorage("grokbox.autoIntervalMinutes", store: GrokboxDefaults.store) private var intervalMinutes = 30
+    @AppStorage("grokbox.autoOnNewMail", store: GrokboxDefaults.store) private var runsOnNewMail = true
+    @AppStorage("grokbox.readLimit", store: GrokboxDefaults.store) private var readLimit = 25
+    @AppStorage("grokbox.indexDepth", store: GrokboxDefaults.store) private var indexDepth = 1_000
+    @AppStorage("grokbox.notify", store: GrokboxDefaults.store) private var notify = false
 
     @State private var confirmingErase = false
     private var orphanedRules: [SenderRule] { RuleStore.orphaned(in: modelContext) }

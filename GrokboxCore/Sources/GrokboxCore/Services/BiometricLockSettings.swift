@@ -22,13 +22,13 @@ public struct BiometricLockSettings: Codable, Sendable, Equatable {
         set { save(newValue) }
     }
 
-    public static func load(from defaults: UserDefaults = .standard) -> BiometricLockSettings {
+    public static func load(from defaults: UserDefaults = GrokboxDefaults.store) -> BiometricLockSettings {
         guard let data = defaults.data(forKey: defaultsKey),
               let settings = try? JSONDecoder().decode(BiometricLockSettings.self, from: data) else { return .disabled }
         return settings
     }
 
-    public static func save(_ settings: BiometricLockSettings, to defaults: UserDefaults = .standard) {
+    public static func save(_ settings: BiometricLockSettings, to defaults: UserDefaults = GrokboxDefaults.store) {
         guard let data = try? JSONEncoder().encode(settings) else { return }
         defaults.set(data, forKey: defaultsKey)
     }

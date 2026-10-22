@@ -341,12 +341,21 @@ public final class DemoRegistry {
 /// Picks the backend for an account: the in-process demo mailbox when one is
 /// registered, IMAP otherwise.
 public enum MailProviderFactory {
+    /// In demo-only mode a demo account without a registered mailbox is an
+    /// error: there is no fallback to a mail server.
+    ///
+    /// - Parameter imap: how a real account is connected; tests pass a double
+    ///   to prove it is never called.
     @MainActor
-    public static func connect(to account: MailAccount) async throws -> any MailProvider {
+    public static func connect(
+        to account: MailAccount,
+        imap: @MainActor (MailAccount) async throws -> any MailProvider = { try await IMAPMailProvider.connect(to: $0) }
+    ) async throws -> any MailProvider {
         if account.kind.isDemo, let mailbox = DemoRegistry.shared.mailbox(for: account.id) {
             return DemoMailProvider(mailbox: mailbox)
         }
-        return try await IMAPMailProvider.connect(to: account)
+        try LaunchIsolation.refuse(.mailServer)
+        return try await imap(account)
     }
 }
 

@@ -12,7 +12,17 @@ enum AppEnvironment {
     /// from an unreadable store instead of trapping. The old `fatalError` here
     /// turned any bad store into an app that could not launch — and therefore
     /// could not be reset from inside itself.
-    static let opened: GrokboxStore.Opened = GrokboxStore.open()
+    static let opened: GrokboxStore.Opened = {
+        let demoOnly = LaunchIsolation.isDemoOnly
+        let opened = GrokboxStore.open(inMemory: demoOnly)
+        if demoOnly {
+            for line in LaunchIsolation.attestation(bundleIdentifier: Bundle.main.bundleIdentifier,
+                                                    storeInMemory: opened.isEphemeral, logPath: Log.fileURL.path) {
+                Log.note("isolation: \(line)")
+            }
+        }
+        return opened
+    }()
     static var container: ModelContainer { opened.container }
 
     static let state = AppState(context: container.mainContext)

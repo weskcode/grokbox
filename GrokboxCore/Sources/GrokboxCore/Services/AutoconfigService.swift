@@ -59,6 +59,7 @@ public enum AutoconfigService {
     }
 
     public static func discover(email: String, endpoints: Endpoints = .standard, session: URLSession = .shared, verifyGuess: Bool = true) async throws -> Discovered {
+        try LaunchIsolation.refuse(.autoconfig)
         let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard let at = trimmed.lastIndex(of: "@"), at > trimmed.startIndex, at < trimmed.index(before: trimmed.endIndex) else {
             throw Failure.invalidAddress

@@ -10,7 +10,7 @@ enum MailboxSnapshotDefaults {
         "grokbox.indexDepth", "grokbox.notify", "grokbox.guardTransactional",
     ]
 
-    static func reset(_ defaults: UserDefaults = .standard) {
+    static func reset(_ defaults: UserDefaults = GrokboxDefaults.store) {
         for key in keys { defaults.removeObject(forKey: key) }
     }
 }

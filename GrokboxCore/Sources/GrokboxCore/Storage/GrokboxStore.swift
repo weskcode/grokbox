@@ -55,7 +55,10 @@ public enum GrokboxStore {
         let schema = Schema(versionedSchema: GrokboxSchemaV1.self)
 
         if inMemory {
-            let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+            // Neither a shared group container nor CloudKit, whatever the
+            // entitlements later declare.
+            let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true,
+                                            groupContainer: .none, cloudKitDatabase: .none)
             // A memory-only container cannot fail for disk reasons; if it does,
             // there is no fallback left and crashing is honest.
             return Opened(container: try! ModelContainer(for: schema, migrationPlan: GrokboxMigrationPlan.self,

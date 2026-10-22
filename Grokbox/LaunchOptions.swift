@@ -40,7 +40,7 @@ struct LaunchOptions {
 
     static let current: LaunchOptions = {
         var options = LaunchOptions()
-        let args = CommandLine.arguments
+        let args = LaunchIsolation.effectiveArguments(CommandLine.arguments, demoOnly: LaunchIsolation.isDemoOnly)
         options.addDemo = args.contains("--demo")
         options.runAll = args.contains("--run-all")
         options.reset = args.contains("--reset")

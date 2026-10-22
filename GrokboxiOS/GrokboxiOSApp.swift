@@ -5,7 +5,7 @@ import GrokboxCore
 /// Process-wide singletons, as on the Mac. Same store layout, same engine.
 @MainActor
 enum AppEnvironment {
-    static let opened: GrokboxStore.Opened = GrokboxStore.open()
+    static let opened: GrokboxStore.Opened = GrokboxStore.open(inMemory: LaunchIsolation.isDemoOnly)
     static var container: ModelContainer { opened.container }
     static let state = AppState(context: container.mainContext)
 }

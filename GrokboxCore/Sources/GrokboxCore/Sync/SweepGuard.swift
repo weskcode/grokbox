@@ -119,8 +119,8 @@ public enum SweepGuard {
 
     /// Reads the user's preference; on by default.
     public static var keepTransactionalPreference: Bool {
-        UserDefaults.standard.object(forKey: "grokbox.guardTransactional") == nil
+        GrokboxDefaults.store.object(forKey: "grokbox.guardTransactional") == nil
             ? true
-            : UserDefaults.standard.bool(forKey: "grokbox.guardTransactional")
+            : GrokboxDefaults.store.bool(forKey: "grokbox.guardTransactional")
     }
 }

@@ -57,7 +57,7 @@ public final class Maintainer {
             self.runsOnNewMail = runsOnNewMail
         }
 
-        public static func load(from defaults: UserDefaults = .standard) -> Settings {
+        public static func load(from defaults: UserDefaults = GrokboxDefaults.store) -> Settings {
             Settings(
                 isAutoEnabled: defaults.bool(forKey: "grokbox.autoMaintain"),
                 intervalMinutes: max(5, defaults.integer(forKey: "grokbox.autoIntervalMinutes").nonZero ?? Settings.defaults.intervalMinutes),

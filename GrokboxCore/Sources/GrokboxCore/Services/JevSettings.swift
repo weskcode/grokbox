@@ -24,13 +24,13 @@ public struct JevSettings: Codable, Sendable, Equatable {
         set { save(newValue) }
     }
 
-    public static func load(from defaults: UserDefaults = .standard) -> JevSettings {
+    public static func load(from defaults: UserDefaults = GrokboxDefaults.store) -> JevSettings {
         guard let data = defaults.data(forKey: defaultsKey),
               let settings = try? JSONDecoder().decode(JevSettings.self, from: data) else { return .disabled }
         return settings
     }
 
-    public static func save(_ settings: JevSettings, to defaults: UserDefaults = .standard) {
+    public static func save(_ settings: JevSettings, to defaults: UserDefaults = GrokboxDefaults.store) {
         guard let data = try? JSONEncoder().encode(settings) else { return }
         defaults.set(data, forKey: defaultsKey)
     }

@@ -38,6 +38,7 @@ public enum UnsubscribeService {
     }
 
     public static func unsubscribe(from cluster: SenderCluster) async -> Outcome {
+        if let refusal = refusalWhenDemoOnly() { return refusal }
         guard let url = cluster.unsubscribeURL else {
             if let mailto = cluster.unsubscribeValue?
                 .split(separator: ",")
@@ -74,6 +75,7 @@ public enum UnsubscribeService {
 
     static func performOneClick(to url: URL, allowingLoopbackForTests: Bool,
                                 resolver: HostResolver, timeout: Duration) async -> Outcome {
+        if let refusal = refusalWhenDemoOnly() { return refusal }
         let deadline = ContinuousClock.now + timeout
         var target = url
         var method = "POST"
@@ -99,6 +101,13 @@ public enum UnsubscribeService {
             }
         }
         return .notAccepted(status: redirectedBy ?? 0, page: url)
+    }
+
+    /// Demo-only mode sends nothing: no lookup, no connection, no request.
+    private static func refusalWhenDemoOnly() -> Outcome? {
+        do { try LaunchIsolation.refuse(.unsubscribe); return nil } catch {
+            return .failed(error.localizedDescription + " Nothing was sent.")
+        }
     }
 
     enum Exchange: Equatable {

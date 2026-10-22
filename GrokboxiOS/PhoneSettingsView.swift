@@ -12,7 +12,7 @@ struct PhoneSettingsView: View {
     @State private var removing: MailAccount?
     @State private var jevAPIKeyField = ""
     @State private var hasJevKey = false
-    @AppStorage("grokbox.notify") private var notify = false
+    @AppStorage("grokbox.notify", store: GrokboxDefaults.store) private var notify = false
 
     var body: some View {
         Form {

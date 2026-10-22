@@ -8,17 +8,22 @@ public enum KeychainStore {
 
     public enum KeychainError: LocalizedError {
         case unexpectedStatus(OSStatus)
+        /// Demo-only mode: the Keychain is not touched.
+        case isolated
 
         public var errorDescription: String? {
             switch self {
             case .unexpectedStatus(let status):
                 let message = SecCopyErrorMessageString(status, nil) as String? ?? "code \(status)"
                 return "Keychain error: \(message)"
+            case .isolated:
+                return LaunchIsolation.Refusal(surface: .keychain).errorDescription
             }
         }
     }
 
     public static func save(password: String, for account: String) throws {
+        guard !LaunchIsolation.isDemoOnly else { throw KeychainError.isolated }
         // Delete-then-add is the reliable way to upsert a Keychain item.
         try? delete(account: account)
 
@@ -39,6 +44,7 @@ public enum KeychainStore {
     }
 
     public static func password(for account: String) throws -> String? {
+        guard !LaunchIsolation.isDemoOnly else { throw KeychainError.isolated }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -56,6 +62,7 @@ public enum KeychainStore {
     }
 
     public static func delete(account: String) throws {
+        guard !LaunchIsolation.isDemoOnly else { throw KeychainError.isolated }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

@@ -1,5 +1,6 @@
 import Foundation
 import os
+import GrokboxCore
 
 /// Milestone logging for the app: the unified log via `os.Logger`, and a
 /// plain file in the app's own container so a scripted run — or a bug report —
@@ -7,13 +8,13 @@ import os
 ///
 /// Never contains message contents: only counts, phases, and account labels.
 enum Log {
-    static let run = Logger(subsystem: "com.wesleykeetch.grokbox", category: "run")
+    static let run = Logger(subsystem: LaunchIsolation.isDemoOnly ? LaunchIsolation.logSubsystem : "com.wesleykeetch.grokbox", category: "run")
 
     /// `~/Library/Containers/com.wesleykeetch.grokbox/Data/Library/Logs/grokbox.log`
     static let fileURL: URL = {
         let logs = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0].appending(path: "Logs")
         try? FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
-        return logs.appending(path: "grokbox.log")
+        return logs.appending(path: LaunchIsolation.isDemoOnly ? "grokbox-isolated.log" : "grokbox.log")
     }()
 
     private static let queue = DispatchQueue(label: "grokbox.log.file")

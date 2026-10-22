@@ -175,6 +175,7 @@ public actor IMAPClient {
     // MARK: - Session
 
     public func connect(host: String, port: Int, security: IMAPSecurity) async throws {
+        try LaunchIsolation.refuse(.mailServer)
         try await connection.connect(host: host, port: port, security: security)
         // Every IMAP server opens with an untagged greeting; consume it.
         let greeting = try await connection.readResponseLine()

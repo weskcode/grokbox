@@ -55,6 +55,7 @@ public struct IMAPMailProvider: MailProvider {
         username: String,
         password: String
     ) async throws -> IMAPMailProvider {
+        try LaunchIsolation.refuse(.mailServer)
         let client = IMAPClient()
         try await client.connect(host: host, port: port, security: security)
         do {
@@ -69,6 +70,7 @@ public struct IMAPMailProvider: MailProvider {
     /// Convenience: connect using an account's Keychain credential.
     @MainActor
     public static func connect(to account: MailAccount) async throws -> IMAPMailProvider {
+        try LaunchIsolation.refuse(.mailServer)
         let password: String
         if account.kind.isDemo {
             // The demo password is a public constant; nothing to protect.

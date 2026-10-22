@@ -10,6 +10,7 @@ public enum JevKeyStore {
     private static let account = "apiKey"
 
     public static func save(apiKey: String) throws {
+        guard !LaunchIsolation.isDemoOnly else { throw KeychainStore.KeychainError.isolated }
         try? delete()
 
         let query: [String: Any] = [
@@ -24,6 +25,7 @@ public enum JevKeyStore {
     }
 
     public static func apiKey() throws -> String? {
+        guard !LaunchIsolation.isDemoOnly else { throw KeychainStore.KeychainError.isolated }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -40,6 +42,7 @@ public enum JevKeyStore {
     }
 
     public static func delete() throws {
+        guard !LaunchIsolation.isDemoOnly else { throw KeychainStore.KeychainError.isolated }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

@@ -11,6 +11,7 @@ struct TidyUpIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        await AppEnvironment.state.startIfNeeded()
         await AppEnvironment.state.tidyUpEverything()
         return .result()
     }

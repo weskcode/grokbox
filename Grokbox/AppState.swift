@@ -97,10 +97,10 @@ final class AppState {
     /// write invalidates the App body, the scene rebuilds and echoes again —
     /// a measured 100%-of-one-core infinite loop (ADR-0017). The no-op guards
     /// here and in `GrokboxApp.menuBarInsertion` are what break the cycle.
-    var showMenuBar: Bool = UserDefaults.standard.object(forKey: "grokbox.showMenuBar") as? Bool ?? true {
+    var showMenuBar: Bool = GrokboxDefaults.store.object(forKey: "grokbox.showMenuBar") as? Bool ?? !LaunchIsolation.isDemoOnly {
         didSet {
             guard oldValue != showMenuBar else { return }
-            UserDefaults.standard.set(showMenuBar, forKey: "grokbox.showMenuBar")
+            GrokboxDefaults.store.set(showMenuBar, forKey: "grokbox.showMenuBar")
         }
     }
 
@@ -294,12 +294,20 @@ final class AppState {
     /// Re-probes every backend. Honors the user's preferred backend when it is
     /// available; otherwise takes the first that is.
     func refreshModels() async {
+        // Demo-only mode never probes a model backend: the rules-only demo
+        // reader is the model, chosen before FoundationModels or Ollama is asked.
+        if LaunchIsolation.isDemoOnly {
+            modelStatuses = []
+            model = DemoReaderModel()
+            Log.note("demo-only: using the rules-only demo reader, no model probe")
+            return
+        }
         var candidates = ModelRegistry.candidates()
         #if os(iOS)
         // Ollama is a loopback server on a Mac; a phone has no such thing.
         candidates.removeAll { $0 is OllamaProvider }
         #endif
-        let ollamaModel = UserDefaults.standard.string(forKey: "grokbox.ollamaModel") ?? OllamaProvider.defaultModel
+        let ollamaModel = GrokboxDefaults.store.string(forKey: "grokbox.ollamaModel") ?? OllamaProvider.defaultModel
         candidates = candidates.map { $0 is OllamaProvider ? OllamaProvider(model: ollamaModel) : $0 }
 
         var statuses: [(String, ModelAvailability)] = []
@@ -310,7 +318,7 @@ final class AppState {
         }
         modelStatuses = statuses
 
-        let preferred = UserDefaults.standard.string(forKey: "grokbox.preferredModel")
+        let preferred = GrokboxDefaults.store.string(forKey: "grokbox.preferredModel")
         let available = zip(candidates, statuses).filter { $0.1.1.isAvailable }.map(\.0)
         model = available.first { $0.name == preferred } ?? available.first
         if LaunchOptions.current.stubModel {
@@ -416,7 +424,7 @@ final class AppState {
     // MARK: - Notifications
 
     private func notifyIfWorthwhile(summary: String) {
-        guard UserDefaults.standard.bool(forKey: "grokbox.notify") else { return }
+        guard GrokboxDefaults.store.bool(forKey: "grokbox.notify") else { return }
         let waiting = #Predicate<MessageHeader> { $0.briefRank == 2 && $0.isUnread == true && $0.isSweptLocally == false }
         let needsYou = (try? context.fetchCount(FetchDescriptor<MessageHeader>(predicate: waiting))) ?? 0
         NotificationService.post(
@@ -483,10 +491,12 @@ final class AppState {
 /// Local notifications only. Nothing here talks to a push service.
 enum NotificationService {
     static func requestPermission() {
+        guard !LaunchIsolation.isDemoOnly else { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
     static func post(title: String, body: String) {
+        guard !LaunchIsolation.isDemoOnly else { return }
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
