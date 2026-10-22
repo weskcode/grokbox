@@ -403,4 +403,19 @@ struct RuleProposalStoreTests {
         #expect(RuleStore.overrides(in: context)["deals@x.example"] == draft.after)
         #expect(draft.irreversibleEffects.count == 1)
     }
+
+    /// A described draft whose sender's rule is cleared or kept elsewhere
+    /// while the review sheet is open: the sheet's re-check before Save sees
+    /// a different starting rule, so the stale draft is not written.
+    @Test(arguments: [RuleEdit.clear, RuleEdit.decision(.keep)])
+    func aRuleChangedBeforeSaveIsRefusedByTheReviewSheet(elsewhere: RuleEdit) throws {
+        let context = try store()
+        let proposal = try RuleProposal.make(request: "Send them to the trash", address: "deals@x.example", in: context, policy: .gentle)
+        guard case .draft(let draft) = proposal else { Issue.record("\(proposal)"); return }
+        let opened = try RulePreview.make(address: draft.address, edit: draft.edit, policy: .gentle, in: context)
+        try RuleStore.apply(elsewhere, for: draft.address, in: context)
+        let atSave = try RulePreview.make(address: draft.address, edit: draft.edit, policy: .gentle, in: context)
+        #expect(!opened.sameEffect(as: atSave), "the draft was made against a rule that is no longer there")
+        #expect(atSave.currentRule != draft.before)
+    }
 }
