@@ -13,6 +13,7 @@ struct PhoneSendersView: View {
     @State private var outcome: (sender: String, text: String, url: URL?)?
     @State private var showingOutcome = false
     @State private var ruleError: String?
+    @State private var pendingRule: PendingRuleEdit?
     @State private var showingUnsubscribeChecklist = false
     @State private var showingContacts = false
 
@@ -70,6 +71,7 @@ struct PhoneSendersView: View {
             if let url = item.url { Button("Open link") { openURL(url) } }
             Button("OK", role: .cancel) { }
         } message: { item in Text(item.text) }
+        .ruleEditSheet($pendingRule, policy: state.policy, errorMessage: $ruleError)
         .background {
             Color.clear.alert("Couldn't save the rule", isPresented: Binding(get: { ruleError != nil }, set: { if !$0 { ruleError = nil } }),
                               presenting: ruleError) { _ in
@@ -78,9 +80,8 @@ struct PhoneSendersView: View {
         }
     }
 
-    private func saveRule(_ edit: RuleEdit, for address: String) {
-        do { try RuleStore.apply(edit, for: address, in: modelContext) }
-        catch { ruleError = error.localizedDescription }
+    private func request(_ edit: RuleEdit, for p: SenderProfile) {
+        pendingRule = PendingRuleEdit(address: p.address, senderName: p.displayName, edit: edit)
     }
 
     private func row(_ p: SenderProfile) -> some View {
@@ -105,27 +106,27 @@ struct PhoneSendersView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(p.displayName), \(p.messageCount) messages, \(p.category.label). \(p.recommendation.label). \(p.recommendationReason)")
         .swipeActions(edge: .trailing) {
-            Button { saveRule(.decision(.sweep), for: p.address) } label: { Label("Always sweep", systemImage: "wind") }.tint(.orange)
-            Button { saveRule(.decision(.keep), for: p.address) } label: { Label("Keep", systemImage: "pin") }.tint(.blue)
+            Button { request(.decision(.sweep), for: p) } label: { Label("Always sweep", systemImage: "wind") }.tint(.orange)
+            Button { request(.decision(.keep), for: p) } label: { Label("Keep", systemImage: "pin") }.tint(.blue)
         }
         .contextMenu {
             if p.hasUnsubscribeLink {
                 Button { Task { await unsubscribe(p) } } label: { Label("Unsubscribe", systemImage: "hand.raised") }
             }
             Section("Where this sender's mail goes") {
-                Button("Follow my policy") { saveRule(.disposition(nil), for: p.address) }
+                Button("Follow my policy") { request(.disposition(nil), for: p) }
                 ForEach(CleanupPolicy.Disposition.allCases) { d in
-                    Button("Always \(d.label.lowercased())") { saveRule(.disposition(d), for: p.address) }
+                    Button("Always \(d.label.lowercased())") { request(.disposition(d), for: p) }
                 }
             }
             if p.hasUnsubscribeLink {
                 Section("Unsubscribing") {
-                    Button("Never unsubscribe from this sender") { saveRule(.autoUnsubscribe(false), for: p.address) }
-                    Button("Unsubscribe when sweeping") { saveRule(.autoUnsubscribe(true), for: p.address) }
+                    Button("Never unsubscribe from this sender") { request(.autoUnsubscribe(false), for: p) }
+                    Button("Unsubscribe when sweeping") { request(.autoUnsubscribe(true), for: p) }
                 }
             }
             if ruleMap[p.address] != nil {
-                Button("Clear rule") { saveRule(.clear, for: p.address) }
+                Button("Clear rule") { request(.clear, for: p) }
             }
         }
     }

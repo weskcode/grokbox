@@ -18,6 +18,8 @@ struct FolderPickerSheet: View {
     @State private var mailboxes: [IMAPMailbox] = []
     @State private var newFolderName = ""
     @State private var errorMessage: String?
+    @State private var ruleError: String?
+    @State private var pendingRule: PendingRuleEdit?
     @State private var isLoading = true
 
     var body: some View {
@@ -53,6 +55,8 @@ struct FolderPickerSheet: View {
         }
         .frame(width: 420, height: 420)
         .task { await load() }
+        .ruleSaveAlert($ruleError)
+        .ruleEditSheet($pendingRule, policy: .current, errorMessage: $ruleError) { dismiss() }
     }
 
     private var header: some View {
@@ -69,12 +73,8 @@ struct FolderPickerSheet: View {
 
     private func choose(_ folder: String?) {
         let trimmed = folder?.trimmingCharacters(in: .whitespaces)
-        do {
-            try RuleStore.setCustomFolder(trimmed?.isEmpty == false ? trimmed : nil, for: address, in: modelContext)
-            dismiss()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+        pendingRule = PendingRuleEdit(address: address, senderName: address,
+                                      edit: .customFolder(trimmed?.isEmpty == false ? trimmed : nil))
     }
 
     private func load() async {

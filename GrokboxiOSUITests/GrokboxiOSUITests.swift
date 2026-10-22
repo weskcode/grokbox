@@ -56,6 +56,44 @@ final class GrokboxiOSUITests: XCTestCase {
         XCTAssertFalse(sender.isEmpty)
     }
 
+    /// A rule choice shows what it would do first, and writes nothing until Save.
+    func testRuleChoiceIsPreviewedAndSavedOnlyOnRequest() {
+        app.tabBars.buttons["Senders"].tap()
+        wait(app.navigationBars["Senders"], 20)
+        let row = app.cells.element(boundBy: 1)   // the index bar is the first cell
+        wait(row, 60)
+
+        row.swipeLeft()
+        wait(app.buttons["Always sweep"], 10)
+        app.buttons["Always sweep"].tap()
+        wait(app.navigationBars["Always sweep"], 20)
+        wait(app.staticTexts["Scope"], 20)
+        let sheet = XCTAttachment(screenshot: app.screenshot())
+        sheet.name = "rule-preview-sheet"
+        sheet.lifetime = .keepAlways
+        add(sheet)
+        app.buttons["Cancel"].tap()
+        wait(row, 10)
+
+        row.press(forDuration: 1.0)
+        wait(app.buttons["Follow my policy"], 10)
+        XCTAssertFalse(app.buttons["Clear rule"].exists, "cancelling the preview saves nothing")
+        app.buttons["Follow my policy"].tap()
+        wait(app.navigationBars["Follow my policy"], 20)
+        app.buttons["Cancel"].tap()
+
+        row.swipeLeft()
+        wait(app.buttons["Always sweep"], 10)
+        app.buttons["Always sweep"].tap()
+        wait(app.buttons["saveRule"], 20)
+        app.buttons["saveRule"].tap()
+        wait(row, 10)
+        XCTAssertFalse(app.buttons["saveRule"].exists, "saving closes the sheet")
+
+        row.press(forDuration: 1.0)
+        wait(app.buttons["Clear rule"], 10)
+    }
+
     func testSendersSearchFilters() {
         app.tabBars.buttons["Senders"].tap()
         wait(app.navigationBars["Senders"], 20)

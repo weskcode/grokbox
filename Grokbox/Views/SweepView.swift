@@ -15,6 +15,7 @@ struct SweepView: View {
     @State private var markRead = true
     @State private var drillDown: SenderProfile?
     @State private var ruleError: String?
+    @State private var pendingRule: PendingRuleEdit?
 
     init(account: MailAccount, state: AppState) {
         self.account = account
@@ -52,6 +53,7 @@ struct SweepView: View {
             SenderMessagesSheet(profile: profile, account: account, state: state)
         }
         .ruleSaveAlert($ruleError)
+        .ruleEditSheet($pendingRule, policy: state.policy, errorMessage: $ruleError)
     }
 
     /// Gmail archives by label, which Grokbox can always put back. Other
@@ -159,7 +161,7 @@ struct SweepView: View {
                         Text("\(Int(item.cluster.unreadRatio * 100))% unread").font(.caption).foregroundStyle(.secondary)
                     }
                     Button("Keep") {
-                        modelContext.saveRule(.decision(.keep), for: item.cluster.address, reportingTo: $ruleError)
+                        pendingRule = PendingRuleEdit(address: item.cluster.address, senderName: item.cluster.displayName, edit: .decision(.keep))
                     }
                     .controlSize(.small)
                     .help("Never suggest sweeping this sender.")

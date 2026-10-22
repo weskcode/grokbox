@@ -137,3 +137,44 @@ public struct RulePreview: Sendable {
                            generatedAt: now, indexedAt: profiles.map(\.updatedAt).max())
     }
 }
+
+// MARK: - Wording
+
+extension RuleEdit {
+    /// The choice as the Senders menus name it.
+    public var title: String {
+        switch self {
+        case .decision(let decision): decision.label
+        case .disposition(nil): "Follow my policy"
+        case .disposition(let disposition?): "Always \(disposition.label.lowercased())"
+        case .autoUnsubscribe(false): "Never unsubscribe from this sender"
+        case .autoUnsubscribe(true): "Unsubscribe when sweeping"
+        case .autoUnsubscribe(nil): "Follow my policy on unsubscribing"
+        case .customFolder(let folder?): "File into \(folder)"
+        case .customFolder(nil): "Follow the category folder"
+        case .clear: "Clear rule"
+        }
+    }
+}
+
+extension RulePreview.Sweep {
+    /// Where the mail goes, in the words a person sees.
+    public var destination: String {
+        switch disposition {
+        case .trash: "Trash"
+        case .archiveOnly: "Archive"
+        case .fileIntoFolders: folder
+        }
+    }
+}
+
+extension RulePreview.IrreversibleEffect {
+    public var warning: String {
+        switch self {
+        case .unsubscribeRequest:
+            "A one-click unsubscribe request will be sent to this sender. It cannot be recalled."
+        case .movesToTrash:
+            "Mail moved to Trash can be taken back only until the provider empties it."
+        }
+    }
+}

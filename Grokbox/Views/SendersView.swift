@@ -23,6 +23,7 @@ struct SendersView: View {
     @State private var showingContacts = false
     @State private var folderPickerAddress: String?
     @State private var ruleError: String?
+    @State private var pendingRule: PendingRuleEdit?
 
     init(account: MailAccount, state: AppState) {
         self.account = account
@@ -95,6 +96,7 @@ struct SendersView: View {
             }
         }
         .ruleSaveAlert($ruleError)
+        .ruleEditSheet($pendingRule, policy: state.policy, errorMessage: $ruleError)
         .alert("Unsubscribe", isPresented: $showingOutcome, presenting: unsubscribeOutcome) { item in
             if case .openInBrowser(let url) = item.outcome {
                 Button("Open link") { openURL(url) }
@@ -288,25 +290,25 @@ struct SendersView: View {
             TableColumn("") { a in
                 HStack(spacing: 6) {
                     Menu {
-                        Button("Always sweep") { modelContext.saveRule(.decision(.sweep), for: a.cluster.address, reportingTo: $ruleError) }
-                        Button("Always keep") { modelContext.saveRule(.decision(.keep), for: a.cluster.address, reportingTo: $ruleError) }
+                        Button("Always sweep") { pendingRule = PendingRuleEdit(address: a.cluster.address, senderName: a.cluster.displayName, edit: .decision(.sweep)) }
+                        Button("Always keep") { pendingRule = PendingRuleEdit(address: a.cluster.address, senderName: a.cluster.displayName, edit: .decision(.keep)) }
                         Divider()
                         Section("Where this sender's mail goes") {
-                            Button("Follow my policy") { modelContext.saveRule(.disposition(nil), for: a.cluster.address, reportingTo: $ruleError) }
+                            Button("Follow my policy") { pendingRule = PendingRuleEdit(address: a.cluster.address, senderName: a.cluster.displayName, edit: .disposition(nil)) }
                             ForEach(CleanupPolicy.Disposition.allCases) { d in
-                                Button("Always \(d.label.lowercased())") { modelContext.saveRule(.disposition(d), for: a.cluster.address, reportingTo: $ruleError) }
+                                Button("Always \(d.label.lowercased())") { pendingRule = PendingRuleEdit(address: a.cluster.address, senderName: a.cluster.displayName, edit: .disposition(d)) }
                             }
                             Button("Choose folder…") { folderPickerAddress = a.cluster.address }
                         }
                         if a.cluster.hasUnsubscribeLink {
                             Section("Unsubscribing") {
-                                Button("Never unsubscribe from this sender") { modelContext.saveRule(.autoUnsubscribe(false), for: a.cluster.address, reportingTo: $ruleError) }
-                                Button("Unsubscribe when sweeping") { modelContext.saveRule(.autoUnsubscribe(true), for: a.cluster.address, reportingTo: $ruleError) }
+                                Button("Never unsubscribe from this sender") { pendingRule = PendingRuleEdit(address: a.cluster.address, senderName: a.cluster.displayName, edit: .autoUnsubscribe(false)) }
+                                Button("Unsubscribe when sweeping") { pendingRule = PendingRuleEdit(address: a.cluster.address, senderName: a.cluster.displayName, edit: .autoUnsubscribe(true)) }
                             }
                         }
                         if ruleMap[a.cluster.address] != nil {
                             Divider()
-                            Button("Clear rule") { modelContext.saveRule(.clear, for: a.cluster.address, reportingTo: $ruleError) }
+                            Button("Clear rule") { pendingRule = PendingRuleEdit(address: a.cluster.address, senderName: a.cluster.displayName, edit: .clear) }
                         }
                     } label: {
                         Image(systemName: "slider.horizontal.3")
