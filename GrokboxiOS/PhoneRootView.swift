@@ -53,7 +53,10 @@ struct PhoneRootView: View {
         .task {
             Log.note("phone root appeared")
             await state.startIfNeeded()
-            if LaunchOptions.current.onboard, let first = accounts.first { onboarding = first }
+            if LaunchOptions.current.onboard {
+                for _ in 0..<50 where accounts.isEmpty { try? await Task.sleep(for: .milliseconds(100)) }
+                onboarding = accounts.first
+            }
             if let recovery = AppEnvironment.opened.recovery { state.storeRecovery = recovery }
         }
     }
