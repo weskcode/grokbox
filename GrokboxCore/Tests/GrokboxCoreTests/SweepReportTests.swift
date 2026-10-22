@@ -154,6 +154,7 @@ struct SweepReportExecutorTests {
         await executor.apply(plan, to: account, recordRules: false, guarded: false)
 
         #expect(executor.lastReport.ending == .completed)
+        #expect(executor.lastReport.accountID == account.id)
         #expect(executor.lastReport.tally == SweepReport.Tally(confirmed: plannedCount(plan), failed: 0, held: 0, unknown: 0))
         #expect(executor.lastReport.tally.confirmed == executor.lastOutcome.messages)
         #expect(executor.lastReport.count(.notRequested) == plan.items.count)

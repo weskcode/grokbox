@@ -94,10 +94,13 @@ public struct SweepReport: Equatable, Sendable {
 
     public var senders: [Sender]
     public var ending: Ending
+    /// The account the sweep ran on; nil for a report built without one.
+    public var accountID: UUID?
 
-    public init(senders: [Sender] = [], ending: Ending = .running) {
+    public init(senders: [Sender] = [], ending: Ending = .running, accountID: UUID? = nil) {
         self.senders = senders
         self.ending = ending
+        self.accountID = accountID
     }
 
     /// Precedence per message: held, then a write that was cut off before

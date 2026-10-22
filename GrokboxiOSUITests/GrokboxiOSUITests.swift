@@ -130,7 +130,9 @@ final class GrokboxiOSUITests: XCTestCase {
         wait(app.navigationBars["Recipe of the Day"], 20)
         scrollTo("label == 'Last sweep since Grokbox opened'")
         scrollTo("label BEGINSWITH 'Only the last sweep'")
-        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'This sender'")).firstMatch.exists, "a result, not a note")
+        for note in ["This sender", "The last sweep", "No sweep", "A sweep is running"] {
+            XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", note)).firstMatch.exists, "a result, not a note: \(note)")
+        }
         scrollTo("label MATCHES '[1-9][0-9,]* confirmed moved'")
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = "sender-detail-last-sweep"

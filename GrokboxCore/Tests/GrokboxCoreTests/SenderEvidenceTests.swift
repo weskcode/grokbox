@@ -283,13 +283,14 @@ struct SenderEvidenceTests {
 
     // MARK: Last sweep
 
-    private func report(ending: SweepReport.Ending, _ senders: SweepReport.Sender...) -> SweepReport {
-        SweepReport(senders: senders, ending: ending)
+    private let home = UUID()
+
+    private func report(ending: SweepReport.Ending, on accountID: UUID? = nil, _ senders: SweepReport.Sender...) -> SweepReport {
+        SweepReport(senders: senders, ending: ending, accountID: accountID ?? home)
     }
 
-    private func text(_ report: SweepReport, address: String = "a@x.example", mailbox: String = "INBOX",
-                      shared: Bool = false, known: Set<UInt32> = Set(1...20)) -> LastSweepText {
-        LastSweepText(report: report, address: address, mailbox: mailbox, sharedAcrossAccounts: shared, knownUIDs: known)
+    private func text(_ report: SweepReport, address: String = "a@x.example", mailbox: String = "INBOX", account: UUID? = nil) -> LastSweepText {
+        LastSweepText(report: report, address: address, mailbox: mailbox, accountID: account ?? home)
     }
 
     @Test func lastSweepKeepsConfirmedFailedHeldAndUnknownApart() {
@@ -321,6 +322,19 @@ struct SenderEvidenceTests {
         #expect(text(thread).counts.map(\.value) == [2, 1, 0, 0])
     }
 
+    @Test func lastSweepIsShownOnlyForTheAccountItRanOn() {
+        let sender = SweepReport.Sender(address: "a@x.example", mailbox: "INBOX", planned: [1], steps: 1,
+                                        writes: [.init(requested: [1], confirmed: [1])])
+        let completed = report(ending: .completed, sender)
+        #expect(text(completed).counts.map(\.value) == [1, 0, 0, 0])
+        let elsewhere = text(completed, account: UUID())
+        #expect(elsewhere.counts.isEmpty)
+        #expect(elsewhere.note == "The last sweep ran on a different account.")
+        let unattributed = text(SweepSummaryWithoutAccount(sender))
+        #expect(unattributed.counts.isEmpty)
+        #expect(text(SweepReport()).note == "No sweep has run since Grokbox opened.")
+    }
+
     @Test func lastSweepSaysSoWhenThereIsNothingToCount() {
         let sender = SweepReport.Sender(address: "a@x.example", mailbox: "INBOX", planned: [1])
         let completed = report(ending: .completed, sender)
@@ -331,19 +345,6 @@ struct SenderEvidenceTests {
         let running = text(report(ending: .running, sender))
         #expect(running.counts.isEmpty)
         #expect(running.note == "A sweep is running now.")
-        let shared = text(completed, shared: true)
-        #expect(shared.counts.isEmpty)
-        #expect(shared.note?.hasPrefix("This sender is in more than one account") == true)
-        #expect(text(SweepReport()).counts.isEmpty)
-    }
-
-    @Test func lastSweepIsNotShownForMessagesThisAccountHasNotIndexed() {
-        let sender = SweepReport.Sender(address: "a@x.example", mailbox: "INBOX", planned: [1, 2, 99], steps: 1,
-                                        writes: [.init(requested: [1, 2, 99], confirmed: [1, 2, 99])])
-        let foreign = text(report(ending: .completed, sender), known: [1, 2, 3])
-        #expect(foreign.counts.isEmpty)
-        #expect(foreign.note == "The last sweep's messages do not match this account's index, so no result is shown.")
-        #expect(text(report(ending: .completed, sender), known: [1, 2, 99]).counts.map(\.value) == [3, 0, 0, 0])
     }
 
     @Test func lastSweepNotesAStopAndARefusal() {
@@ -355,4 +356,8 @@ struct SenderEvidenceTests {
         #expect(refused.counts.map(\.value) == [0, 1, 0, 0])
         #expect(refused.note == "The sweep was refused before it finished.")
     }
+}
+
+private func SweepSummaryWithoutAccount(_ sender: SweepReport.Sender) -> SweepReport {
+    SweepReport(senders: [sender], ending: .completed)
 }

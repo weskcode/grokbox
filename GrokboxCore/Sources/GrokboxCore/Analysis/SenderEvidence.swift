@@ -188,7 +188,7 @@ public struct SweepNowText: Sendable, Equatable {
 
 /// The last sweep's outcome for one sender, in words. It reads the in-memory
 /// `SweepReport` only: it covers the last sweep since the app opened, not a
-/// history, and the report does not say which account it ran on.
+/// history.
 public struct LastSweepText: Sendable, Equatable {
     public struct Count: Sendable, Equatable {
         public var value: Int
@@ -203,18 +203,15 @@ public struct LastSweepText: Sendable, Equatable {
     public var counts: [Count]
     public var note: String?
 
-    /// `sharedAcrossAccounts`: the sender is indexed in more than one account.
-    /// `knownUIDs`: the UIDs this account has indexed for the sender. The report
-    /// carries no account, so a result is shown only when every message in it is
-    /// one of these; anything else could belong to another account.
-    public init(report: SweepReport, address: String, mailbox: String, sharedAcrossAccounts: Bool, knownUIDs: Set<UInt32>) {
+    /// `accountID`: the account whose sender this is. A report is shown only for
+    /// the account it ran on.
+    public init(report: SweepReport, address: String, mailbox: String, accountID: UUID) {
         let entries = report.senders.filter { $0.address == address && $0.mailbox == mailbox }
-        if sharedAcrossAccounts {
-            (counts, note) = ([], "This sender is in more than one account and the report does not say which one the sweep ran on, so no result is shown.")
+        if report.accountID != accountID {
+            (counts, note) = ([], report.accountID == nil && report.senders.isEmpty
+                ? "No sweep has run since Grokbox opened." : "The last sweep ran on a different account.")
         } else if entries.isEmpty {
             (counts, note) = ([], "This sender was not in the last sweep.")
-        } else if !entries.allSatisfy({ knownUIDs.isSuperset(of: $0.planned) }) {
-            (counts, note) = ([], "The last sweep's messages do not match this account's index, so no result is shown.")
         } else if report.ending == .running {
             (counts, note) = ([], "A sweep is running now.")
         } else {

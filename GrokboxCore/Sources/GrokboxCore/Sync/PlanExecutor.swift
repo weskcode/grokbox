@@ -101,7 +101,7 @@ public final class PlanExecutor {
         lastReport = SweepReport(senders: items.map {
             SweepReport.Sender(address: $0.cluster.address, mailbox: $0.cluster.mailbox, planned: $0.cluster.pendingUIDs,
                                unsubscribe: $0.unsubscribe ? .notSent : .notRequested)
-        })
+        }, accountID: account.id)
         guard !items.isEmpty else { lastReport.ending = .completed; return }
         let token = generation
         // A sender's rule is written only once that sender's mail has actually

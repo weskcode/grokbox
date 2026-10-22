@@ -176,8 +176,7 @@ struct SenderMessagesSheet: View {
 
     private var lastSweepBlock: some View {
         let text = LastSweepText(report: state.executor.lastReport, address: profile.address,
-                                 mailbox: profile.cluster.mailbox, sharedAcrossAccounts: !evidence.otherAccounts.isEmpty,
-                                 knownUIDs: Set(profile.cluster.uids))
+                                 mailbox: profile.cluster.mailbox, accountID: profile.accountID)
         return VStack(alignment: .leading, spacing: 4) {
             Text(LastSweepText.heading).font(.subheadline.weight(.semibold)).accessibilityAddTraits(.isHeader)
             if text.counts.isEmpty {
