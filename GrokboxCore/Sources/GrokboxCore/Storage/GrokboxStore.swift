@@ -20,10 +20,10 @@ import SwiftData
 /// 3. Add a `.custom` or `.lightweight` stage between them, and a test that
 ///    writes with the old namespace and reads with the new one.
 public enum GrokboxSchemaV1: VersionedSchema {
-    public static var versionIdentifier: Schema.Version { Schema.Version(1, 1, 0) }
+    public static var versionIdentifier: Schema.Version { Schema.Version(1, 2, 0) }
     public static var models: [any PersistentModel.Type] {
         [MailAccount.self, MessageHeader.self, ContactedAddress.self, CleanupAction.self,
-         SenderRule.self, MailboxSnapshot.self, SenderProfile.self, InboxDigest.self]
+         SenderRule.self, MailboxSnapshot.self, SenderProfile.self, InboxDigest.self, SentMessageHeader.self]
     }
 }
 

@@ -54,8 +54,8 @@ extension Array where Element == BriefItem {
     public func collapsedByThread() -> [BriefItem] {
         var out: [BriefItem] = []
         var index: [String: Int] = [:]
-        for item in self {
-            let key = ThreadKey.key(accountID: item.message.accountID, senderAddress: item.message.senderAddress, subject: item.message.subject)
+        let keys = ConversationIdentity.assign(map { ConversationIdentity.Input($0.message) }).map(\.key)
+        for (item, key) in zip(self, keys) {
             if let i = index[key] { out[i].others.append(item.message) }
             else { index[key] = out.count; out.append(item) }
         }

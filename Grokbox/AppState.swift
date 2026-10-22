@@ -438,7 +438,9 @@ final class AppState {
         let profiles = #Predicate<SenderProfile> { $0.accountID == id }
         let snapshots = #Predicate<MailboxSnapshot> { $0.accountID == id }
         let actions = #Predicate<CleanupAction> { $0.accountID == id }
+        let sent = #Predicate<SentMessageHeader> { $0.accountID == id }
         try? context.delete(model: MessageHeader.self, where: messages)
+        try? context.delete(model: SentMessageHeader.self, where: sent)
         try? context.delete(model: SenderProfile.self, where: profiles)
         try? context.delete(model: MailboxSnapshot.self, where: snapshots)
         try? context.delete(model: CleanupAction.self, where: actions)
@@ -465,6 +467,7 @@ final class AppState {
         try? context.delete(model: MessageHeader.self, where: everything)
         try? context.delete(model: SenderProfile.self, where: allProfiles)
         try? context.delete(model: InboxDigest.self, where: allDigests)
+        try? context.delete(model: SentMessageHeader.self, where: #Predicate<SentMessageHeader> { _ in true })
         for rule in (try? context.fetch(FetchDescriptor<SenderRule>())) ?? [] { context.delete(rule) }
         for contact in (try? context.fetch(FetchDescriptor<ContactedAddress>())) ?? [] { context.delete(contact) }
         for action in (try? context.fetch(FetchDescriptor<CleanupAction>())) ?? [] { context.delete(action) }

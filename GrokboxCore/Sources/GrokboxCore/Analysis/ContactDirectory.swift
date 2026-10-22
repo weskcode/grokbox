@@ -18,7 +18,7 @@ public struct ContactSummary: Identifiable, Sendable, Hashable {
     }
 }
 
-/// Surfaces `SyncEngine.learnContacts`'s existing `ContactedAddress` data —
+/// Surfaces `SyncEngine.walkSent`'s existing `ContactedAddress` data —
 /// who the user has actually written to — with a friendlier display name and
 /// message count where a `SenderProfile` for that address exists. No new
 /// model, no new sync work: purely a read-side join of two things Grokbox

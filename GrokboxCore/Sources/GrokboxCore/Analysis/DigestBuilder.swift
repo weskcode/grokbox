@@ -151,8 +151,7 @@ extension Array where Element == (MessageHeader, PriorityScorer.Result) {
     /// Keeps the highest-ranked message of each conversation.
     func collapsedByThread() -> [(MessageHeader, PriorityScorer.Result)] {
         var seen = Set<String>()
-        return filter { message, _ in
-            seen.insert(ThreadKey.key(accountID: message.accountID, senderAddress: message.senderAddress, subject: message.subject)).inserted
-        }
+        let keys = ConversationIdentity.assign(map { ConversationIdentity.Input($0.0) }).map(\.key)
+        return zip(self, keys).filter { seen.insert($1).inserted }.map(\.0)
     }
 }

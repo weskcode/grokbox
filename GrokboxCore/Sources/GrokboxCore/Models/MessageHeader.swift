@@ -27,6 +27,11 @@ public final class MessageHeader {
     public var listUnsubscribePost: String?
     public var listID: String?
     public var messageID: String?
+    /// Ids from In-Reply-To and References, encoded by `MessageIDList.encode`.
+    /// Nil means indexed before Grokbox fetched reply headers; empty means
+    /// fetched and absent.
+    public var inReplyTo: String?
+    public var referenceIDs: String?
 
     /// Set locally when Grokbox archives the message, so the UI reflects it
     /// without a re-index. The server is the source of truth.
@@ -115,6 +120,49 @@ public final class MessageHeader {
         self.listUnsubscribePost = listUnsubscribePost
         self.listID = listID
         self.messageID = messageID
+    }
+}
+
+extension MessageHeader {
+    func recordReplyHeadersIfUnknown(from header: FetchedHeader) {
+        guard inReplyTo == nil || referenceIDs == nil else { return }
+        inReplyTo = MessageIDList.encode(header.inReplyTo)
+        referenceIDs = MessageIDList.encode(header.references)
+    }
+}
+
+@Model
+public final class SentMessageHeader {
+    #Index<SentMessageHeader>([\.accountID], [\.messageID])
+
+    @Attribute(.unique) public var key: String = ""
+    public var accountID: UUID = UUID()
+    public var mailbox: String = ""
+    public var uid: UInt32 = 0
+    public var uidValidity: UInt32 = 0
+    public var messageID: String?
+    public var inReplyTo: String = ""
+    public var referenceIDs: String = ""
+    public var fromAddress: String = ""
+    public var subject: String = ""
+    public var sentAt: Date = Date.distantPast
+
+    public static func key(accountID: UUID, mailbox: String, uidValidity: UInt32, uid: UInt32) -> String {
+        "\(accountID.uuidString)|\(mailbox)|\(uidValidity)|\(uid)"
+    }
+
+    public init(accountID: UUID, mailbox: String, uidValidity: UInt32, header: FetchedHeader) {
+        self.key = Self.key(accountID: accountID, mailbox: mailbox, uidValidity: uidValidity, uid: header.uid)
+        self.accountID = accountID
+        self.mailbox = mailbox
+        self.uid = header.uid
+        self.uidValidity = uidValidity
+        self.messageID = header.messageID
+        self.inReplyTo = MessageIDList.encode(header.inReplyTo)
+        self.referenceIDs = MessageIDList.encode(header.references)
+        self.fromAddress = header.senderAddress
+        self.subject = header.subject
+        self.sentAt = header.date
     }
 }
 

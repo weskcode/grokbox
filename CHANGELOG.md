@@ -22,6 +22,12 @@ All notable changes to Grokbox are recorded here. The format follows
   octal, IPv6), and forms that post what you type.
 
 ### Changed
+- The Brief groups mail by conversation, using the Message-ID, In-Reply-To
+  and References headers, so replies from several people share one row and
+  Done or Later acts on all of them. Two unrelated threads with the same
+  sender and subject no longer share a row. Mail without reply headers is
+  grouped by sender and subject, as before. Existing messages pick up their
+  reply headers on the next full index.
 - The app lock locks again when Grokbox is hidden, the screen locks, or the
   Mac sleeps, and on iPhone whenever it goes to the background. It used to
   lock once per launch. The menu-bar summary is hidden while locked.

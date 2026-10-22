@@ -148,7 +148,7 @@ public final class SyncEngine {
             var shouldLearnContacts = isFirstIndex
             if case .full = mode { shouldLearnContacts = true }
             if shouldLearnContacts, let sent = mailboxes.sentMailbox {
-                try await learnContacts(from: sent, using: provider)
+                try await walkSent(sent, using: provider, accountID: accountID)
             }
             try Task.checkCancellation()
 
@@ -183,11 +183,17 @@ public final class SyncEngine {
         }
     }
 
-    /// Walks the Sent mailbox recording every address the user has written to.
+    /// Walks the Sent mailbox for who the user writes to and what they sent.
     /// Capped, because recent correspondence is what carries the signal.
-    private func learnContacts(from mailbox: IMAPMailbox, using provider: MailProvider) async throws {
-        let total = try await provider.openReadOnly(mailbox.name).exists
-        guard total > 0 else { return }
+    func walkSent(_ mailbox: IMAPMailbox, using provider: MailProvider, accountID: UUID) async throws {
+        let status = try await provider.openReadOnly(mailbox.name)
+        try Task.checkCancellation()
+        let total = status.exists
+        // Without UIDVALIDITY a UID may name a different message next time, so
+        // the Sent history is left as it is; contacts need no UIDs.
+        var history = try status.uidValidity.map {
+            try SentHistory.Walk(accountID: accountID, mailbox: mailbox.name, uidValidity: $0, in: modelContext)
+        }
 
         let cap = 2_000
         let start = max(1, total - cap + 1)
@@ -203,6 +209,7 @@ public final class SyncEngine {
                 for address in header.recipients {
                     recordContact(address, at: header.date)
                 }
+                history?.record(header, in: modelContext)
             }
 
             processed += batch.count
@@ -210,6 +217,8 @@ public final class SyncEngine {
             index = end + 1
         }
 
+        try Task.checkCancellation()
+        try history?.finish(in: modelContext)
         try modelContext.save()
     }
 
@@ -353,6 +362,7 @@ public final class SyncEngine {
 
     private func upsert(_ header: FetchedHeader, into existing: [UInt32: MessageHeader], mailbox: String, account: MailAccount) {
         if let current = existing[header.uid] {
+            current.recordReplyHeadersIfUnknown(from: header)
             current.isUnread = header.isUnread
             current.isFlagged = header.isFlagged
             current.isInInbox = header.isInInbox
@@ -374,6 +384,7 @@ public final class SyncEngine {
                 messageID: header.messageID,
                 isInInbox: header.isInInbox
             )
+            message.recordReplyHeadersIfUnknown(from: header)
             modelContext.insert(message)
         }
     }
