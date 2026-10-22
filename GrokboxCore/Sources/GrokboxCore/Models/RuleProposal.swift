@@ -297,7 +297,8 @@ struct RequestForm: Sendable {
     /// (case, a curly apostrophe, a closing "." or "!"); the folder name is
     /// kept as typed apart from the sentence's closing punctuation. "Folders"
     /// is never a folder name, since "file them into folders" already means
-    /// the filing disposition.
+    /// the filing disposition, and neither is a name ending in "too", which
+    /// only ever follows a form.
     func readings(of words: [String]) -> [Reading] {
         var found: [Reading] = []
         func loose(_ index: Int) -> String {
@@ -308,7 +309,8 @@ struct RequestForm: Sendable {
         func name(_ range: Range<Int>) -> String? {
             var typed = words[range].joined(separator: " ")
             if range.upperBound == words.count { while let last = typed.last, ".!".contains(last) { typed.removeLast() } }
-            return typed.isEmpty || RuleProposal.fold(typed) == "folders" ? nil : typed
+            let folded = RuleProposal.fold(typed)
+            return typed.isEmpty || folded == "folders" || folded.hasSuffix(" too") ? nil : typed
         }
         func match(_ piece: Int, _ word: Int, folder: String?) {
             if piece == pieces.count {

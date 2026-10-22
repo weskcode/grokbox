@@ -50,8 +50,11 @@ struct RuleProposalTests {
     }
 
     @Test func aFolderNameEndsTheSentence() {
-        #expect(propose("File them under Reading too", rule: Self.archived) == .unresolved(.unknownFolder("Reading too")),
+        #expect(propose("File them under Reading too", rule: Self.archived) == .unresolved(.unsupported),
                 "\"too\" is not read after a folder, so there is no second reading to choose between")
+        #expect(propose("File them under Reading too", rule: Self.archived, folders: Self.folders.union(["Reading too"]))
+                == .unresolved(.unsupported), "a folder named that is set with the folder picker")
+        #expect(draft(propose("File them into folders too", rule: Self.plain))?.after == Self.filed)
         #expect(draft(propose("File them under Reading!", rule: Self.archived))?.after.customFolder == "Reading",
                 "closing punctuation is the sentence's, not the folder's")
     }
