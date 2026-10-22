@@ -36,10 +36,11 @@ In the app's sandboxed container (`~/Library/Containers/com.wesleykeetch.grokbox
 - **Message headers**: sender, subject, date, flags, Message-ID, the ids in
   In-Reply-To and References, list headers.
 - **Sent mail headers**: the Message-ID, reply ids, From address, subject and
-  date of messages in your Sent folder. Each completed index of that folder
-  keeps the newest 2,000 and drops the rest. They are kept so later features
-  can tie your replies to the conversations they answer; nothing reads them
-  yet. Recipients are kept only as contacted addresses, below.
+  date of messages in your Sent folder. When the server reports the folder's
+  UIDVALIDITY, each completed index of it keeps the newest 2,000 and drops the
+  rest. They are kept so later features can tie your replies to the
+  conversations they answer; nothing reads them yet. Recipients are kept only
+  as contacted addresses, below.
 - **Summaries**: the model's one-sentence summary and importance call, for
   messages the reader has processed.
 - **Contacted addresses**: addresses you have sent to, learned from your Sent
