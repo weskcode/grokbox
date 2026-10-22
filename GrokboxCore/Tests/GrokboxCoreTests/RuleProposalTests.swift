@@ -49,8 +49,19 @@ struct RuleProposalTests {
         #expect(draft(propose("Put everything from them into Reading", rule: Self.archived))?.after.customFolder == "Reading")
     }
 
-    @Test func tooAtTheEndIsNotPartOfTheFolder() {
-        #expect(draft(propose("File them under Reading too", rule: Self.archived))?.after.customFolder == "Reading")
+    @Test func aFolderNameEndsTheSentence() {
+        #expect(propose("File them under Reading too", rule: Self.archived) == .unresolved(.unknownFolder("Reading too")),
+                "\"too\" is not read after a folder, so there is no second reading to choose between")
+        #expect(draft(propose("File them under Reading!", rule: Self.archived))?.after.customFolder == "Reading",
+                "closing punctuation is the sentence's, not the folder's")
+    }
+
+    @Test func aFolderNameHoldingAConditionIsNotReadFromASentence() {
+        let folders = Self.folders.union(["Reading older than 30 days", "Reading and mark it read"])
+        for request in ["File them under Reading older than 30 days", "File them under Reading and mark it read"] {
+            #expect(propose(request, rule: Self.archived, folders: folders) == .unresolved(.unsupported),
+                    "\(request): the folder's existence does not show the words were meant as its name")
+        }
     }
 
     @Test func unsubscribeEditPreservesFolderAndDecision() {
@@ -187,13 +198,15 @@ struct RuleProposalTests {
         #expect(draft(proposal)?.after.customFolder == "Reading 2026")
     }
 
-    @Test func intoFoldersIsTheDispositionUnlessAFolderHasThatName() {
+    @Test func intoFoldersIsAlwaysTheDisposition() {
         #expect(draft(propose("File them into folders", rule: Self.plain))?.after == Self.filed)
-        #expect(propose("File them into folders", rule: Self.plain, folders: Self.folders.union(["Folders"])) == .unresolved(.ambiguousRequest))
+        #expect(draft(propose("File them into folders", rule: Self.plain, folders: Self.folders.union(["Folders"])))?.after == Self.filed,
+                "a mailbox named Folders is set with the folder picker")
     }
 
     @Test(arguments: ["Trash", "INBOX", "[Gmail]/Spam", "the trash", "the bin", "INBOX.Trash", "corbeille", "Papierkorb", "Trash/Old",
-                      "INBOX.Junk", "Spam/2026", "Junk-Mail", "Courrier indésirable", "Gesendete Objekte", "Brouillons", "Sendt", "Envoyes"])
+                      "INBOX.Junk", "Spam/2026", "Junk-Mail", "Courrier indésirable", "Gesendete Objekte", "Brouillons", "Sendt", "Envoyes",
+                      "Messages envoyés"])
     func specialMailboxesAreNotFilingFolders(folder: String) {
         #expect(propose("Put them in \(folder)", rule: Self.archived, folders: Self.folders.union([folder])) == .unresolved(.reservedFolder(folder)),
                 "filing there would be a different action, such as trashing without the warning")
@@ -251,38 +264,42 @@ struct RuleProposalTests {
     // MARK: - Every form
 
     /// Every supported sentence against every kind of existing rule: typing
-    /// never approves a sender, and a draft changes only the field its
-    /// sentence is about.
+    /// never approves a sender, a draft sets exactly what its sentence says
+    /// and nothing else, and every form can be reached.
     @Test func everySentenceChangesOnlyWhatItSaysAndNeverApproves() {
         let rules: [SenderOverride?] = [nil, Self.kept, Self.plain, Self.archived, Self.filed, Self.shopping, Self.legacy]
         var unapprovedKeeps = 0
         var approvedEdits = 0
         for form in RequestForm.all {
+            var reached = false
             for rule in rules {
                 for folder in form.pieces.contains(.folder) ? ["Reading", "Shopping", "Never"] : [""] {
                     let request = form.pieces.map { piece -> String in
                         if case .word(let word) = piece { word } else { folder }
                     }.joined(separator: " ")
-                    guard case .draft(let draft) = propose(request, rule: rule) else { continue }
+                    let proposal = propose(request, rule: rule)
+                    if proposal == .unresolved(.nothingToChange) { reached = true }
+                    guard case .draft(let draft) = proposal else { continue }
+                    reached = true
                     if rule?.decision == .sweep {
                         approvedEdits += 1
                     } else {
                         #expect(draft.after.decision == .keep, "\(request) approved a sender")
                         unapprovedKeeps += 1
                     }
-                    let before = rule ?? SenderOverride(decision: .keep)
-                    var expected = before
+                    var expected = rule ?? SenderOverride(decision: .keep)
                     switch form.change {
-                    case .decide: expected.decision = draft.after.decision
-                    case .destination: expected.disposition = draft.after.disposition
-                    case .unsubscribe: expected.autoUnsubscribe = draft.after.autoUnsubscribe
+                    case .decide(let decision): expected.decision = decision
+                    case .destination(let disposition): expected.disposition = disposition
+                    case .unsubscribe(let allowed): expected.autoUnsubscribe = allowed
                     case .folder:
-                        expected.customFolder = draft.after.customFolder
-                        expected.disposition = draft.after.disposition
+                        expected.customFolder = folder
+                        expected.disposition = .fileIntoFolders
                     }
-                    #expect(draft.after == expected, "\(request) changed a field it does not mention")
+                    #expect(draft.after == expected, "\(request) did not set exactly what it says")
                 }
             }
+            #expect(reached, "no rule state reaches \(form.pieces)")
         }
         #expect(unapprovedKeeps > 0, "the forms must reach senders without a sweep rule")
         #expect(approvedEdits > 0, "the forms must reach approved senders")

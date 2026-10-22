@@ -23,7 +23,7 @@ enum RuleProposal: Sendable, Equatable {
         /// The sentence is not one of the forms in `RequestForm.all`.
         case unsupported
         /// The sentence fits more than one form with different results, or
-        /// one reading names a folder that is shared or special.
+        /// one reading works and another does not.
         case ambiguousRequest
         /// Typed requests may tighten a sender's rule but never approve one;
         /// approval stays with Sweep and Senders (ADR-0007).
@@ -64,14 +64,11 @@ enum RuleProposal: Sendable, Equatable {
             case .failure(let failure): failures.append(failure.reason)
             }
         }
-        // A reading that works cannot outvote one whose folder is shared or
-        // special: the person may have meant that one. A reading whose folder
-        // does not exist ("Reading too" beside "Reading" plus "too") names
-        // nothing, so it does not count.
-        let blocking = failures.contains { if case .unknownFolder = $0 { false } else { true } }
-        if targets.count > 1 || (!targets.isEmpty && blocking) { return .unresolved(.ambiguousRequest) }
+        // A reading that works cannot outvote one that failed: the person may
+        // have meant that one.
+        if targets.count > 1 || (!targets.isEmpty && !failures.isEmpty) { return .unresolved(.ambiguousRequest) }
         guard let target = targets.first else {
-            return .unresolved(failures.min { $0.rank < $1.rank } ?? .unsupported)
+            return .unresolved(failures.min { ($0.rank, "\($0)") < ($1.rank, "\($1)") } ?? .unsupported)
         }
 
         if before?.decision != .sweep, target.change != .decide(.keep) { return .unresolved(.notApproved) }
@@ -131,11 +128,26 @@ enum RuleProposal: Sendable, Equatable {
     ]).map(fold))
 
     /// Names a mailbox may not be filed into, whatever the server calls it.
-    /// Sent names are the ones `sentMailbox` recognizes.
+    /// Sent names include the ones `sentMailbox` recognizes.
     static let reservedFolderNames: Set<String> = disposalFolderNames
         .union([IMAPMailbox].sentNames.map(fold))
-        .union(["inbox", "drafts", "all mail", "archive", "outbox", "brouillons", "entwürfe", "borradores", "bozze",
-                "concepten", "rascunhos"].map(fold))
+        .union(["messages envoyés", "inbox", "drafts", "all mail", "archive", "outbox", "brouillons", "entwürfe",
+                "borradores", "bozze", "concepten", "rascunhos"].map(fold))
+
+    /// Words that put a condition or a second action on a request. A folder
+    /// name holding one is not read from a sentence, because its existence
+    /// cannot show the words were meant as a name ("Reading older than 30
+    /// days"); the folder picker can still set it.
+    static let conditionWords: Set<String> = [
+        "older", "newer", "than", "after", "before", "since", "until", "unless", "except", "only", "if", "when",
+        "whenever", "day", "days", "week", "weeks", "month", "months", "year", "years", "today", "yesterday",
+        "tomorrow", "ago", "unread", "subject", "contains", "containing", "attachment", "attachments",
+        "message", "messages", "and", "or", "but", "not", "then", "also"
+    ]
+
+    static func holdsCondition(_ folder: String) -> Bool {
+        fold(folder).split { !$0.isLetter && !$0.isNumber }.contains { conditionWords.contains(String($0)) }
+    }
 
     /// Whether filing into `folder` would really be a different action.
     /// Paths split on "/" and on "." (`INBOX.Trash`), and a leading "the"
@@ -156,6 +168,7 @@ enum RuleProposal: Sendable, Equatable {
     private static func target(for reading: RequestForm.Reading, folders: Set<String>) -> Result<Target, Failure> {
         guard let typed = reading.folder else { return .success(Target(folder: nil, change: reading.change)) }
         if isReserved(typed) { return .failure(Failure(reason: .reservedFolder(typed))) }
+        if holdsCondition(typed) { return .failure(Failure(reason: .unsupported)) }
         let loose = folders.filter { fold($0) == fold(typed) }
         let folder: String
         if folders.contains(typed) {
@@ -271,8 +284,10 @@ struct RequestForm: Sendable {
             return objects.flatMap { object -> [RequestForm] in
                 let sentence = text.replacingOccurrences(of: "<o>", with: object).replacingOccurrences(of: "[o]", with: object)
                 let pieces = sentence.split(separator: " ").map { $0 == "<f>" ? Piece.folder : .word(String($0)) }
+                // "Too" never follows a folder, so a folder name ends the sentence.
+                let tails: [[Piece]] = change == .folder ? [[]] : [[], [.word("too")]]
                 return [[], [Piece.word("please")]].flatMap { lead in
-                    [[], [Piece.word("too")]].map { tail in RequestForm(pieces: lead + pieces + tail, change: change) }
+                    tails.map { tail in RequestForm(pieces: lead + pieces + tail, change: change) }
                 }
             }
         }
@@ -280,8 +295,9 @@ struct RequestForm: Sendable {
 
     /// Every way the words fit this form. Form words are compared loosely
     /// (case, a curly apostrophe, a closing "." or "!"); the folder name is
-    /// kept exactly as typed, and when it ends the sentence it is read both
-    /// with and without closing punctuation.
+    /// kept as typed apart from the sentence's closing punctuation. "Folders"
+    /// is never a folder name, since "file them into folders" already means
+    /// the filing disposition.
     func readings(of words: [String]) -> [Reading] {
         var found: [Reading] = []
         func loose(_ index: Int) -> String {
@@ -289,12 +305,10 @@ struct RequestForm: Sendable {
             if index == words.count - 1 { while let last = word.last, ".!".contains(last) { word.removeLast() } }
             return word
         }
-        func names(_ range: Range<Int>) -> [String] {
-            let typed = words[range].joined(separator: " ")
-            guard range.upperBound == words.count else { return [typed] }
-            var bare = typed
-            while let last = bare.last, ".!".contains(last) { bare.removeLast() }
-            return bare == typed || bare.isEmpty ? [typed] : [typed, bare]
+        func name(_ range: Range<Int>) -> String? {
+            var typed = words[range].joined(separator: " ")
+            if range.upperBound == words.count { while let last = typed.last, ".!".contains(last) { typed.removeLast() } }
+            return typed.isEmpty || RuleProposal.fold(typed) == "folders" ? nil : typed
         }
         func match(_ piece: Int, _ word: Int, folder: String?) {
             if piece == pieces.count {
@@ -309,7 +323,7 @@ struct RequestForm: Sendable {
                 let wordsAfter = pieces.count - piece - 1
                 guard word < words.count - wordsAfter else { return }
                 for end in (word + 1)...(words.count - wordsAfter) {
-                    for name in names(word..<end) { match(piece + 1, end, folder: name) }
+                    if let name = name(word..<end) { match(piece + 1, end, folder: name) }
                 }
             }
         }
