@@ -128,6 +128,7 @@ final class GrokboxiOSUITests: XCTestCase {
         let sender = app.staticTexts["Recipe of the Day"].firstMatch
         wait(sender, 30)
         sender.tap()
+        wait(app.navigationBars["Recipe of the Day"], 20)
         scrollTo("label == 'Last sweep since Grokbox opened'")
         scrollTo("label BEGINSWITH 'Only the last sweep'")
         XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'This sender is in more than one account'")).firstMatch.exists)
