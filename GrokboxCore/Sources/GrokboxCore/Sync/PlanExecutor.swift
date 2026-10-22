@@ -49,6 +49,8 @@ public final class PlanExecutor {
 
     public private(set) var phase: Phase = .idle
     public private(set) var lastOutcome = Outcome()
+    /// What the last `apply` did to each planned message. See `SweepReport`.
+    public private(set) var lastReport = SweepReport()
     private var activeProvider: (any MailProvider)?
     /// The generation the connected run started under.
     private var activeRun = 0
@@ -96,7 +98,11 @@ public final class PlanExecutor {
         lastOutcome = Outcome()
         lostConnection = nil
         let items = plan.enabledItems
-        guard !items.isEmpty else { return }
+        lastReport = SweepReport(senders: items.map {
+            SweepReport.Sender(address: $0.cluster.address, mailbox: $0.cluster.mailbox, planned: $0.cluster.pendingUIDs,
+                               unsubscribe: $0.unsubscribe ? .notSent : .notRequested)
+        })
+        guard !items.isEmpty else { lastReport.ending = .completed; return }
         let token = generation
         // A sender's rule is written only once that sender's mail has actually
         // been dealt with. Written up front, a sweep that failed or was stopped
@@ -125,6 +131,7 @@ public final class PlanExecutor {
             if plan.enabledItems.contains(where: { $0.disposition == .trash }) {
                 guard let trash = mailboxes.trashMailbox else {
                     phase = .failed("This server does not expose a Trash mailbox, so Grokbox cannot move mail there. Choose a different disposition in Settings.")
+                    lastReport.ending = .refused
                     return
                 }
                 trashName = trash.name
@@ -133,6 +140,7 @@ public final class PlanExecutor {
             if !isGmail, plan.enabledItems.contains(where: { $0.disposition == .archiveOnly }) {
                 guard let archive = mailboxes.archiveMailbox else {
                     phase = .failed("This server has no Archive mailbox, so 'Archive only' cannot be applied. Choose 'File into folders' in Settings.")
+                    lastReport.ending = .refused
                     return
                 }
                 archiveName = archive.name
@@ -143,6 +151,7 @@ public final class PlanExecutor {
             if !isGmail, items.contains(where: \.archive) {
                 guard capabilities.supportsMove else {
                     phase = .failed("This server does not support MOVE, so Grokbox cannot archive safely. Mark-read still works.")
+                    lastReport.ending = .refused
                     return
                 }
                 for folder in Set(items.filter { $0.disposition == .fileIntoFolders }.map(\.folder)) {
@@ -165,7 +174,7 @@ public final class PlanExecutor {
             let keepTransactional = policy.guardTransactional
             var heldTotal = 0
 
-            for item in items {
+            for (index, item) in items.enumerated() {
                 try checkStopped(token)
                 // Message-level safety net over the sender-level decision.
                 _ = keepTransactional
@@ -174,6 +183,9 @@ public final class PlanExecutor {
                     : SweepGuard.Verdict(allowed: item.cluster.pendingUIDs, held: [])
                 let uids = verdict.allowed
                 heldTotal += verdict.held.count
+                lastReport.senders[index].held = verdict.held.map(\.uid)
+                lastReport.senders[index].steps = (item.markRead ? 1 : 0)
+                    + (item.archive ? (isGmail && item.disposition == .fileIntoFolders ? 2 : 1) : 0)
                 guard !uids.isEmpty else {
                     // Everything was held, which is the guard working, not a
                     // failure: the decision about the sender still stands.
@@ -193,7 +205,7 @@ public final class PlanExecutor {
 
                 if item.markRead {
                     let action = record(.markRead, for: item, uids: uids, account: account, uidValidity: openValidity)
-                    confirmed = await run(action) {
+                    confirmed = await run(action, sender: index) {
                         try await provider.setFlags(uids: uids, .add, flags: ["\\Seen"])
                         return nil
                     }
@@ -213,14 +225,14 @@ public final class PlanExecutor {
                         action.heldUIDs = verdict.held.map(\.uid)
                         action.heldSummary = verdict.summary
                         action.targetMailbox = target
-                        confirmed = await run(action) { try await provider.move(uids: uids, to: target) }
+                        confirmed = await run(action, sender: index) { try await provider.move(uids: uids, to: target) }
                         itemFailed = itemFailed || action.errorMessage != nil
 
                     case .archiveOnly where isGmail:
                         let archive = record(.archive, for: item, uids: uids, account: account, uidValidity: openValidity)
                         archive.heldUIDs = verdict.held.map(\.uid)
                         archive.heldSummary = verdict.summary
-                        confirmed = await run(archive) {
+                        confirmed = await run(archive, sender: index) {
                             try await provider.setGmailLabels(uids: uids, .remove, labels: ["\\Inbox"])
                             return nil
                         }
@@ -232,12 +244,12 @@ public final class PlanExecutor {
                         archive.heldUIDs = verdict.held.map(\.uid)
                         archive.heldSummary = verdict.summary
                         archive.targetMailbox = target
-                        confirmed = await run(archive) { try await provider.move(uids: uids, to: target) }
+                        confirmed = await run(archive, sender: index) { try await provider.move(uids: uids, to: target) }
                         itemFailed = itemFailed || archive.errorMessage != nil
 
                     case .fileIntoFolders where isGmail:
                         let label = record(.label, for: item, uids: uids, account: account, labelName: item.folder, uidValidity: openValidity)
-                        let labelled = await run(label) {
+                        let labelled = await run(label, sender: index) {
                             try await provider.setGmailLabels(uids: uids, .add, labels: [item.folder])
                             return nil
                         }
@@ -249,7 +261,7 @@ public final class PlanExecutor {
                         let archive = record(.archive, for: item, uids: labelled, account: account, uidValidity: openValidity)
                         archive.heldUIDs = verdict.held.map(\.uid)
                         archive.heldSummary = verdict.summary
-                        confirmed = await run(archive) {
+                        confirmed = await run(archive, sender: index) {
                             try await provider.setGmailLabels(uids: labelled, .remove, labels: ["\\Inbox"])
                             return nil
                         }
@@ -264,7 +276,7 @@ public final class PlanExecutor {
                         archive.heldUIDs = verdict.held.map(\.uid)
                         archive.heldSummary = verdict.summary
                         archive.targetMailbox = target
-                        confirmed = await run(archive) { try await provider.move(uids: uids, to: target) }
+                        confirmed = await run(archive, sender: index) { try await provider.move(uids: uids, to: target) }
                         itemFailed = itemFailed || archive.errorMessage != nil
                     }
                     if !confirmed.isEmpty { markSwept(uids: confirmed, in: account, swept: true, address: item.cluster.address) }
@@ -282,12 +294,15 @@ public final class PlanExecutor {
                     case .unsubscribed:
                         action.errorMessage = nil
                         unsubscribeCount += 1
+                        lastReport.senders[index].unsubscribe = .accepted
                     case .openInBrowser, .requiresEmail:
                         // Automatic mode is one-click only. Anything needing a
                         // browser or an email is left for the user to decide.
                         action.errorMessage = "Needs a browser; left for you in Senders."
+                        lastReport.senders[index].unsubscribe = .declined
                     case .failed(let why):
                         action.errorMessage = why
+                        lastReport.senders[index].unsubscribe = .unknown
                     }
                 }
 
@@ -306,6 +321,7 @@ public final class PlanExecutor {
             }
             // A Stop that landed during the last sender still counts as a Stop.
             try checkStopped(token)
+            lastReport.ending = .completed
 
             RuleStore.bumpApplied(for: succeeded, in: modelContext)
             let heldNote = heldTotal > 0 ? ", held \(heldTotal) for you" : ""
@@ -320,10 +336,15 @@ public final class PlanExecutor {
             // Includes a write cut off by Stop's grace period: that is the Stop.
             try? modelContext.save()
             lastOutcome.stopped = true
+            lastReport.ending = .stopped
             let o = lastOutcome
             phase = .finished("Stopped. Swept \(o.messages.formatted()) messages from \(o.senders) senders; the rest were left alone.")
         } catch {
             try? modelContext.save()
+            lastReport.ending = switch error as? IMAPError {
+            case .commandFailed?, .mailboxChanged?, .insecureForRemoteHost?, .startTLSUnavailable?, .startTLSInjection?: .refused
+            default: .interrupted
+            }
             phase = .failed(error.localizedDescription)
         }
     }
@@ -462,7 +483,7 @@ public final class PlanExecutor {
     /// server confirmed. Returns the UIDs that actually changed: all of them,
     /// the chunks before a failure, or none. The operation returns the MOVE
     /// result for a move and nil for a flag or label change.
-    private func run(_ action: CleanupAction, _ operation: () async throws -> MoveResult?) async -> [UInt32] {
+    private func run(_ action: CleanupAction, sender: Int, _ operation: () async throws -> MoveResult?) async -> [UInt32] {
         let requested = action.uids
         // A flag or label change can be reversed whether or not it landed, so
         // it is undoable from the moment it is sent; if the app dies before
@@ -473,9 +494,11 @@ public final class PlanExecutor {
         try? modelContext.save()
         do {
             settle(action, confirmed: requested, moved: try await operation())
+            note(SweepReport.Write(requested: requested, confirmed: requested), sender: sender)
             return requested
         } catch let partial as PartialWriteError {
             settle(action, confirmed: partial.applied, moved: partial.moved)
+            note(SweepReport.Write(requested: requested, confirmed: partial.applied, cutOff: !partial.unsure.isEmpty), sender: sender)
             if partial.unsure.isEmpty {
                 action.errorMessage = "Only \(partial.applied.count) of \(requested.count) went through. \(partial.reason)"
             } else {
@@ -488,13 +511,20 @@ public final class PlanExecutor {
         } catch let error as IMAPError where error.isRefusal {
             action.errorMessage = error.localizedDescription
             action.isUndoable = false
+            note(SweepReport.Write(requested: requested, confirmed: []), sender: sender)
             return []
         } catch {
             action.errorMessage = Self.unsure(error.localizedDescription)
             action.isUndoable = reversibleIfUnsure
             lostConnection = error
+            note(SweepReport.Write(requested: requested, confirmed: [], cutOff: true), sender: sender)
             return []
         }
+    }
+
+    private func note(_ write: SweepReport.Write, sender: Int) {
+        guard lastReport.senders.indices.contains(sender) else { return }
+        lastReport.senders[sender].writes.append(write)
     }
 
     static func unsure(_ reason: String) -> String {
