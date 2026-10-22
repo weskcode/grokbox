@@ -164,12 +164,9 @@ extension Array where Element == IMAPMailbox {
     /// advertise special-use, in the languages most accounts are set to.
     public var sentMailbox: IMAPMailbox? {
         if let flagged = first(where: \.isSent) { return flagged }
-        let known = ["sent", "sent mail", "sent items", "sent messages", "envoyés", "envoyes", "éléments envoyés",
-                     "gesendet", "gesendete objekte", "enviados", "elementos enviados", "inviata", "posta inviata",
-                     "verzonden", "verzonden items", "enviadas", "itens enviados", "skickat", "sendt", "lähetetyt", "wysłane"]
         return first { box in
             let leaf = box.displayName.split(separator: Character(box.delimiter ?? "/")).last.map(String.init) ?? box.displayName
-            return known.contains(leaf.lowercased())
+            return Self.sentNames.contains(leaf.lowercased())
         }
     }
 
@@ -214,6 +211,13 @@ extension Array where Element == IMAPMailbox {
             raw = raw.replacingOccurrences(of: delimiter, with: "/")
         }
         return IMAPUTF7.decode(raw)
+    }
+
+    /// The names providers give their Sent mailbox when they do not flag it.
+    static var sentNames: Set<String> {
+        ["sent", "sent mail", "sent items", "sent messages", "envoyés", "envoyes", "éléments envoyés",
+         "gesendet", "gesendete objekte", "enviados", "elementos enviados", "inviata", "posta inviata",
+         "verzonden", "verzonden items", "enviadas", "itens enviados", "skickat", "sendt", "lähetetyt", "wysłane"]
     }
 
     /// The names providers give their Trash when they do not flag it.
