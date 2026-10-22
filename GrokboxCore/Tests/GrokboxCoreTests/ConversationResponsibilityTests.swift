@@ -343,6 +343,17 @@ struct ConversationResponsibilityTests {
         #expect(derive(single(.read(.needsYou, .reply), .rulesOnly, .modelFailed))?.state == .needsReply)
     }
 
+    @Test(arguments: [CR.IdentitySource?.none, .subjectFallback])
+    func mergedBulkMailIsUntrackedWhateverItsGrouping(_ identity: CR.IdentitySource?) {
+        let copies = [inbound("a", 0, parent: .root, reading: .notRead), inbound("a", 0, parent: .root, reading: .rulesOnly)]
+        #expect(derive(CR.Conversation(identity: identity, sentCoverage: .unknown, messages: copies)) == nil)
+        var unkeyedBulk = inbound("b", 1, reading: .rulesOnly); unkeyedBulk.key = nil
+        #expect(derive(CR.Conversation(identity: identity, sentCoverage: .unknown, messages: copies + [unkeyedBulk])) == nil)
+        var unkeyedAsk = inbound("b", 1); unkeyedAsk.key = nil
+        #expect(derive(CR.Conversation(identity: .headers, sentCoverage: .unknown, messages: copies + [unkeyedAsk]))?.reason
+                == .missingFact(.key))
+    }
+
     @Test func onlyDirectTasksStayOpen() {
         let ccTask = derive(chain([mine("a", 0), inbound("b", 1, to: false, reading: .read(.needsYou, .pay)),
                                    inbound("c", 2, reading: .read(.worthKnowing, .none))]))
@@ -350,6 +361,14 @@ struct ConversationResponsibilityTests {
         let ccNoteAfterTask = derive(chain([mine("a", 0), inbound("b", 1, reading: .read(.needsYou, .pay)),
                                             inbound("c", 2, to: false, reading: .read(.worthKnowing, .none))]))
         #expect(ccNoteAfterTask?.reason == .unmatched(task: .pay))
+    }
+
+    @Test func laterCopiedTaskDoesNotHideTheOpenDirectOne() {
+        let ccTask = inbound("c", 2, to: false, reading: .read(.needsYou, .review))
+        let neverReplied = derive(chain([inbound("b", 1, reading: .read(.needsYou, .pay)), ccTask]))
+        #expect(neverReplied?.reason == .unmatched(task: .pay))
+        let afterYours = derive(chain([mine("a", 0), inbound("b", 1, reading: .read(.needsYou, .pay)), ccTask]))
+        #expect(afterYours?.reason == .unmatched(task: .pay))
     }
 
     // MARK: Corrections

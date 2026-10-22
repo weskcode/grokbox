@@ -146,6 +146,13 @@ public enum ConversationResponsibility {
     /// rather than hidden.
     public static func derive(_ conversation: Conversation, correction: Correction? = nil) -> Result? {
         guard conversation.messages.contains(where: mightTrack) else { return nil }
+        // Decide tracking on merged copies before any fact is reported, so an
+        // unread copy of bulk mail stays untracked. Unkeyed messages cannot merge.
+        let collapsed = canonical(conversation.messages)
+        if case .ordered(let merged) = collapsed, !merged.contains(where: mightTrack),
+           !conversation.messages.contains(where: { $0.key == nil && mightTrack($0) }) {
+            return nil
+        }
 
         let lastHumanFromUser = conversation.messages
             .filter { $0.isFromUser == true && $0.automation == .human }.map(\.date).max()
@@ -161,12 +168,12 @@ public enum ConversationResponsibility {
         if let fact = missingFact(in: conversation.messages) { return unresolved(.missingFact(fact)) }
 
         let ordered: [Message]
-        switch canonical(conversation.messages) {
+        switch collapsed {
         case .conflict(let key): return unresolved(.conflictingCopies(key: key), lastFromUser: nil)
         case .ordered(let messages): ordered = messages
         }
         let human = ordered.indices.filter { ordered[$0].automation == .human }
-        guard ordered.contains(where: mightTrack), let l = human.last else { return nil }
+        guard let l = human.last else { return nil }
 
         let u = human.last { ordered[$0].isFromUser == true }
         let automaticReplies = ordered.indices
@@ -249,7 +256,8 @@ public enum ConversationResponsibility {
             return result(.waiting, .acknowledged(latest.date))
         }
 
-        if case .read(.needsYou, let action) = latest.reading, !replyActions.contains(action) {
+        if latest.isAddressedToUser == true, case .read(.needsYou, let action) = latest.reading,
+           !replyActions.contains(action) {
             return result(.uncertain, .taskNotReply(action))
         }
 
