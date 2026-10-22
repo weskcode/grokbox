@@ -276,6 +276,63 @@ struct ConversationResponsibilityTests {
         #expect(derive(replyKeySortsLater)?.reason == .orderUnclear)
     }
 
+    @Test func unreadDirectMailIsUncertainNotHidden() {
+        #expect(derive(chain([inbound("a", 0, reading: .notRead)]))?.reason == .notReadByModel(key: "a", .notRead))
+        #expect(derive(chain([inbound("a", 0, reading: .modelFailed)]))?.reason == .notReadByModel(key: "a", .modelFailed))
+        #expect(derive(chain([inbound("a", 0, to: nil, reading: .notRead)]))?.reason == .missingFact(.addressee))
+        #expect(derive(chain([inbound("a", 0, automation: nil, reading: .notRead)]))?.reason == .missingFact(.automation))
+    }
+
+    @Test func bulkMailStaysUntracked() {
+        #expect(derive(chain([inbound("a", 0, reading: .rulesOnly)])) == nil)
+    }
+
+    @Test func noteAfterAnOpenTaskDoesNotMeanWaiting() {
+        let r = derive(chain([mine("a", 0), inbound("b", 1, reading: .read(.needsYou, .pay)),
+                              inbound("c", 2, reading: .read(.worthKnowing, .none))]))
+        #expect(r?.state == .uncertain)
+        #expect(r?.reason == .unmatched(task: .pay))
+    }
+
+    @Test func fallbackNamesATaskNotAReply() {
+        let r = derive(chain([inbound("a", 0, reading: .read(.needsYou, .pay)), inbound("b", 1, to: false)]))
+        #expect(r?.reason == .unmatched(task: .pay))
+    }
+
+    @Test func automatedMailParentsAreChecked() {
+        let you = mine("b", 1, parent: .root)
+        let bounceBeforeParent = inbound("a", 1, automation: .deliveryFailure, reading: .notRead)
+        var bounce = bounceBeforeParent; bounce.parent = .message("b")
+        #expect(derive(CR.Conversation(identity: .headers, sentCoverage: .since(day(-30)), messages: [you, bounce]))?.reason
+                == .orderUnclear)
+        let strayReceipt = inbound("c", 2, parent: .message("elsewhere"), automation: .other, reading: .notRead)
+        #expect(derive(chain([inbound("a", 0), mine("b", 1), strayReceipt]))?.reason == .orderUnclear)
+        var headerlessReceipt = inbound("c", 2, automation: .other, reading: .notRead); headerlessReceipt.parent = .unknown
+        let messages = [inbound("a", 0, parent: .root), mine("b", 1, parent: .message("a")), headerlessReceipt]
+        #expect(derive(CR.Conversation(identity: .headers, sentCoverage: .since(day(-30)), messages: messages))?.state == .waiting)
+    }
+
+    @Test func automatedMailBeforeSentCoverageIsUncertain() {
+        let r = derive(chain([inbound("a", 0, automation: .other, reading: .notRead), inbound("b", 20)], coverage: .since(day(15))))
+        #expect(r?.reason == .sentNotCheckedBefore(day(15)))
+    }
+
+    @Test func differentReaderOutcomesConflict() {
+        let rules = inbound("a", 0, parent: .root, reading: .rulesOnly)
+        let failed = inbound("a", 0, parent: .root, reading: .modelFailed)
+        let r = derive(CR.Conversation(identity: .headers, sentCoverage: .since(day(-30)), messages: [rules, failed]))
+        #expect(r?.reason == .conflictingCopies(key: "a"))
+    }
+
+    @Test func conflictPublishesNoDate() {
+        var early = mine("a", 0, parent: .root)
+        early.date = day(0)
+        var late = early; late.date = day(1)
+        let r = derive(CR.Conversation(identity: .headers, sentCoverage: .since(day(-30)), messages: [early, late]))
+        #expect(r?.reason == .conflictingCopies(key: "a"))
+        #expect(r?.lastFromUser == nil)
+    }
+
     // MARK: Corrections
 
     private let resolvedAtB = CR.Correction(state: .resolved, anchorKey: "b", anchorDate: day(1))

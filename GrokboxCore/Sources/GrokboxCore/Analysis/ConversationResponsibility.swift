@@ -149,8 +149,8 @@ public enum ConversationResponsibility {
 
         let lastHumanFromUser = conversation.messages
             .filter { $0.isFromUser == true && $0.automation == .human }.map(\.date).max()
-        func unresolved(_ reason: Reason) -> Result {
-            Result(state: .uncertain, reason: reason, followUp: nil, automaticReplies: [], lastFromUser: lastHumanFromUser)
+        func unresolved(_ reason: Reason, lastFromUser: Date? = lastHumanFromUser) -> Result {
+            Result(state: .uncertain, reason: reason, followUp: nil, automaticReplies: [], lastFromUser: lastFromUser)
         }
 
         switch conversation.identity {
@@ -162,7 +162,7 @@ public enum ConversationResponsibility {
 
         let ordered: [Message]
         switch canonical(conversation.messages) {
-        case .conflict(let key): return unresolved(.conflictingCopies(key: key))
+        case .conflict(let key): return unresolved(.conflictingCopies(key: key), lastFromUser: nil)
         case .ordered(let messages): ordered = messages
         }
         let human = ordered.indices.filter { ordered[$0].automation == .human }
@@ -180,15 +180,17 @@ public enum ConversationResponsibility {
         case .unknown:
             return result(.uncertain, .missingFact(.sentCoverage))
         case .since(let start):
-            if human.contains(where: { ordered[$0].date < start }) { return result(.uncertain, .sentNotCheckedBefore(start)) }
+            if ordered.contains(where: { $0.date < start }) { return result(.uncertain, .sentNotCheckedBefore(start)) }
         }
 
         let position = Dictionary(ordered.enumerated().compactMap { i, m in m.key.map { ($0, i) } },
                                   uniquingKeysWith: { a, _ in a })
-        for i in human {
+        for i in ordered.indices {
             switch ordered[i].parent {
             case .root: continue
-            case .unknown: return result(.uncertain, .orderUnclear)
+            case .unknown:
+                // Receipts and auto-replies often carry no reply headers; only human order matters.
+                if ordered[i].automation == .human { return result(.uncertain, .orderUnclear) }
             case .message(let parentKey):
                 guard let p = position[parentKey], p < i else { return result(.uncertain, .orderUnclear) }
             }
@@ -238,7 +240,11 @@ public enum ConversationResponsibility {
 
         if latest.isFromUser == true { return result(.waiting, .youReplied(latest.date)) }
 
-        if u != nil, case .read(let importance, _) = latest.reading, importance != .needsYou {
+        let openTask = inbound.contains { i in
+            guard case .read(.needsYou, let action) = ordered[i].reading, !replyActions.contains(action) else { return false }
+            return !human.contains { $0 > i && ordered[$0].isFromUser == true }
+        }
+        if u != nil, !openTask, case .read(let importance, _) = latest.reading, importance != .needsYou {
             return result(.waiting, .acknowledged(latest.date))
         }
 
@@ -247,7 +253,7 @@ public enum ConversationResponsibility {
         }
 
         let task = inbound.reversed().lazy.compactMap { i -> ActionType? in
-            if case .read(.needsYou, let action) = ordered[i].reading { action } else { nil }
+            if case .read(.needsYou, let action) = ordered[i].reading, !replyActions.contains(action) { action } else { nil }
         }.first
         return result(.uncertain, .unmatched(task: task))
     }
@@ -257,11 +263,16 @@ public enum ConversationResponsibility {
     }
 
     /// Could this message make the conversation tracked, reading unknowns permissively?
+    /// Mail the rules already classed as bulk cannot.
     private static func mightTrack(_ message: Message) -> Bool {
         guard message.automation == .human || message.automation == nil else { return false }
         if message.isFromUser != false { return true }
-        guard message.isAddressedToUser != false, case .read(.needsYou, _) = message.reading else { return false }
-        return true
+        guard message.isAddressedToUser != false else { return false }
+        switch message.reading {
+        case .read(let importance, _): return importance == .needsYou
+        case .rulesOnly: return false
+        case .notRead, .modelFailed: return true
+        }
     }
 
     enum Collapsed: Equatable {
@@ -292,20 +303,15 @@ public enum ConversationResponsibility {
         aFacts.reading = .notRead
         bFacts.reading = .notRead
         guard aFacts == bFacts else { return nil }
+        // Less reader information yields to more: not read, then rules or a
+        // failed model read, then a completed read. Rules and a failed read
+        // are different outcomes, so they disagree.
         switch (a.reading, b.reading) {
-        case (.read, .read): return a.reading == b.reading ? a : nil
-        case (.read, _): return a
-        case (_, .read): return b
-        default: return rank(a.reading) >= rank(b.reading) ? a : b
-        }
-    }
-
-    private static func rank(_ reading: Reading) -> Int {
-        switch reading {
-        case .notRead: 0
-        case .rulesOnly: 1
-        case .modelFailed: 2
-        case .read: 3
+        case (.notRead, _): return b
+        case (_, .notRead): return a
+        case (.read, .rulesOnly), (.read, .modelFailed): return a
+        case (.rulesOnly, .read), (.modelFailed, .read): return b
+        default: return a.reading == b.reading ? a : nil
         }
     }
 
