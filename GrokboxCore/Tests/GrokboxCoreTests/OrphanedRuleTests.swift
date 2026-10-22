@@ -15,8 +15,8 @@ struct OrphanedRuleTests {
         // One sender that still exists, one that does not.
         let profile = SenderProfile(accountID: accountID, address: "news@real.example")
         context.insert(profile)
-        RuleStore.set(.sweep, for: "news@real.example", in: context)
-        RuleStore.set(.sweep, for: "offers@gone.example", in: context)
+        try RuleStore.set(.sweep, for: "news@real.example", in: context)
+        try RuleStore.set(.sweep, for: "offers@gone.example", in: context)
         try context.save()
 
         let orphans = RuleStore.orphaned(in: context).map(\.address)
@@ -35,7 +35,7 @@ struct OrphanedRuleTests {
         let keep = UUID(), remove = UUID()
         context.insert(SenderProfile(accountID: keep, address: "news@shared.example"))
         context.insert(SenderProfile(accountID: remove, address: "news@shared.example"))
-        RuleStore.set(.sweep, for: "news@shared.example", in: context)
+        try RuleStore.set(.sweep, for: "news@shared.example", in: context)
         try context.save()
 
         // Simulate removing one account: its profiles go, the other's remain.

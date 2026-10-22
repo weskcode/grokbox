@@ -16,6 +16,8 @@ struct SenderMessagesSheet: View {
     @Query private var rules: [SenderRule]
 
     @State private var outcome: UnsubscribeService.Outcome?
+    @State private var ruleError: String?
+    @State private var pendingRule: PendingRuleEdit?
     @State private var searchText = ""
     @State private var reading: MessageHeader?
 
@@ -66,6 +68,8 @@ struct SenderMessagesSheet: View {
                 MessageReaderSheet(message: message, account: account)
             }
         }
+        .ruleSaveAlert($ruleError)
+        .ruleEditSheet($pendingRule, policy: state.policy, errorMessage: $ruleError)
     }
 
     private var header: some View {
@@ -108,16 +112,16 @@ struct SenderMessagesSheet: View {
                     .help(profile.supportsOneClickUnsubscribe ? "One-click (RFC 8058). Tells this sender to stop." : "Opens their unsubscribe page.")
                 }
                 Button(rule == .sweep ? "Filing automatically ✓" : "File automatically") {
-                    RuleStore.set(.sweep, for: profile.address, in: modelContext)
+                    pendingRule = PendingRuleEdit(address: profile.address, senderName: profile.displayName, edit: .decision(.sweep))
                 }
                 .disabled(rule == .sweep)
                 .help("Future mail from this sender goes straight to \(profile.category.folderName).")
                 Button(rule == .keep ? "Keeping ✓" : "Keep in inbox") {
-                    RuleStore.set(.keep, for: profile.address, in: modelContext)
+                    pendingRule = PendingRuleEdit(address: profile.address, senderName: profile.displayName, edit: .decision(.keep))
                 }
                 .disabled(rule == .keep)
                 if rule != nil {
-                    Button("Clear rule") { RuleStore.clear(for: profile.address, in: modelContext) }
+                    Button("Clear rule") { pendingRule = PendingRuleEdit(address: profile.address, senderName: profile.displayName, edit: .clear) }
                 }
                 Spacer()
                 if let outcome {

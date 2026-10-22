@@ -228,7 +228,7 @@ struct SweepSafetyTests {
         let (container, account, mailbox, plan) = try await setUp()
         defer { DemoRegistry.shared.remove(account.id) }
         let context = container.mainContext
-        for item in plan.items { RuleStore.set(.sweep, for: item.cluster.address, in: context) }
+        for item in plan.items { try RuleStore.set(.sweep, for: item.cluster.address, in: context) }
 
         let engine = SyncEngine(modelContext: context)
         let executor = PlanExecutor(modelContext: context)
@@ -256,7 +256,7 @@ struct SweepSafetyTests {
         let (container, account, mailbox, plan) = try await setUp()
         defer { DemoRegistry.shared.remove(account.id) }
         let context = container.mainContext
-        for item in plan.items { RuleStore.set(.sweep, for: item.cluster.address, in: context) }
+        for item in plan.items { try RuleStore.set(.sweep, for: item.cluster.address, in: context) }
 
         let engine = SyncEngine(modelContext: context)
         let maintainer = Maintainer(modelContext: context, engine: engine, executor: PlanExecutor(modelContext: context))
@@ -278,7 +278,7 @@ struct SweepSafetyTests {
         let (container, account, mailbox, plan) = try await setUp()
         defer { DemoRegistry.shared.remove(account.id) }
         let context = container.mainContext
-        for item in plan.items { RuleStore.set(.sweep, for: item.cluster.address, in: context) }
+        for item in plan.items { try RuleStore.set(.sweep, for: item.cluster.address, in: context) }
 
         let executor = PlanExecutor(modelContext: context)
         let maintainer = Maintainer(modelContext: context, engine: SyncEngine(modelContext: context), executor: executor)

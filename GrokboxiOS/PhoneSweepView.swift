@@ -70,7 +70,7 @@ struct PhoneSweepView: View {
         .task(id: account.id) { plan = buildPlan() }
         .onChange(of: state.policy) { plan = buildPlan() }
         .onChange(of: profiles.map(\.updatedAt)) { plan = buildPlan() }
-        .onChange(of: rules.count) { plan = buildPlan() }
+        .onChange(of: rules.map { [$0.address: SenderOverride(rule: $0)] }) { plan = buildPlan() }
         .refreshable { plan = buildPlan() }
     }
 

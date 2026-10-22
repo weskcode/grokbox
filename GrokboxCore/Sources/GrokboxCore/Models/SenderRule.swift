@@ -81,63 +81,87 @@ public enum RuleStore {
     /// Every rule, whole — what the plan needs to honour per-sender overrides.
     public static func overrides(in context: ModelContext) -> [String: SenderOverride] {
         let rules = (try? context.fetch(FetchDescriptor<SenderRule>())) ?? []
-        return Dictionary(rules.map {
-            ($0.address, SenderOverride(decision: $0.decision, disposition: $0.disposition,
-                                        autoUnsubscribe: $0.autoUnsubscribeOverride, customFolder: $0.customFolder))
-        }, uniquingKeysWith: { a, _ in a })
+        return Dictionary(rules.map { ($0.address, SenderOverride(rule: $0)) }, uniquingKeysWith: { a, _ in a })
+    }
+
+    /// This sender's rule, whole, or nil when there is none. Unlike
+    /// `overrides(in:)` a failed lookup is thrown, not read as "no rule".
+    static func override(for address: String, in context: ModelContext) throws -> SenderOverride? {
+        try context.fetch(FetchDescriptor<SenderRule>(predicate: #Predicate { $0.address == address }))
+            .first.map(SenderOverride.init(rule:))
+    }
+
+    /// The one way a rule is written. The preview applies the same `RuleEdit`
+    /// to the same starting point, so what it shows is what gets saved.
+    ///
+    /// A failed save is undone in memory before it is thrown. Otherwise the
+    /// context keeps showing a rule the store never accepted, and a later
+    /// autosave can quietly commit what the person was told had failed.
+    public static func apply(_ edit: RuleEdit, for address: String, in context: ModelContext) throws {
+        let existing: [SenderRule]
+        do {
+            existing = try context.fetch(FetchDescriptor<SenderRule>(predicate: #Predicate { $0.address == address }))
+        } catch {
+            throw RuleSaveError(address: address, underlying: error.localizedDescription)
+        }
+        let before = existing.first.map(SenderOverride.init(rule:))
+        guard let after = edit.applied(to: before) else {
+            // Deleted at the store, not marked for deletion in the context: a
+            // refused delete then leaves nothing pending to undo.
+            do {
+                try context.delete(model: SenderRule.self, where: #Predicate { $0.address == address })
+                try context.save()
+            } catch {
+                throw RuleSaveError(address: address, underlying: error.localizedDescription)
+            }
+            return
+        }
+
+        var inserted: SenderRule?
+        if let rule = existing.first {
+            after.write(to: rule)
+        } else {
+            let rule = SenderRule(address: address, decision: after.decision)
+            after.write(to: rule)
+            context.insert(rule)
+            inserted = rule
+        }
+
+        do {
+            try context.save()
+        } catch {
+            if let inserted {
+                context.delete(inserted)
+            } else if let rule = existing.first, let before {
+                before.write(to: rule)
+            }
+            throw RuleSaveError(address: address, underlying: error.localizedDescription)
+        }
+    }
+
+    public static func set(_ decision: RuleDecision, for address: String, in context: ModelContext) throws {
+        try apply(.decision(decision), for: address, in: context)
     }
 
     /// Sets or clears the per-sender disposition without touching the
     /// sweep/keep decision.
-    public static func setDisposition(_ disposition: CleanupPolicy.Disposition?, for address: String, in context: ModelContext) {
-        let rule = existingOrNew(address, in: context)
-        rule.disposition = disposition
-        try? context.save()
+    public static func setDisposition(_ disposition: CleanupPolicy.Disposition?, for address: String, in context: ModelContext) throws {
+        try apply(.disposition(disposition), for: address, in: context)
     }
 
-    public static func setAutoUnsubscribe(_ allowed: Bool?, for address: String, in context: ModelContext) {
-        let rule = existingOrNew(address, in: context)
-        rule.autoUnsubscribeOverride = allowed
-        try? context.save()
+    public static func setAutoUnsubscribe(_ allowed: Bool?, for address: String, in context: ModelContext) throws {
+        try apply(.autoUnsubscribe(allowed), for: address, in: context)
     }
 
     /// Sets or clears the per-sender custom folder. Setting one always forces
     /// `disposition = .fileIntoFolders`, so a folder pick can never be
-    /// silently discarded by a trash/archive-only disposition — the same
-    /// reasoning `existingOrNew` applies to a disposition on its own.
-    public static func setCustomFolder(_ folder: String?, for address: String, in context: ModelContext) {
-        let rule = existingOrNew(address, in: context)
-        rule.customFolder = folder
-        if folder != nil { rule.disposition = .fileIntoFolders }
-        try? context.save()
+    /// silently discarded by a trash/archive-only disposition.
+    public static func setCustomFolder(_ folder: String?, for address: String, in context: ModelContext) throws {
+        try apply(.customFolder(folder), for: address, in: context)
     }
 
-    private static func existingOrNew(_ address: String, in context: ModelContext) -> SenderRule {
-        let descriptor = FetchDescriptor<SenderRule>(predicate: #Predicate { $0.address == address })
-        if let existing = try? context.fetch(descriptor).first { return existing }
-        // A disposition on its own implies "sweep this sender": you would not
-        // say where mail goes for a sender you never sweep.
-        let rule = SenderRule(address: address, decision: .sweep)
-        context.insert(rule)
-        return rule
-    }
-
-    public static func set(_ decision: RuleDecision, for address: String, in context: ModelContext) {
-        let descriptor = FetchDescriptor<SenderRule>(predicate: #Predicate { $0.address == address })
-        if let existing = try? context.fetch(descriptor).first {
-            existing.decision = decision
-        } else {
-            context.insert(SenderRule(address: address, decision: decision))
-        }
-        try? context.save()
-    }
-
-    public static func clear(for address: String, in context: ModelContext) {
-        let descriptor = FetchDescriptor<SenderRule>(predicate: #Predicate { $0.address == address })
-        for rule in (try? context.fetch(descriptor)) ?? [] {
-            context.delete(rule)
-        }
-        try? context.save()
+    public static func clear(for address: String, in context: ModelContext) throws {
+        try apply(.clear, for: address, in: context)
     }
 
     /// Rules whose sender appears in no account any more.
@@ -183,5 +207,69 @@ public struct SenderOverride: Sendable, Equatable {
         self.disposition = disposition
         self.autoUnsubscribe = autoUnsubscribe
         self.customFolder = customFolder
+    }
+}
+
+/// A change to one sender's rule, as the Senders and Sweep screens make it.
+public enum RuleEdit: Sendable, Equatable {
+    case decision(RuleDecision)
+    case disposition(CleanupPolicy.Disposition?)
+    case autoUnsubscribe(Bool?)
+    case customFolder(String?)
+    /// A whole rule in one piece, for a caller that drafts one (a description
+    /// turned into a proposal) rather than changing a single field. A folder
+    /// still implies filing into folders, as it does for `customFolder`.
+    case replace(SenderOverride)
+    case clear
+
+    /// The rule after this edit, or nil when the edit removes it.
+    ///
+    /// A disposition, unsubscribe or folder on its own implies "sweep this
+    /// sender": you would not say where mail goes for a sender you never
+    /// sweep. A folder always implies filing into folders.
+    func applied(to current: SenderOverride?) -> SenderOverride? {
+        if case .clear = self { return nil }
+        var rule = current ?? SenderOverride(decision: .sweep)
+        switch self {
+        case .decision(let decision):
+            rule.decision = decision
+        case .disposition(let disposition):
+            rule.disposition = disposition
+        case .autoUnsubscribe(let allowed):
+            rule.autoUnsubscribe = allowed
+        case .customFolder(let folder):
+            rule.customFolder = folder
+            if folder != nil { rule.disposition = .fileIntoFolders }
+        case .replace(let replacement):
+            rule = replacement
+            if rule.customFolder != nil { rule.disposition = .fileIntoFolders }
+        case .clear:
+            break
+        }
+        return rule
+    }
+}
+
+/// A rule edit that did not reach the store. Nothing was changed.
+public struct RuleSaveError: LocalizedError, Equatable {
+    public let address: String
+    public let underlying: String
+
+    public var errorDescription: String? {
+        "Grokbox couldn't save the rule for \(address), so nothing changed. \(underlying)"
+    }
+}
+
+extension SenderOverride {
+    public init(rule: SenderRule) {
+        self.init(decision: rule.decision, disposition: rule.disposition,
+                  autoUnsubscribe: rule.autoUnsubscribeOverride, customFolder: rule.customFolder)
+    }
+
+    func write(to rule: SenderRule) {
+        rule.decision = decision
+        rule.disposition = disposition
+        rule.autoUnsubscribeOverride = autoUnsubscribe
+        rule.customFolder = customFolder
     }
 }
