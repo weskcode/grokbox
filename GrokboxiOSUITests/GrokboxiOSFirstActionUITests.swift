@@ -52,6 +52,31 @@ final class GrokboxiOSFirstActionUITests: XCTestCase {
         wait(archive, 30)
     }
 
+    func testCardsStayReachableAtTheLargestAccessibilityTextSize() {
+        app.terminate()
+        app.launchArguments = ["--reset", "--demo", "--stub-model", "--onboard",
+                               "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        runSetupToDone()
+        let tick = app.buttons["tickCandidate"].firstMatch
+        for _ in 0..<4 where !tick.isHittable { app.swipeUp() }
+        XCTAssertTrue(tick.isHittable, "tick control unreachable at the largest text size")
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "done-step-accessibility-xxxl"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
+    func testDoneStepScreenshotAtDefaultSize() {
+        runSetupToDone()
+        app.buttons["inspectCandidate"].firstMatch.tap()
+        wait(app.staticTexts["Applying it in Sweep saves a rule for this address in every account."])
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "done-step-inspected-default"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
     func testNotNowRemovesTheCardAndTickingIsUndoable() {
         runSetupToDone()
         let before = app.buttons.matching(identifier: "skipCandidate").count
