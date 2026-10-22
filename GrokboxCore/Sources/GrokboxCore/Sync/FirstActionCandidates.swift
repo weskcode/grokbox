@@ -39,11 +39,10 @@ public enum FirstActionCandidates {
 
 extension CleanupPlan {
     /// The plan with only these senders ticked, for opening Sweep on the
-    /// senders chosen in setup. A selection that matches nothing in the plan
-    /// (the mailbox changed since) leaves the plan as it was rather than
-    /// unticking everything.
+    /// senders chosen in setup. A chosen sender that has left the plan (the
+    /// mailbox changed since) is simply absent: nothing else gets ticked in
+    /// its place.
     public func ticking(only addresses: Set<String>) -> CleanupPlan {
-        guard items.contains(where: { addresses.contains($0.cluster.address) }) else { return self }
         var ticked = self
         ticked.items = items.map { item in
             var item = item

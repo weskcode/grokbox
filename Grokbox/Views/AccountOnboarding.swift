@@ -229,7 +229,7 @@ struct AccountOnboarding: View {
             VStack(alignment: .leading, spacing: 14) {
                 if let result {
                     VStack(alignment: .leading, spacing: 6) {
-                        row("Messages indexed", indexedText(result.coverage))
+                        row("Messages indexed", indexedText(result))
                         row("Senders found", result.senders.formatted())
                         row("Bulk senders", "\(result.bulkSenders.formatted()) — \(result.bulkMessages.formatted()) messages")
                         if result.read > 0 { row("Read by the on-device model", result.read.formatted()) }
@@ -252,9 +252,9 @@ struct AccountOnboarding: View {
         }
     }
 
-    private func indexedText(_ coverage: IndexCoverage) -> String {
-        if case .partial(let indexed, let total) = coverage { return "\(indexed.formatted()) of \(total.formatted())" }
-        return coverage.indexed.formatted()
+    private func indexedText(_ result: Result) -> String {
+        if case .partial(let indexed, let total) = result.coverage { return "\(indexed.formatted()) of \(total.formatted())" }
+        return result.indexed.formatted()
     }
 
     private func coverageNote(_ coverage: IndexCoverage) -> String? {
@@ -308,7 +308,7 @@ struct AccountOnboarding: View {
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(name).font(.headline)
-                Text("\(item.cluster.category.label) → \(item.folder)").font(.caption2)
+                Text("\(item.cluster.category.label) → \(destination(item))").font(.caption2)
                     .padding(.horizontal, 6).padding(.vertical, 1).background(.quaternary, in: Capsule())
             }
             Text(item.cluster.address).font(.caption).foregroundStyle(.secondary)
@@ -337,6 +337,14 @@ struct AccountOnboarding: View {
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(isTicked ? Color.accentColor : Color.secondary.opacity(0.3)))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("firstActionCard")
+    }
+
+    private func destination(_ item: CleanupPlan.Item) -> String {
+        switch item.disposition {
+        case .fileIntoFolders: item.folder
+        case .archiveOnly: "Archive"
+        case .trash: "Trash"
+        }
     }
 
     private func candidateCounts(_ item: CleanupPlan.Item) -> String {
@@ -489,6 +497,7 @@ struct AccountOnboarding: View {
         inspecting = nil
         previews = [:]
         wasStopped = false
+        state.firstSweepSelection = nil
         Task {
             await state.engine.indexNow(account: account, mode: .full(limit: depth))
             if case .failed(let why) = state.engine.phase {
@@ -513,9 +522,22 @@ struct AccountOnboarding: View {
         let profiles = (try? modelContext.fetch(FetchDescriptor<SenderProfile>(predicate: #Predicate { $0.accountID == id }))) ?? []
         let bulk = profiles.filter { $0.verdict == .bulk }
         let read = (try? modelContext.fetchCount(FetchDescriptor<MessageHeader>(predicate: #Predicate { $0.accountID == id && $0.summary != nil }))) ?? 0
-        let mailboxTotal = account.kind.isDemo ? nil : probe?.inboxMessages
         return Result(indexed: indexed, senders: profiles.count,
                       bulkSenders: bulk.count, bulkMessages: bulk.reduce(0) { $0 + $1.pendingUIDs.count }, read: read,
-                      coverage: IndexCoverage(indexed: indexed, mailboxTotal: mailboxTotal))
+                      coverage: indexCoverage())
+    }
+
+    /// What the index reached, judged against the mailbox size seen while
+    /// indexing rather than the earlier probe, which mail may have outgrown.
+    private func indexCoverage() -> IndexCoverage {
+        let id = account.id
+        let snapshots = (try? modelContext.fetch(FetchDescriptor<MailboxSnapshot>(predicate: #Predicate { $0.accountID == id }))) ?? []
+        guard let main = snapshots.max(by: { $0.messageCountOnServer < $1.messageCountOnServer }) else {
+            return IndexCoverage(indexed: 0, mailboxTotal: nil)
+        }
+        let name = main.mailbox
+        let indexed = (try? modelContext.fetchCount(FetchDescriptor<MessageHeader>(
+            predicate: #Predicate { $0.accountID == id && $0.mailbox == name }))) ?? 0
+        return IndexCoverage(indexed: indexed, mailboxTotal: main.messageCountOnServer)
     }
 }

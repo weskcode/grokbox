@@ -114,11 +114,10 @@ struct FirstSweepTickingTests {
         #expect(ticked.items.map(\.isEnabled) == [false, true, false])
     }
 
-    @Test func aSelectionMissingFromThePlanChangesNothing() {
+    @Test func aChosenSenderThatLeftThePlanTicksNothingInItsPlace() {
         let original = plan(["a@x.com", "b@x.com"])
-        let ticked = original.ticking(only: ["gone@x.com"])
-        #expect(ticked.items.map(\.isEnabled) == [true, true])
-        #expect(original.ticking(only: []).items.map(\.isEnabled) == [true, true])
+        #expect(original.ticking(only: ["gone@x.com"]).items.map(\.isEnabled) == [false, false])
+        #expect(original.ticking(only: ["a@x.com", "gone@x.com"]).items.map(\.isEnabled) == [true, false])
     }
 
     @Test func tickingKeepsEverythingElseAsItWas() {

@@ -51,6 +51,8 @@ struct SweepView: View {
         .onChange(of: profiles.map(\.updatedAt)) { plan = buildPlan() }
         .onChange(of: rules.count) { plan = buildPlan() }
         .onChange(of: state.policy) { plan = buildPlan() }
+        .onChange(of: state.firstSweepSelection) { _, selection in if selection != nil { plan = buildPlan() } }
+        .onDisappear { state.firstSweepSelection = nil }
         .sheet(item: $drillDown) { profile in
             SenderMessagesSheet(profile: profile, account: account, state: state)
         }
