@@ -89,7 +89,10 @@ struct RootView: View {
             UpdatePasswordSheet(account: account, state: state)
         }
         .sheet(item: $onboardingAccount) { account in
-            AccountOnboarding(account: account, state: state)
+            AccountOnboarding(account: account, state: state) { target in
+                selectedAccountID = target.id
+                section = .sweep
+            }
         }
         .onChange(of: state.pendingCommand) { _, command in
             guard let command else { return }

@@ -71,6 +71,10 @@ final class AppState {
     /// this and clears it.
     var pendingCommand: AppCommand?
 
+    /// Senders ticked at the end of setup, for Sweep to open with. Kept in
+    /// memory only and cleared as soon as the person ticks or applies anything.
+    var firstSweepSelection: FirstSweepSelection?
+
     /// Replaces a stored password after proving it works. The account record
     /// and its history are untouched; only the Keychain item changes.
     func updatePassword(for account: MailAccount, password: String) async throws {
@@ -498,6 +502,11 @@ enum NotificationService {
 
 
 /// Everything the Mailbox menu can ask for.
+struct FirstSweepSelection: Equatable {
+    var accountID: UUID
+    var addresses: Set<String>
+}
+
 enum AppCommand: Equatable {
     case readNewMail, tidyUp, index, summarize, stop, settings, addAccount
 }

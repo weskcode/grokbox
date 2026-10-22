@@ -97,6 +97,38 @@ struct FirstActionCandidatesTests {
     }
 }
 
+struct FirstSweepTickingTests {
+    private func plan(_ addresses: [String]) -> CleanupPlan {
+        CleanupPlan(items: addresses.map { address in
+            let cluster = SenderCluster(
+                address: address, displayName: address, domain: "example.com", mailbox: "INBOX",
+                uids: [1, 2], unreadUIDs: [], messageCount: 2, unreadCount: 2, flaggedCount: 0, sweptCount: 0,
+                newest: .now, oldest: .now, hasUnsubscribeLink: false, unsubscribeValue: nil,
+                supportsOneClickUnsubscribe: false, everContacted: false, sampleSubjects: [], category: .newsletter)
+            return CleanupPlan.Item(cluster: cluster)
+        })
+    }
+
+    @Test func ticksOnlyTheChosenSenders() {
+        let ticked = plan(["a@x.com", "b@x.com", "c@x.com"]).ticking(only: ["b@x.com"])
+        #expect(ticked.items.map(\.isEnabled) == [false, true, false])
+    }
+
+    @Test func aSelectionMissingFromThePlanChangesNothing() {
+        let original = plan(["a@x.com", "b@x.com"])
+        let ticked = original.ticking(only: ["gone@x.com"])
+        #expect(ticked.items.map(\.isEnabled) == [true, true])
+        #expect(original.ticking(only: []).items.map(\.isEnabled) == [true, true])
+    }
+
+    @Test func tickingKeepsEverythingElseAsItWas() {
+        let original = plan(["a@x.com", "b@x.com"])
+        let ticked = original.ticking(only: ["a@x.com"])
+        #expect(ticked.items.map(\.cluster) == original.items.map(\.cluster))
+        #expect(ticked.items.map(\.folder) == original.items.map(\.folder))
+    }
+}
+
 struct IndexCoverageTests {
     @Test func fullyIndexedIsComplete() {
         #expect(IndexCoverage(indexed: 900, mailboxTotal: 900) == .complete(indexed: 900))

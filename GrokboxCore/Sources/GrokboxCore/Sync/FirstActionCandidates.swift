@@ -37,6 +37,23 @@ public enum FirstActionCandidates {
     }
 }
 
+extension CleanupPlan {
+    /// The plan with only these senders ticked, for opening Sweep on the
+    /// senders chosen in setup. A selection that matches nothing in the plan
+    /// (the mailbox changed since) leaves the plan as it was rather than
+    /// unticking everything.
+    public func ticking(only addresses: Set<String>) -> CleanupPlan {
+        guard items.contains(where: { addresses.contains($0.cluster.address) }) else { return self }
+        var ticked = self
+        ticked.items = items.map { item in
+            var item = item
+            item.isEnabled = addresses.contains(item.cluster.address)
+            return item
+        }
+        return ticked
+    }
+}
+
 /// How much of the mailbox the index covers, so setup can say what its counts
 /// are counts of.
 public enum IndexCoverage: Sendable, Equatable {

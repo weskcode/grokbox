@@ -38,7 +38,12 @@ struct PhoneRootView: View {
         }
         .sheet(isPresented: $addingAccount) { PhoneAddAccountView(onCreate: { onboarding = $0 }) }
         .sheet(item: $onboarding) { account in
-            NavigationStack { AccountOnboarding(account: account, state: state) }
+            NavigationStack {
+                AccountOnboarding(account: account, state: state) { target in
+                    scope = target.id
+                    tab = .sweep
+                }
+            }
         }
         // Background only: the Face ID sheet itself makes the scene inactive,
         // so locking on inactive would re-lock behind every unlock.
@@ -48,6 +53,7 @@ struct PhoneRootView: View {
         .task {
             Log.note("phone root appeared")
             await state.startIfNeeded()
+            if LaunchOptions.current.onboard, let first = accounts.first { onboarding = first }
             if let recovery = AppEnvironment.opened.recovery { state.storeRecovery = recovery }
         }
     }

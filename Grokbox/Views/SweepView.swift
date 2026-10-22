@@ -29,6 +29,9 @@ struct SweepView: View {
         var plan = CleanupPlan.suggested(from: assessed, rules: ruleMap, policy: state.policy,
                                          overrides: RuleStore.overrides(in: modelContext))
         GuardPreview.apply(to: &plan, policy: state.policy, account: account, in: modelContext)
+        if let selection = state.firstSweepSelection, selection.accountID == account.id {
+            plan = plan.ticking(only: selection.addresses)
+        }
         return plan
     }
 
@@ -74,6 +77,7 @@ struct SweepView: View {
                     Button {
                         var toApply = plan
                         toApply.items = toApply.items.map { var i = $0; i.markRead = markRead; return i }
+                        state.firstSweepSelection = nil
                         Task {
                             await state.executor.apply(toApply, to: account, policy: state.policy)
                             self.plan = buildPlan()
@@ -171,6 +175,7 @@ struct SweepView: View {
     }
 
     private func setAll(_ enabled: Bool) {
+        state.firstSweepSelection = nil
         guard var current = plan else { return }
         current.items = current.items.map { var i = $0; i.isEnabled = enabled; return i }
         plan = current
@@ -180,6 +185,7 @@ struct SweepView: View {
         Binding(
             get: { plan?.items.first { $0.id == id }?.isEnabled ?? false },
             set: { newValue in
+                state.firstSweepSelection = nil
                 guard var current = plan, let index = current.items.firstIndex(where: { $0.id == id }) else { return }
                 current.items[index].isEnabled = newValue
                 plan = current

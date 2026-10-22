@@ -11,6 +11,9 @@ import GrokboxCore
 struct AccountOnboarding: View {
     let account: MailAccount
     let state: AppState
+    /// Opens Sweep for this account. Setup itself never moves mail; ticked
+    /// senders only decide what Sweep opens with.
+    var onReviewInSweep: ((MailAccount) -> Void)?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
@@ -20,6 +23,17 @@ struct AccountOnboarding: View {
     @State private var policy = CleanupPolicy.gentle
     @State private var runError: String?
     @State private var result: Result?
+    @State private var candidates: [FirstActionCandidate] = []
+    @State private var ticked: Set<String> = []
+    @State private var skipped: Set<String> = []
+    @State private var inspecting: String?
+    @State private var previews: [String: CandidatePreview] = [:]
+    @State private var wasStopped = false
+
+    enum CandidatePreview {
+        case ready(RulePreview)
+        case failed(String)
+    }
 
     enum Step { case connected, depth, approach, running, done }
 
@@ -37,6 +51,7 @@ struct AccountOnboarding: View {
         var bulkSenders: Int
         var bulkMessages: Int
         var read: Int
+        var coverage: IndexCoverage
     }
 
     var body: some View {
@@ -90,7 +105,7 @@ struct AccountOnboarding: View {
     private var footer: some View {
         HStack {
             if step == .running, state.isBusy {
-                Button("Stop") { state.stop() }
+                Button("Stop") { wasStopped = true; state.stop() }
             }
             Spacer()
             switch step {
@@ -106,7 +121,17 @@ struct AccountOnboarding: View {
             case .running:
                 EmptyView()
             case .done:
-                Button("Show me the Brief") { dismiss() }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+                if result == nil {
+                    Button("Later") { dismiss() }
+                    Button("Try again") { start() }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+                } else if !ticked.isEmpty, onReviewInSweep != nil {
+                    Button("Later") { dismiss() }
+                    Button("Review in Sweep (\(ticked.count))") { reviewInSweep() }
+                        .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("reviewInSweep")
+                } else {
+                    Button("Show me the Brief") { dismiss() }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+                }
             }
         }
         .padding(16)
@@ -200,28 +225,218 @@ struct AccountOnboarding: View {
     }
 
     private var doneStep: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            if let result {
-                VStack(alignment: .leading, spacing: 6) {
-                    row("Messages indexed", result.indexed.formatted())
-                    row("Senders found", result.senders.formatted())
-                    row("Bulk senders", "\(result.bulkSenders.formatted()) — \(result.bulkMessages.formatted()) messages")
-                    if result.read > 0 { row("Read by the on-device model", result.read.formatted()) }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                if let result {
+                    VStack(alignment: .leading, spacing: 6) {
+                        row("Messages indexed", indexedText(result.coverage))
+                        row("Senders found", result.senders.formatted())
+                        row("Bulk senders", "\(result.bulkSenders.formatted()) — \(result.bulkMessages.formatted()) messages")
+                        if result.read > 0 { row("Read by the on-device model", result.read.formatted()) }
+                    }
+                    .padding(12)
+                    .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
+                    if result.bulkSenders > 0 {
+                        Text("Sweep has a plan waiting for you covering \(result.bulkMessages.formatted()) messages. Nothing runs until you approve it.")
+                            .font(.callout).fixedSize(horizontal: false, vertical: true)
+                    }
+                    firstActions(result)
                 }
-                .padding(12)
-                .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
-                if result.bulkSenders > 0 {
-                    Text("Sweep has a plan waiting for you covering \(result.bulkMessages.formatted()) messages. Nothing runs until you approve it.")
-                        .font(.callout).fixedSize(horizontal: false, vertical: true)
+                if let runError {
+                    Label(runError, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            if let runError {
-                Label(runError, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer()
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(16)
+    }
+
+    private func indexedText(_ coverage: IndexCoverage) -> String {
+        if case .partial(let indexed, let total) = coverage { return "\(indexed.formatted()) of \(total.formatted())" }
+        return coverage.indexed.formatted()
+    }
+
+    private func coverageNote(_ coverage: IndexCoverage) -> String? {
+        switch coverage {
+        case .complete: nil
+        case .partial(let indexed, let total):
+            "Based on the newest \(indexed.formatted()) of \(total.formatted()) messages. You can go deeper later."
+        case .unknown(let indexed): "Based on the \(indexed.formatted()) messages Grokbox has read."
+        }
+    }
+
+    // MARK: - First actions
+
+    @ViewBuilder
+    private func firstActions(_ result: Result) -> some View {
+        let shown = candidates.filter { !skipped.contains($0.id) }
+        VStack(alignment: .leading, spacing: 8) {
+            if wasStopped {
+                Label("Stopped. Showing what was indexed so far.", systemImage: "stop.circle").font(.caption).foregroundStyle(.secondary)
+            }
+            if candidates.isEmpty {
+                Text(result.coverage.isPartial
+                     ? "Nothing obvious to tidy in the newest \(result.coverage.indexed.formatted()) messages."
+                     : "Nothing obvious to tidy in these \(result.coverage.indexed.formatted()) messages.")
+                    .font(.callout).fixedSize(horizontal: false, vertical: true)
+                Text("Senders still lists everyone Grokbox found.").font(.caption).foregroundStyle(.secondary)
+            } else {
+                Text("Places to start").font(.headline).accessibilityAddTraits(.isHeader)
+                if let note = coverageNote(result.coverage) {
+                    Text(note).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                Text("Unread is a signal, not proof you don't want these.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                if shown.isEmpty {
+                    Text("You skipped these. They are all still in Sweep.").font(.callout)
+                }
+                ForEach(shown) { candidateCard($0) }
+            }
+            if state.model == nil {
+                Text("Categories are rule-based because no on-device model is available.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            Text("Nothing has changed in your mailbox.").font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func candidateCard(_ candidate: FirstActionCandidate) -> some View {
+        let item = candidate.item
+        let name = item.cluster.displayName
+        let isTicked = ticked.contains(item.cluster.address)
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(name).font(.headline)
+                Text("\(item.cluster.category.label) → \(item.folder)").font(.caption2)
+                    .padding(.horizontal, 6).padding(.vertical, 1).background(.quaternary, in: Capsule())
+            }
+            Text(item.cluster.address).font(.caption).foregroundStyle(.secondary)
+            Text(candidateCounts(item)).font(.callout)
+            Text(candidate.reason).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if let subject = item.cluster.sampleSubjects.first {
+                Text("Latest: \(subject)").font(.caption).foregroundStyle(.tertiary).lineLimit(1)
+            }
+            if inspecting == item.cluster.address { inspector(item) }
+            HStack {
+                Button { toggleTick(item.cluster.address) } label: {
+                    Label(isTicked ? "In first sweep" : "Add to first sweep", systemImage: isTicked ? "checkmark.circle.fill" : "plus.circle")
+                }
+                .accessibilityLabel(isTicked ? "Remove \(name) from first sweep" : "Add \(name) to first sweep")
+                .accessibilityIdentifier("tickCandidate")
+                Button(inspecting == item.cluster.address ? "Hide" : "Inspect") { toggleInspect(item.cluster.address) }
+                    .accessibilityLabel(inspecting == item.cluster.address ? "Hide details for \(name)" : "Inspect \(name)")
+                    .accessibilityIdentifier("inspectCandidate")
+                Button("Not now") { skip(item.cluster.address) }
+                    .accessibilityLabel("Not now for \(name)")
+                    .accessibilityIdentifier("skipCandidate")
+            }
+            .buttonStyle(.bordered).controlSize(.small)
+        }
+        .padding(10)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(isTicked ? Color.accentColor : Color.secondary.opacity(0.3)))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("firstActionCard")
+    }
+
+    private func candidateCounts(_ item: CleanupPlan.Item) -> String {
+        "\(item.cluster.pendingUIDs.count.formatted()) in inbox · \(item.heldCount.formatted()) held back"
+    }
+
+    @ViewBuilder
+    private func inspector(_ item: CleanupPlan.Item) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            switch previews[item.cluster.address] {
+            case .ready(let preview):
+                if let effect = preview.accounts.first(where: { $0.accountID == account.id }), case .sweeps(let sweep) = effect.outcome {
+                    Text(effectLine(sweep)).font(.caption).fixedSize(horizontal: false, vertical: true)
+                    sampleLines("Would move", sweep.affected)
+                    sampleLines("Held back", sweep.held)
+                    ForEach(Array(preview.irreversibleEffects.enumerated()), id: \.offset) { _, effect in
+                        Label(irreversibleLine(effect), systemImage: "exclamationmark.triangle")
+                            .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                    }
+                } else {
+                    Text("Nothing from this sender would move right now.").font(.caption)
+                }
+                Text("Applying it in Sweep saves a rule for this address in every account.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            case .failed(let why):
+                Label("Could not preview this sender. \(why)", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+            case nil:
+                ProgressView().controlSize(.small)
+            }
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func effectLine(_ sweep: RulePreview.Sweep) -> String {
+        let count = "\(sweep.affectedCount.formatted()) message\(sweep.affectedCount == 1 ? "" : "s")"
+        switch sweep.disposition {
+        case .fileIntoFolders: return "Files \(count) in \(sweep.folder). Nothing is deleted."
+        case .archiveOnly: return "Archives \(count). Nothing is deleted."
+        case .trash: return "Moves \(count) to Trash."
+        }
+    }
+
+    private func irreversibleLine(_ effect: RulePreview.IrreversibleEffect) -> String {
+        switch effect {
+        case .unsubscribeRequest: "Also sends a one-click unsubscribe request. That cannot be undone."
+        case .movesToTrash: "Trash is recoverable only until the provider empties it."
+        }
+    }
+
+    @ViewBuilder
+    private func sampleLines(_ title: String, _ messages: [RulePreview.Message]) -> some View {
+        if !messages.isEmpty {
+            Text(title).font(.caption.weight(.semibold))
+            ForEach(messages) { message in
+                Text(message.heldReason.map { "\(message.subject) (\($0))" } ?? message.subject)
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+        }
+    }
+
+    private func toggleTick(_ address: String) {
+        if ticked.contains(address) { ticked.remove(address) } else { ticked.insert(address) }
+    }
+
+    private func skip(_ address: String) {
+        skipped.insert(address)
+        ticked.remove(address)
+        if inspecting == address { inspecting = nil }
+    }
+
+    private func toggleInspect(_ address: String) {
+        if inspecting == address { inspecting = nil; return }
+        inspecting = address
+        guard previews[address] == nil else { return }
+        do {
+            previews[address] = .ready(try RulePreview.make(address: address, edit: .decision(.sweep),
+                                                            policy: state.policy, in: modelContext))
+        } catch {
+            previews[address] = .failed(error.localizedDescription)
+        }
+    }
+
+    private func reviewInSweep() {
+        state.firstSweepSelection = FirstSweepSelection(accountID: account.id, addresses: ticked)
+        dismiss()
+        onReviewInSweep?(account)
+    }
+
+    private func loadCandidates() {
+        let assessed = SenderProfileBuilder.assessments(for: account, in: modelContext)
+        var plan = CleanupPlan.suggested(from: assessed, rules: RuleStore.all(in: modelContext), policy: state.policy,
+                                         overrides: RuleStore.overrides(in: modelContext))
+        GuardPreview.apply(to: &plan, policy: state.policy, account: account, in: modelContext)
+        let advice = Dictionary(SenderProfileBuilder.profiles(for: account, in: modelContext).map {
+            ($0.address, (recommendation: $0.recommendation, reason: $0.recommendationReason))
+        }, uniquingKeysWith: { first, _ in first })
+        candidates = FirstActionCandidates.select(from: plan, advice: advice)
     }
 
     private func row(_ label: String, _ value: String) -> some View {
@@ -267,6 +482,13 @@ struct AccountOnboarding: View {
         state.policy = policy
         step = .running
         runError = nil
+        result = nil
+        candidates = []
+        ticked = []
+        skipped = []
+        inspecting = nil
+        previews = [:]
+        wasStopped = false
         Task {
             await state.engine.indexNow(account: account, mode: .full(limit: depth))
             if case .failed(let why) = state.engine.phase {
@@ -280,6 +502,7 @@ struct AccountOnboarding: View {
             }
             state.refreshDigest([account])
             result = summarise()
+            loadCandidates()
             step = .done
         }
     }
@@ -290,7 +513,9 @@ struct AccountOnboarding: View {
         let profiles = (try? modelContext.fetch(FetchDescriptor<SenderProfile>(predicate: #Predicate { $0.accountID == id }))) ?? []
         let bulk = profiles.filter { $0.verdict == .bulk }
         let read = (try? modelContext.fetchCount(FetchDescriptor<MessageHeader>(predicate: #Predicate { $0.accountID == id && $0.summary != nil }))) ?? 0
+        let mailboxTotal = account.kind.isDemo ? nil : probe?.inboxMessages
         return Result(indexed: indexed, senders: profiles.count,
-                      bulkSenders: bulk.count, bulkMessages: bulk.reduce(0) { $0 + $1.pendingUIDs.count }, read: read)
+                      bulkSenders: bulk.count, bulkMessages: bulk.reduce(0) { $0 + $1.pendingUIDs.count }, read: read,
+                      coverage: IndexCoverage(indexed: indexed, mailboxTotal: mailboxTotal))
     }
 }

@@ -38,6 +38,7 @@ struct PhoneSweepView: View {
                 } else if let plan, !plan.isEmpty {
                     Button {
                         let toApply = plan
+                        state.firstSweepSelection = nil
                         Task { await state.executor.apply(toApply, to: account, policy: state.policy); self.plan = buildPlan() }
                     } label: {
                         Label("Archive \(plan.enabledMessageCount.formatted()) messages from \(plan.enabledItems.count) senders", systemImage: "wind")
@@ -80,12 +81,16 @@ struct PhoneSweepView: View {
         var plan = CleanupPlan.suggested(from: assessed, rules: ruleMap, policy: state.policy,
                                          overrides: RuleStore.overrides(in: modelContext))
         GuardPreview.apply(to: &plan, policy: state.policy, account: account, in: modelContext)
+        if let selection = state.firstSweepSelection, selection.accountID == account.id {
+            plan = plan.ticking(only: selection.addresses)
+        }
         return plan
     }
 
     private func binding(for id: String) -> Binding<Bool> {
         Binding(get: { plan?.items.first { $0.id == id }?.isEnabled ?? false },
-                set: { on in guard var current = plan, let i = current.items.firstIndex(where: { $0.id == id }) else { return }
+                set: { on in state.firstSweepSelection = nil
+                       guard var current = plan, let i = current.items.firstIndex(where: { $0.id == id }) else { return }
                        current.items[i].isEnabled = on; plan = current })
     }
 }
