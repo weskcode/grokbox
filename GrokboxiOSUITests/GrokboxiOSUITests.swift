@@ -133,7 +133,7 @@ final class GrokboxiOSUITests: XCTestCase {
         for note in ["This sender", "The last sweep", "No sweep", "A sweep is running"] {
             XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", note)).firstMatch.exists, "a result, not a note: \(note)")
         }
-        scrollTo("label MATCHES '[1-9][0-9,]* confirmed moved'")
+        scrollTo("label MATCHES 'Confirmed moved, [1-9][0-9,]*'")
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = "sender-detail-last-sweep"
         shot.lifetime = .keepAlways
