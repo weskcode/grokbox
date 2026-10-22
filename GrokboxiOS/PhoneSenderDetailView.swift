@@ -78,7 +78,7 @@ struct PhoneSenderDetailView: View {
         .navigationTitle(profile.displayName.isEmpty ? profile.address : profile.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: EvidenceKey(profiles: sameAddress.count, messages: profile.messageCount, inInbox: profile.pendingCount,
-                              indexedAt: profile.updatedAt, rule: rules.first?.summary, policy: state.policy)) { load() }
+                              indexedAt: profile.updatedAt, rule: rules.first.map(SenderOverride.init(rule:)), policy: state.policy)) { load() }
     }
 
     private func row(_ label: String, _ count: Int) -> some View {
@@ -92,7 +92,7 @@ struct PhoneSenderDetailView: View {
         var messages: Int
         var inInbox: Int
         var indexedAt: Date
-        var rule: String?
+        var rule: SenderOverride?
         var policy: CleanupPolicy
     }
 
