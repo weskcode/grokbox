@@ -186,3 +186,43 @@ public struct SweepNowText: Sendable, Equatable {
     }
 }
 
+/// The last sweep's outcome for one sender, in words. It reads the in-memory
+/// `SweepReport` only: it covers the last sweep since the app opened, not a
+/// history, and the report does not say which account it ran on.
+public struct LastSweepText: Sendable, Equatable {
+    public struct Count: Sendable, Equatable {
+        public var value: Int
+        public var label: String
+    }
+
+    public static let heading = "Last sweep since Grokbox opened"
+    public static let footnote = "Only the last sweep in this session, not a history."
+    public static let unknownMeaning = "Unknown: the connection broke off or the sweep was stopped, so it may or may not have moved."
+
+    /// Empty when there is nothing to count; `note` then says why.
+    public var counts: [Count]
+    public var note: String?
+
+    /// `sharedAcrossAccounts`: the sender is indexed in more than one account.
+    public init(report: SweepReport, address: String, mailbox: String, sharedAcrossAccounts: Bool) {
+        if sharedAcrossAccounts {
+            (counts, note) = ([], "This sender is in more than one account and the report does not say which one the sweep ran on, so no result is shown.")
+        } else if let sender = report.senders.first(where: { $0.address == address && $0.mailbox == mailbox }) {
+            if report.ending == .running {
+                (counts, note) = ([], "A sweep is running now.")
+            } else {
+                let tally = report.tally(of: sender)
+                counts = [Count(value: tally.confirmed, label: "confirmed moved"), Count(value: tally.failed, label: "failed"),
+                          Count(value: tally.held, label: "held in the inbox"), Count(value: tally.unknown, label: "unknown")]
+                note = switch report.ending {
+                case .completed, .running: nil
+                case .stopped: "The sweep was stopped before it finished."
+                case .refused: "The sweep was refused before it finished."
+                case .interrupted: "The connection broke off before the sweep finished."
+                }
+            }
+        } else {
+            (counts, note) = ([], "No sweep of this sender since Grokbox opened.")
+        }
+    }
+}

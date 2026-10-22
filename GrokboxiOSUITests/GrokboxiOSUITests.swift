@@ -95,6 +95,48 @@ final class GrokboxiOSUITests: XCTestCase {
         wait(app.buttons["Clear rule"], 10)
     }
 
+    private func scrollTo(_ predicate: String, file: StaticString = #filePath, line: UInt = #line) {
+        let element = app.staticTexts.matching(NSPredicate(format: predicate)).firstMatch
+        for _ in 0..<10 where !element.exists || !element.isHittable { app.swipeUp() }
+        XCTAssertTrue(element.exists, "missing: \(predicate)", file: file, line: line)
+    }
+
+    /// After a sweep, the sender's detail shows the last sweep's outcome and says it is not a history.
+    func testSenderDetailShowsTheLastSweepOutcome() {
+        app.tabBars.buttons["Sweep"].tap()
+        wait(app.navigationBars["Sweep"], 20)
+        let apply = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Archive'")).firstMatch
+        wait(apply, 90)
+        apply.tap()
+        let running = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'Applying' OR label CONTAINS[c] 'Connecting'")).firstMatch
+        _ = running.waitForExistence(timeout: 5)
+        XCTAssertTrue(running.waitForNonExistence(timeout: 120), "the sweep finishes")
+
+        app.tabBars.buttons["Senders"].tap()
+        wait(app.navigationBars["Senders"], 20)
+        // Rules and the sweep report are not per account, so a sender indexed in several demo
+        // accounts shows no tally. Walk the list until a sender with a single account.
+        var shown = false
+        for index in 1...15 where !shown {
+            let row = app.cells.element(boundBy: index)
+            guard row.waitForExistence(timeout: 10) else { break }
+            row.tap()
+            scrollTo("label == 'Last sweep since Grokbox opened'")
+            scrollTo("label BEGINSWITH 'Only the last sweep'")
+            let shared = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'This sender is in more than one account'")).firstMatch
+            if shared.exists {
+                app.navigationBars.buttons.element(boundBy: 0).tap()
+                continue
+            }
+            shown = true
+            let shot = XCTAttachment(screenshot: app.screenshot())
+            shot.name = "sender-detail-last-sweep"
+            shot.lifetime = .keepAlways
+            add(shot)
+        }
+        XCTAssertTrue(shown, "some sender is in a single account")
+    }
+
     /// A sender opens to the evidence behind its recommendation, and the list says what the index covers.
     func testSenderDetailShowsEvidenceAndIndexCoverage() {
         app.tabBars.buttons["Senders"].tap()
@@ -109,11 +151,6 @@ final class GrokboxiOSUITests: XCTestCase {
         add(list)
 
         row.tap()
-        func scrollTo(_ predicate: String, file: StaticString = #filePath, line: UInt = #line) {
-            let element = app.staticTexts.matching(NSPredicate(format: predicate)).firstMatch
-            for _ in 0..<8 where !element.exists || !element.isHittable { app.swipeUp() }
-            XCTAssertTrue(element.exists, "missing: \(predicate)", file: file, line: line)
-        }
         wait(app.staticTexts.matching(NSPredicate(format: "label ==[c] 'In the index'")).firstMatch, 30)
         let top = XCTAttachment(screenshot: app.screenshot())
         top.name = "sender-detail-top"

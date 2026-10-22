@@ -71,6 +71,7 @@ struct PhoneSenderDetailView: View {
                     Text("Couldn't work out what a sweep would do.").foregroundStyle(.secondary)
                 }
             }
+            lastSweepSection
             Section("Rule scope") {
                 Text(evidence.scope(accountNames: Dictionary(accounts.map { ($0.id, $0.displayName) }, uniquingKeysWith: { a, _ in a })))
             }
@@ -85,6 +86,24 @@ struct PhoneSenderDetailView: View {
         LabeledContent(label) { Text(count.formatted()).monospacedDigit() }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(count.formatted()) \(label.lowercased())")
+    }
+
+    @ViewBuilder private var lastSweepSection: some View {
+        let text = LastSweepText(report: state.executor.lastReport, address: profile.address,
+                                 mailbox: profile.cluster.mailbox, sharedAcrossAccounts: !evidence.otherAccounts.isEmpty)
+        Section {
+            if text.counts.isEmpty {
+                if let note = text.note { Text(note).foregroundStyle(.secondary) }
+            } else {
+                ForEach(text.counts, id: \.label) { count in row(count.label.prefix(1).uppercased() + count.label.dropFirst(), count.value) }
+                if let note = text.note { Text(note) }
+                if text.counts.last?.value ?? 0 > 0 { Text(LastSweepText.unknownMeaning).font(.caption).foregroundStyle(.secondary) }
+            }
+        } header: {
+            Text(LastSweepText.heading)
+        } footer: {
+            Text(LastSweepText.footnote)
+        }
     }
 
     private struct EvidenceKey: Equatable {

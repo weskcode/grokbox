@@ -174,6 +174,31 @@ struct SenderMessagesSheet: View {
         }
     }
 
+    private var lastSweepBlock: some View {
+        let text = LastSweepText(report: state.executor.lastReport, address: profile.address,
+                                 mailbox: profile.cluster.mailbox, sharedAcrossAccounts: !evidence.otherAccounts.isEmpty)
+        return VStack(alignment: .leading, spacing: 4) {
+            Text(LastSweepText.heading).font(.subheadline.weight(.semibold)).accessibilityAddTraits(.isHeader)
+            if text.counts.isEmpty {
+                if let note = text.note { Text(note).font(.callout).foregroundStyle(.secondary) }
+            } else {
+                HStack(alignment: .top, spacing: 24) {
+                    ForEach(text.counts, id: \.label) { count in
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(count.value.formatted()).font(.title3.monospacedDigit())
+                            Text(count.label).font(.caption).foregroundStyle(.secondary)
+                        }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("\(count.value.formatted()) \(count.label)")
+                    }
+                }
+                if let note = text.note { Text(note).font(.callout) }
+                if text.counts.last?.value ?? 0 > 0 { Text(LastSweepText.unknownMeaning).font(.caption).foregroundStyle(.secondary) }
+            }
+            Text(LastSweepText.footnote).font(.caption).foregroundStyle(.tertiary)
+        }
+    }
+
     private var recommendationCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -184,6 +209,7 @@ struct SenderMessagesSheet: View {
             Text("Type: \(profile.categoryEvidence.isEmpty ? profile.category.label : profile.categoryEvidence). Swept mail goes to \(profile.category.folderName).")
                 .font(.caption).foregroundStyle(.secondary)
             if account != nil { sweepNowBlock }
+            lastSweepBlock
             Text(evidence.scope(accountNames: Dictionary(accounts.map { ($0.id, $0.displayName) }, uniquingKeysWith: { a, _ in a })))
                 .font(.caption).foregroundStyle(.secondary)
 
