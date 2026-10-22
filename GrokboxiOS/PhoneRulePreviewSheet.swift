@@ -70,7 +70,7 @@ struct PhoneRulePreviewSheet: View {
                 } else if let preview {
                     if changedSincePreview {
                         Section {
-                            Label("Mail changed since you opened this. Review it again before saving.", systemImage: "exclamationmark.triangle")
+                            Label("This sender’s mail or rule changed since you opened this. Nothing was saved; review it again.", systemImage: "exclamationmark.triangle")
                                 .foregroundStyle(.orange)
                         }
                     }

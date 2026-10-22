@@ -223,6 +223,29 @@ struct RulePreviewTests {
         #expect(RuleStore.overrides(in: context)[address] == stored)
     }
 
+    @Test func aRuleChangedWhileThePreviewIsOpenIsNoticed() throws {
+        let container = ModelContainer.grokboxTestContainer()
+        let context = container.mainContext
+        seed(bulk(8), for: account("Home", in: context), in: context)
+        try RuleStore.set(.sweep, for: address, in: context)
+        let draft = RuleEdit.replace(SenderOverride(decision: .sweep, disposition: .trash))
+        let shown = try RulePreview.make(address: address, edit: draft, policy: .thorough, in: context, now: now)
+
+        // A second window keeps the sender while the sheet is open.
+        try RuleStore.set(.keep, for: address, in: context)
+        let afterKeep = try RulePreview.make(address: address, edit: draft, policy: .thorough, in: context, now: now)
+        #expect(!afterKeep.sameEffect(as: shown), "saving the draft would overwrite the newer keep rule")
+
+        // Or clears it.
+        try RuleStore.clear(for: address, in: context)
+        let afterClear = try RulePreview.make(address: address, edit: draft, policy: .thorough, in: context, now: now)
+        #expect(!afterClear.sameEffect(as: shown), "saving the draft would resurrect a cleared rule")
+        #expect(!afterClear.sameEffect(as: afterKeep))
+
+        let again = try RulePreview.make(address: address, edit: draft, policy: .thorough, in: context, now: now)
+        #expect(again.sameEffect(as: afterClear), "an unchanged rule still matches")
+    }
+
     @Test func sameEffectSeesChangesOutsideTheCappedSamples() throws {
         let container = ModelContainer.grokboxTestContainer()
         let context = container.mainContext

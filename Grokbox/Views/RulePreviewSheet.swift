@@ -94,7 +94,7 @@ struct RulePreviewSheet: View {
         } else if let preview {
             VStack(alignment: .leading, spacing: 12) {
                 if changedSincePreview {
-                    Label("Mail changed since you opened this. Review it again before saving.", systemImage: "exclamationmark.triangle")
+                    Label("This sender’s mail or rule changed since you opened this. Nothing was saved; review it again.", systemImage: "exclamationmark.triangle")
                         .font(.callout).foregroundStyle(.orange)
                 }
                 GroupBox("Scope") {
