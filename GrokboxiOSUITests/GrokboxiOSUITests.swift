@@ -125,9 +125,8 @@ final class GrokboxiOSUITests: XCTestCase {
         wait(search, 20)
         search.tap()
         search.typeText("Recipe")
-        let sender = app.staticTexts["Recipe of the Day"].firstMatch
-        wait(sender, 30)
-        sender.tap()
+        wait(app.staticTexts["Recipe of the Day"].firstMatch, 30)
+        app.cells.element(boundBy: 1).tap()   // the index bar is the first cell
         wait(app.navigationBars["Recipe of the Day"], 20)
         scrollTo("label == 'Last sweep since Grokbox opened'")
         scrollTo("label BEGINSWITH 'Only the last sweep'")
