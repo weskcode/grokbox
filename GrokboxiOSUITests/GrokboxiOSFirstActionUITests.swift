@@ -9,7 +9,10 @@ final class GrokboxiOSFirstActionUITests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments = ["--reset", "--demo", "--stub-model", "--onboard"]
+    }
+
+    private func launch(_ extra: [String] = []) {
+        app.launchArguments = ["--reset", "--demo", "--stub-model", "--onboard"] + extra
         app.launch()
     }
 
@@ -17,7 +20,8 @@ final class GrokboxiOSFirstActionUITests: XCTestCase {
         XCTAssertTrue(element.waitForExistence(timeout: seconds), "missing: \(element)", file: file, line: line)
     }
 
-    private func runSetupToDone() {
+    private func runSetupToDone(_ extra: [String] = []) {
+        launch(extra)
         wait(app.buttons["Continue"])
         app.buttons["Continue"].tap()
         wait(app.buttons["Continue"])
@@ -53,11 +57,7 @@ final class GrokboxiOSFirstActionUITests: XCTestCase {
     }
 
     func testCardsStayReachableAtTheLargestAccessibilityTextSize() {
-        app.terminate()
-        app.launchArguments = ["--reset", "--demo", "--stub-model", "--onboard",
-                               "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
-        app.launch()
-        runSetupToDone()
+        runSetupToDone(["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"])
         let tick = app.buttons["tickCandidate"].firstMatch
         for _ in 0..<4 where !tick.isHittable { app.swipeUp() }
         XCTAssertTrue(tick.isHittable, "tick control unreachable at the largest text size")
