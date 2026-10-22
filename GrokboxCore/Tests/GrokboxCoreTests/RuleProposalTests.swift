@@ -115,6 +115,18 @@ struct RuleProposalTests {
                 "the policy, not the rule, sends this promotion to Trash")
     }
 
+    @Test func trashingWarnsWhenAnyCategoryNewlyGoesToTrash() {
+        let mixed = [KnownSender(category: .promotion, supportsOneClickUnsubscribe: false),
+                     KnownSender(category: .newsletter, supportsOneClickUnsubscribe: false)]
+        #expect(draft(propose("Trash them", rule: Self.plain, indexed: mixed, policy: .thorough))?.irreversibleEffects
+                == [CleanupPolicy.Disposition.trash.warning].compactMap { $0 },
+                "Thorough already trashes the promotions, but the newsletters are new to Trash")
+        #expect(draft(propose("Trash them", rule: Self.plain, indexed: [], policy: .thorough))?.irreversibleEffects.count == 1,
+                "with nothing indexed, every category is assumed")
+        #expect(draft(propose("Trash them", rule: Self.plain, indexed: Self.promotion, policy: .thorough))?.irreversibleEffects.isEmpty == true,
+                "a promotion under Thorough was already going to Trash")
+    }
+
     @Test func archiveOnlyIsTheAppsOwnWording() {
         #expect(draft(propose("Set them to Archive only", rule: Self.plain))?.after.disposition == .archiveOnly)
         #expect(draft(propose("Archive only", rule: Self.plain))?.after.disposition == .archiveOnly)
@@ -206,6 +218,14 @@ struct RuleProposalTests {
         #expect(draft(propose("File them under \"Reading\"", rule: Self.archived, folders: both))?.after.customFolder == "Reading")
         #expect(draft(propose("File them under \"reading\"", rule: Self.archived, folders: both))?.after.customFolder == "reading")
         #expect(propose("File them under \"READING\"", rule: Self.archived, folders: both) == .unresolved(.ambiguousFolder(["Reading", "reading"])))
+    }
+
+    @Test func aQuotedNameKeepsItsExactSpacing() {
+        let folders = Self.folders.union(["Reading  2026", "Reading 2026"])
+        #expect(draft(propose("File them in \"Reading  2026\"", rule: Self.archived, folders: folders))?.after.customFolder == "Reading  2026")
+        #expect(draft(propose("File them in \"Reading 2026\"", rule: Self.archived, folders: folders))?.after.customFolder == "Reading 2026")
+        #expect(propose("File them in \"Reading   2026\"", rule: Self.archived, folders: folders)
+                == .unresolved(.ambiguousFolder(["Reading  2026", "Reading 2026"])), "no exact match, and the fold matches both")
     }
 
     @Test func aQuotedFolderNameCanHaveSeveralWords() {

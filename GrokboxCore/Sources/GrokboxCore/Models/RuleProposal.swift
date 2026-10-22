@@ -7,8 +7,8 @@ struct KnownSender: Sendable, Equatable {
     var supportsOneClickUnsubscribe: Bool
 }
 
-/// The outcome of reading a typed request about one sender, such as "file
-/// them under Reading": a draft for the person to preview and confirm, or a
+/// The outcome of reading a typed request about one sender, such as `file
+/// them under "Reading"`: a draft for the person to preview and confirm, or a
 /// reason nothing was drafted. Neither writes anything.
 ///
 /// The sender is fixed by where the request was typed (that sender's own
@@ -58,8 +58,9 @@ enum RuleProposal: Sendable, Equatable {
 
         var targets: Set<Target> = []
         var failures: [Unresolved] = []
+        let quoted = quotedTail(of: request)
         for reading in readings {
-            switch target(for: reading, folders: folders) {
+            switch target(for: reading, typed: quoted, folders: folders) {
             case .success(let target): targets.insert(target)
             case .failure(let failure): failures.append(failure.reason)
             }
@@ -150,8 +151,22 @@ enum RuleProposal: Sendable, Equatable {
 
     /// Resolves the folder the person typed, spelled as they typed it, and
     /// checks the folder it resolves to as well.
-    private static func target(for reading: RequestForm.Reading, folders: Set<String>) -> Result<Target, Failure> {
-        guard let typed = reading.folder else { return .success(Target(folder: nil, change: reading.change)) }
+    /// The text between the closing pair of quotes, exactly as typed. A
+    /// folder name always ends the sentence, so this is the name every
+    /// folder reading found; splitting on spaces would lose its spacing.
+    private static func quotedTail(of request: String) -> String? {
+        var text = Substring(request.trimmingCharacters(in: .whitespacesAndNewlines))
+        while let last = text.last, ".!".contains(last) { text.removeLast() }
+        guard let close = text.last, "\"\u{201D}".contains(close) else { return nil }
+        text.removeLast()
+        guard let open = text.lastIndex(where: { "\"\u{201C}".contains($0) }) else { return nil }
+        return String(text[text.index(after: open)...])
+    }
+
+    private static func target(for reading: RequestForm.Reading, typed exact: String?,
+                               folders: Set<String>) -> Result<Target, Failure> {
+        guard let read = reading.folder else { return .success(Target(folder: nil, change: reading.change)) }
+        let typed = exact ?? read
         if isReserved(typed) { return .failure(Failure(reason: .reservedFolder(typed))) }
         let loose = folders.filter { fold($0) == fold(typed) }
         let folder: String
@@ -328,18 +343,19 @@ private struct Effects {
     var categories: Set<SenderCategory>
     var policy: CleanupPolicy
 
-    private func trashes(_ rule: SenderOverride?) -> Bool {
+    private func trashes(_ rule: SenderOverride?, _ category: SenderCategory) -> Bool {
         guard let rule, rule.decision == .sweep else { return false }
-        if let disposition = rule.disposition { return disposition == .trash }
-        let possible = categories.isEmpty ? Set(SenderCategory.allCases) : categories
-        return possible.contains { policy.disposition(for: $0) == .trash }
+        return (rule.disposition ?? policy.disposition(for: category)) == .trash
     }
 
     /// Effects a person cannot take back from Activity alone: the provider
     /// may empty its Trash, and an unsubscribe request cannot be unsent.
     func irreversible(from before: SenderOverride?, to after: SenderOverride) -> [String] {
         var effects: [String] = []
-        if trashes(after), !trashes(before) {
+        // Per category: under a policy that already trashes promotions, a
+        // rule that trashes a sender's newsletters too is still new.
+        let possible = categories.isEmpty ? Set(SenderCategory.allCases) : categories
+        if possible.contains(where: { trashes(after, $0) && !trashes(before, $0) }) {
             effects.append(CleanupPolicy.Disposition.trash.warning ?? "Moves mail to Trash.")
         }
         // An explicit yes skips the policy's own qualifying checks, so it is
