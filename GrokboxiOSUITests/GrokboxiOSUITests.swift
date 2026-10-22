@@ -106,7 +106,9 @@ final class GrokboxiOSUITests: XCTestCase {
         app.tabBars.buttons["Sweep"].tap()
         wait(app.navigationBars["Sweep"], 20)
         let apply = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Archive'")).firstMatch
-        wait(apply, 90)
+        // Larger text pushes the button below the fold of a lazy list.
+        for _ in 0..<8 where !apply.waitForExistence(timeout: 20) { app.swipeUp() }
+        wait(apply, 10)
         apply.tap()
         let running = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'Applying' OR label CONTAINS[c] 'Connecting'")).firstMatch
         _ = running.waitForExistence(timeout: 5)
