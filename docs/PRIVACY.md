@@ -46,6 +46,10 @@ In the app's sandboxed container (`~/Library/Containers/com.wesleykeetch.grokbox
 - **Contacted addresses**: addresses you have sent to, learned from your Sent
   folder.
 - **Rules and the action log**: your decisions and what Grokbox did with them.
+- **Conversation status choices**: when you set a conversation's status
+  yourself (needs reply, waiting or resolved), the conversation id, that
+  status, the newest message at the time and the date. They are included in
+  data export. Nothing in the app sets them yet.
 
 In the macOS Keychain: your mail passwords, under service
 `com.wesleykeetch.grokbox.imap` — and, only if you set one up, your Jev API

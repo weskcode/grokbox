@@ -444,6 +444,11 @@ final class AppState {
         try? context.delete(model: SenderProfile.self, where: profiles)
         try? context.delete(model: MailboxSnapshot.self, where: snapshots)
         try? context.delete(model: CleanupAction.self, where: actions)
+        do {
+            try ConversationCorrection.deleteAll(accountID: id, in: context)
+        } catch {
+            Log.note("removing \(account.displayName) left its conversation corrections: \(error.localizedDescription)")
+        }
         context.delete(account)
         try? context.save()
         // A rule about a sender no remaining account receives from is dead.
@@ -468,6 +473,11 @@ final class AppState {
         try? context.delete(model: SenderProfile.self, where: allProfiles)
         try? context.delete(model: InboxDigest.self, where: allDigests)
         try? context.delete(model: SentMessageHeader.self, where: #Predicate<SentMessageHeader> { _ in true })
+        do {
+            try ConversationCorrection.deleteAll(in: context)
+        } catch {
+            Log.note("erase left conversation corrections: \(error.localizedDescription)")
+        }
         for rule in (try? context.fetch(FetchDescriptor<SenderRule>())) ?? [] { context.delete(rule) }
         for contact in (try? context.fetch(FetchDescriptor<ContactedAddress>())) ?? [] { context.delete(contact) }
         for action in (try? context.fetch(FetchDescriptor<CleanupAction>())) ?? [] { context.delete(action) }

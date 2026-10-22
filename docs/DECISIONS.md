@@ -569,3 +569,33 @@ uncertain in the UI, alias management, and using Sent rows to bridge
 conversations in the Brief.
 
 ---
+
+---
+
+## ADR-0026 — Responsibility is derived from mail; only the user's choice is stored
+
+**Status:** accepted
+
+The Brief will show whether a conversation needs a reply from you, is waiting
+on someone else, or is resolved. `ConversationResponsibility.derive` computes
+that from the conversation's messages each time, so duplicate fetches and
+out-of-order sync always converge on the same answer. It never infers that a
+conversation is finished: a receipt, an automatic reply or your own latest
+message leaves it waiting at most. Only you resolve a conversation. When a
+fact it needs is missing or two copies of a message disagree, it says
+uncertain and names the reason instead of guessing.
+
+The only stored part is a choice you make: `ConversationCorrection`, keyed by
+account and conversation identity (ADR-0025). A choice holds until someone
+writes again; automatic mail does not clear it. Schema 1.3.0 adds the entity
+with no stage. Unlike ADR-0021's optional-property case, a new entity was
+proven by a test that writes a 1.2.0 store on disk and reopens it through the
+production plan with rules and history intact. Account removal and Erase
+delete corrections and log a failed delete instead of hiding it. Export
+version 2 carries them; import restores only those whose account exists in
+the store, since account ids do not carry across installs. Version 1 files
+still import.
+
+**Not done here:** fetching Auto-Submitted and Precedence, separating To from
+Cc, a Sent coverage date, the adapter from stored mail to the rules, and the
+Brief UI. Until those land, every tracked conversation would read uncertain.

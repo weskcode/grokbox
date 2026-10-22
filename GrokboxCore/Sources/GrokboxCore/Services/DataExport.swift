@@ -2,7 +2,8 @@ import Foundation
 import SwiftData
 
 /// Everything Grokbox knows that came from *you* — accounts (never passwords),
-/// rules, the action log, and saved digests — as one JSON document.
+/// rules, the action log, saved digests and conversation corrections — as one
+/// JSON document.
 ///
 /// Message headers and sender profiles are deliberately not included: they are
 /// a cache of your mail server and can be rebuilt by re-indexing. What cannot
@@ -10,12 +11,14 @@ import SwiftData
 public enum DataExport {
     public struct Document: Codable, Sendable, Equatable {
         public var format = "grokbox-export"
-        public var version = 1
+        public var version = 2
         public var exportedAt: Date
         public var accounts: [Account]
         public var rules: [Rule]
         public var actions: [Action]
         public var digests: [Digest]
+        /// Absent from version 1 files.
+        public var corrections: [Correction]?
 
         public struct Account: Codable, Sendable, Equatable {
             public var id: UUID, displayName: String, username: String, host: String, port: Int
@@ -28,6 +31,10 @@ public enum DataExport {
             public var id: UUID, accountID: UUID, performedAt: Date, kind: String
             public var senderAddress: String, senderName: String, mailbox: String
             public var uids: [UInt32], labelName: String?, isUndoable: Bool, undoneAt: Date?, errorMessage: String?
+        }
+        public struct Correction: Codable, Sendable, Equatable {
+            public var accountID: UUID, conversationID: String, state: String
+            public var anchorMessageKey: String, anchorDate: Date, correctedAt: Date
         }
         public struct Digest: Codable, Sendable, Equatable {
             public var id: UUID, generatedAt: Date, scopeKey: String, scopeLabel: String
@@ -42,6 +49,7 @@ public enum DataExport {
         let rules = try context.fetch(FetchDescriptor<SenderRule>(sortBy: [SortDescriptor(\.createdAt)]))
         let actions = try context.fetch(FetchDescriptor<CleanupAction>(sortBy: [SortDescriptor(\.performedAt)]))
         let digests = try context.fetch(FetchDescriptor<InboxDigest>(sortBy: [SortDescriptor(\.generatedAt)]))
+        let corrections = try context.fetch(FetchDescriptor<ConversationCorrection>(sortBy: [SortDescriptor(\.key)]))
         return Document(
             exportedAt: now,
             accounts: accounts.map {
@@ -57,7 +65,11 @@ public enum DataExport {
                 .init(id: $0.id, generatedAt: $0.generatedAt, scopeKey: $0.scopeKey, scopeLabel: $0.scopeLabel,
                       headline: $0.headline, narrative: $0.narrative, topItems: $0.topItems,
                       needsYou: $0.needsYou, worthKnowing: $0.worthKnowing, dueSoon: $0.dueSoon,
-                      overdue: $0.overdue, quickWins: $0.quickWins) })
+                      overdue: $0.overdue, quickWins: $0.quickWins) },
+            corrections: corrections.map {
+                .init(accountID: $0.accountID, conversationID: String($0.key.dropFirst($0.accountID.uuidString.count + 1)),
+                      state: $0.stateRaw, anchorMessageKey: $0.anchorMessageKey, anchorDate: $0.anchorDate,
+                      correctedAt: $0.correctedAt) })
     }
 
     public static func encode(_ document: Document) throws -> Data {
@@ -94,6 +106,24 @@ public enum DataExport {
             imported += 1
         }
         try context.save()
+        return imported
+    }
+
+    /// Restores corrections for accounts that exist in this store. Account ids
+    /// are not carried across installs, so the rest would never apply; they are
+    /// skipped rather than stored as orphans.
+    @MainActor
+    @discardableResult
+    public static func importCorrections(from document: Document, into context: ModelContext) throws -> Int {
+        let accounts = Set(try context.fetch(FetchDescriptor<MailAccount>()).map(\.id))
+        var imported = 0
+        for item in document.corrections ?? [] where accounts.contains(item.accountID) {
+            guard let state = ConversationResponsibility.State(rawValue: item.state) else { continue }
+            try ConversationCorrection.record(state, accountID: item.accountID, conversationID: item.conversationID,
+                                              anchorMessageKey: item.anchorMessageKey, anchorDate: item.anchorDate,
+                                              now: item.correctedAt, in: context)
+            imported += 1
+        }
         return imported
     }
 }

@@ -7,6 +7,8 @@ All notable changes to Grokbox are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- Data export version 2 also carries conversation status choices. Version 1
+  files still import.
 - STARTTLS, which Proton Mail Bridge uses by default and many servers offer
   on port 143. The upgrade is required: if a server does not offer it,
   refuses it, sends data before encryption starts, or presents a certificate

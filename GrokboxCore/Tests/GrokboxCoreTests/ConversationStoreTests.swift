@@ -236,6 +236,7 @@ struct ConversationStoreTests {
         #expect(try context.fetchCount(FetchDescriptor<SenderProfile>()) == 1)
         #expect(try context.fetchCount(FetchDescriptor<InboxDigest>()) == 1)
         #expect(try context.fetchCount(FetchDescriptor<SentMessageHeader>()) == 0)
+        #expect(try context.fetchCount(FetchDescriptor<ConversationCorrection>()) == 0)
 
         let unknown = BriefRanking.rank(messages, contactCounts: [:])
         #expect(unknown.count == 2, "an upgraded store groups exactly as before until reply ids are fetched")
