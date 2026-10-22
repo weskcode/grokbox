@@ -166,7 +166,7 @@ public enum ConversationResponsibility {
         case .ordered(let messages): ordered = messages
         }
         let human = ordered.indices.filter { ordered[$0].automation == .human }
-        guard let l = human.last else { return nil }
+        guard ordered.contains(where: mightTrack), let l = human.last else { return nil }
 
         let u = human.last { ordered[$0].isFromUser == true }
         let automaticReplies = ordered.indices
@@ -221,7 +221,12 @@ public enum ConversationResponsibility {
             return result(.uncertain, .othersReplied(author: latest.author, latest.date))
         }
 
-        if latest.isFromUser == false, latest.isAddressedToUser == false, u != nil {
+        let openTask = inbound.contains { i in
+            guard ordered[i].isAddressedToUser == true, case .read(.needsYou, let action) = ordered[i].reading,
+                  !replyActions.contains(action) else { return false }
+            return !human.contains { $0 > i && ordered[$0].isFromUser == true }
+        }
+        if latest.isFromUser == false, latest.isAddressedToUser == false, u != nil, !openTask {
             return result(.uncertain, .copiedOnReply(latest.date, readAction(latest)))
         }
 
@@ -240,10 +245,6 @@ public enum ConversationResponsibility {
 
         if latest.isFromUser == true { return result(.waiting, .youReplied(latest.date)) }
 
-        let openTask = inbound.contains { i in
-            guard case .read(.needsYou, let action) = ordered[i].reading, !replyActions.contains(action) else { return false }
-            return !human.contains { $0 > i && ordered[$0].isFromUser == true }
-        }
         if u != nil, !openTask, case .read(let importance, _) = latest.reading, importance != .needsYou {
             return result(.waiting, .acknowledged(latest.date))
         }
@@ -253,7 +254,9 @@ public enum ConversationResponsibility {
         }
 
         let task = inbound.reversed().lazy.compactMap { i -> ActionType? in
-            if case .read(.needsYou, let action) = ordered[i].reading, !replyActions.contains(action) { action } else { nil }
+            guard ordered[i].isAddressedToUser == true, case .read(.needsYou, let action) = ordered[i].reading,
+                  !replyActions.contains(action) else { return nil }
+            return action
         }.first
         return result(.uncertain, .unmatched(task: task))
     }
@@ -282,37 +285,30 @@ public enum ConversationResponsibility {
 
     /// Collapses copies of one message and orders by (date, key), a total order,
     /// so the same set always gives the same list. Copies must agree on every
-    /// fact; a reader result may only fill in where another copy has none.
+    /// fact. Their reader outcomes are taken as a set: an unread copy adds
+    /// nothing, a completed read settles rules-only or failed reads, and any
+    /// other mix disagrees.
     static func canonical(_ messages: [Message]) -> Collapsed {
-        var byKey: [String: Message] = [:]
-        var conflicts: [String] = []
-        for message in messages {
-            guard let key = message.key else { continue }
-            guard let existing = byKey[key] else { byKey[key] = message; continue }
-            switch merge(existing, message) {
-            case let merged?: byKey[key] = merged
-            case nil: conflicts.append(key)
-            }
-        }
-        if let key = conflicts.min() { return .conflict(key) }
-        return .ordered(byKey.values.sorted { $0.date != $1.date ? $0.date < $1.date : ($0.key ?? "") < ($1.key ?? "") })
+        let merged = Dictionary(grouping: messages.filter { $0.key != nil }, by: { $0.key ?? "" }).mapValues(merge)
+        if let key = merged.filter({ $0.value == nil }).keys.min() { return .conflict(key) }
+        return .ordered(merged.values.compactMap { $0 }.sorted {
+            $0.date != $1.date ? $0.date < $1.date : ($0.key ?? "") < ($1.key ?? "")
+        })
     }
 
-    private static func merge(_ a: Message, _ b: Message) -> Message? {
-        var aFacts = a, bFacts = b
-        aFacts.reading = .notRead
-        bFacts.reading = .notRead
-        guard aFacts == bFacts else { return nil }
-        // Less reader information yields to more: not read, then rules or a
-        // failed model read, then a completed read. Rules and a failed read
-        // are different outcomes, so they disagree.
-        switch (a.reading, b.reading) {
-        case (.notRead, _): return b
-        case (_, .notRead): return a
-        case (.read, .rulesOnly), (.read, .modelFailed): return a
-        case (.rulesOnly, .read), (.modelFailed, .read): return b
-        default: return a.reading == b.reading ? a : nil
+    private static func merge(_ copies: [Message]) -> Message? {
+        guard var facts = copies.first else { return nil }
+        facts.reading = .notRead
+        guard copies.allSatisfy({ var f = $0; f.reading = .notRead; return f == facts }) else { return nil }
+        var outcomes: [Reading] = []
+        for reading in copies.map(\.reading) where reading != .notRead && !outcomes.contains(reading) {
+            outcomes.append(reading)
         }
+        let reads = outcomes.filter { if case .read = $0 { true } else { false } }
+        let settled = reads.isEmpty ? outcomes : reads
+        guard settled.count <= 1 else { return nil }
+        facts.reading = settled.first ?? .notRead
+        return facts
     }
 
     private static func missingFact(in messages: [Message]) -> MissingFact? {

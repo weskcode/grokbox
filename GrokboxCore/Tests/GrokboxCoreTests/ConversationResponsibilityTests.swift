@@ -333,6 +333,25 @@ struct ConversationResponsibilityTests {
         #expect(r?.lastFromUser == nil)
     }
 
+    @Test func trackingIsDecidedAfterCopiesMerge() {
+        func single(_ readings: CR.Reading...) -> CR.Conversation {
+            CR.Conversation(identity: .headers, sentCoverage: .since(day(-30)),
+                            messages: readings.map { inbound("a", 0, parent: .root, reading: $0) })
+        }
+        #expect(derive(single(.notRead, .rulesOnly)) == nil)
+        #expect(derive(single(.notRead, .read(.worthKnowing, .none))) == nil)
+        #expect(derive(single(.read(.needsYou, .reply), .rulesOnly, .modelFailed))?.state == .needsReply)
+    }
+
+    @Test func onlyDirectTasksStayOpen() {
+        let ccTask = derive(chain([mine("a", 0), inbound("b", 1, to: false, reading: .read(.needsYou, .pay)),
+                                   inbound("c", 2, reading: .read(.worthKnowing, .none))]))
+        #expect(ccTask?.reason == .acknowledged(day(2)))
+        let ccNoteAfterTask = derive(chain([mine("a", 0), inbound("b", 1, reading: .read(.needsYou, .pay)),
+                                            inbound("c", 2, to: false, reading: .read(.worthKnowing, .none))]))
+        #expect(ccNoteAfterTask?.reason == .unmatched(task: .pay))
+    }
+
     // MARK: Corrections
 
     private let resolvedAtB = CR.Correction(state: .resolved, anchorKey: "b", anchorDate: day(1))
