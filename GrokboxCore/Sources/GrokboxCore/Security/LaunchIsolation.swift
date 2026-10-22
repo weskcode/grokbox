@@ -41,6 +41,8 @@ public enum LaunchIsolation {
     public struct Refusal: LocalizedError, Equatable, Sendable {
         public let surface: Surface
 
+        public init(surface: Surface) { self.surface = surface }
+
         public var errorDescription: String? {
             "Demo-only mode: Grokbox will not use \(surface.rawValue). This build works only on its built-in demo mailboxes."
         }
