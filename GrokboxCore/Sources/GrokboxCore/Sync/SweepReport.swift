@@ -2,9 +2,6 @@ import Foundation
 
 /// What a sweep did to each message it was asked about, for the run that just
 /// finished. Held in memory only; nothing here is stored.
-///
-/// Built from typed results as the executor goes, never from the wording of
-/// an error, so every planned message lands in exactly one class.
 public struct SweepReport: Equatable, Sendable {
     public enum Class: Equatable, Sendable {
         /// The server confirmed every write the sweep needed for it.
@@ -27,33 +24,34 @@ public struct SweepReport: Equatable, Sendable {
         case interrupted
     }
 
-    /// One server write: what it asked for and what came back. Anything
-    /// requested that is neither confirmed nor unsure was refused.
+    /// One server write: what it asked for and what came back.
     public struct Write: Equatable, Sendable {
         public var requested: [UInt32]
         public var confirmed: [UInt32]
-        /// Cut off without an answer, so they may or may not have changed.
-        public var unsure: [UInt32]
+        /// The write was cut off rather than refused, so anything requested and
+        /// not confirmed may or may not have changed. When false, the server
+        /// refused the rest and it did not change.
+        public var cutOff: Bool
 
-        public init(requested: [UInt32], confirmed: [UInt32], unsure: [UInt32] = []) {
+        public init(requested: [UInt32], confirmed: [UInt32], cutOff: Bool = false) {
             self.requested = requested
             self.confirmed = confirmed
-            self.unsure = unsure
+            self.cutOff = cutOff
         }
     }
 
     public enum Unsubscribe: Equatable, Sendable {
         case notRequested
-        /// Asked for, but the sweep did not send it: the sender's mail did not
-        /// all go, the run ended first, or it already went to this address
-        /// earlier in the run.
+        /// Asked for, but the sweep did not send it: a write for this sender
+        /// failed, all of its mail was held, the run ended first, or it already
+        /// went to this address earlier in the run.
         case notSent
         /// The sender's server acknowledged it.
         case accepted
         /// Nothing usable went out or the server said no; left for the user.
         case declined
-        /// It may have gone out, and no answer came back.
-        case unanswered
+        /// Grokbox cannot tell whether it went out or whether the sender got it.
+        case unknown
     }
 
     public struct Sender: Equatable, Sendable {
@@ -102,19 +100,21 @@ public struct SweepReport: Equatable, Sendable {
         self.ending = ending
     }
 
-    /// Precedence per message: held, then any unsure write (unknown), then any
-    /// refused write (failed), then confirmed by every step it needed. A
-    /// message with a step still missing is decided by how the run ended.
+    /// Precedence per message: held, then a write that was cut off before
+    /// confirming it (unknown), then a write that refused it (failed), then
+    /// confirmed by every step it needed. A message with a step still missing
+    /// is decided by how the run ended.
     public func classes(of sender: Sender) -> [UInt32: Class] {
         let held = Set(sender.held)
-        let writes = sender.writes.map { (requested: Set($0.requested), confirmed: Set($0.confirmed), unsure: Set($0.unsure)) }
+        let writes = sender.writes.map { (requested: Set($0.requested), confirmed: Set($0.confirmed), cutOff: $0.cutOff) }
         var out: [UInt32: Class] = [:]
         for uid in sender.planned where out[uid] == nil {
+            let unconfirmed = writes.filter { $0.requested.contains(uid) && !$0.confirmed.contains(uid) }
             out[uid] = if held.contains(uid) {
                 .held
-            } else if writes.contains(where: { $0.unsure.contains(uid) }) {
+            } else if unconfirmed.contains(where: \.cutOff) {
                 .unknown
-            } else if writes.contains(where: { $0.requested.contains(uid) && !$0.confirmed.contains(uid) }) {
+            } else if !unconfirmed.isEmpty {
                 .failed
             } else if let steps = sender.steps, steps > 0, writes.count(where: { $0.confirmed.contains(uid) }) >= steps {
                 .confirmed

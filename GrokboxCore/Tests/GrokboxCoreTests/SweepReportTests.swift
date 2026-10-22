@@ -32,9 +32,15 @@ struct SweepReportTests {
         #expect(report.tally == tally(confirmed: 2, failed: 2))
         #expect(report.classes(of: refused) == [1: .confirmed, 2: .confirmed, 3: .failed, 4: .failed])
 
-        let cutOff = sender([1, 2, 3, 4], writes: [Write(requested: [1, 2, 3, 4], confirmed: [1, 2], unsure: [3, 4])])
+        let cutOff = sender([1, 2, 3, 4], writes: [Write(requested: [1, 2, 3, 4], confirmed: [1, 2], cutOff: true)])
         #expect(SweepReport(senders: [cutOff], ending: .interrupted).tally == tally(confirmed: 2, unknown: 2),
                 "a lost acknowledgment is unknown, not failed")
+    }
+
+    @Test func chunksAfterACutOffChunkAreUnknownNotFailed() {
+        let chunked = sender([1, 2, 3], writes: [Write(requested: [1, 2, 3], confirmed: [1], cutOff: true)])
+        let report = SweepReport(senders: [chunked], ending: .interrupted)
+        #expect(report.classes(of: chunked) == [1: .confirmed, 2: .unknown, 3: .unknown])
     }
 
     @Test func aStopMidSweepLeavesUnreachedMailUnknown() {
@@ -75,12 +81,12 @@ struct SweepReportTests {
         #expect(SweepReport(senders: [stillRunning], ending: .running).tally == tally(unknown: 2))
     }
 
-    @Test func anUnansweredUnsubscribeIsCountedApartFromTheMail() {
-        let swept = sender([1, 2], writes: [Write(requested: [1, 2], confirmed: [1, 2])], unsubscribe: .unanswered)
+    @Test func anUnsubscribeWithAnUnknownOutcomeIsCountedApartFromTheMail() {
+        let swept = sender([1, 2], writes: [Write(requested: [1, 2], confirmed: [1, 2])], unsubscribe: .unknown)
         let other = sender([3], writes: [Write(requested: [3], confirmed: [3])], unsubscribe: .accepted)
         let report = SweepReport(senders: [swept, other], ending: .completed)
         #expect(report.tally == tally(confirmed: 3))
-        #expect(report.count(.unanswered) == 1)
+        #expect(report.count(.unknown) == 1)
         #expect(report.count(.accepted) == 1)
         #expect(report.count(.declined) == 0)
     }
@@ -94,7 +100,7 @@ struct SweepReportTests {
     @Test func everyPlannedMessageLandsInExactlyOneClass() {
         let senders = [
             sender([1, 2, 3, 3], held: [1], writes: [Write(requested: [2, 3], confirmed: [2])]),
-            sender([1, 2, 3, 4], steps: 2, writes: [Write(requested: [1, 2, 3, 4], confirmed: [1, 2], unsure: [3])]),
+            sender([1, 2, 3, 4], steps: 2, writes: [Write(requested: [1, 2, 3, 4], confirmed: [1, 2], cutOff: true)]),
             sender([7, 8], steps: nil)
         ]
         for ending in [SweepReport.Ending.running, .completed, .stopped, .refused, .interrupted] {
@@ -110,8 +116,6 @@ struct SweepReportTests {
     }
 }
 
-/// The report the executor builds, against the in-process demo server. Demo
-/// accounts never touch the Keychain.
 @MainActor
 @Suite(.serialized)
 struct SweepReportExecutorTests {
@@ -170,7 +174,64 @@ struct SweepReportExecutorTests {
         #expect(report.ending == .completed)
         #expect(report.tally.held >= plan.items.count, "each sender keeps its newest")
         #expect(report.tally.failed == 0)
-        #expect(report.tally.total == plannedCount(plan))
+        #expect(report.tally.unknown == 0)
+        #expect(report.tally.confirmed == plannedCount(plan) - report.tally.held)
+    }
+
+    private func report(flavor: DemoMailbox.Flavor, disposition: CleanupPolicy.Disposition, markRead: Bool,
+                        stopAtFirstWrite: Bool) async throws -> (SweepReport, CleanupPlan) {
+        let (container, account, mailbox, base) = try await setUp(flavor: flavor)
+        defer { DemoRegistry.shared.remove(account.id) }
+        let plan = CleanupPlan(items: base.items.map {
+            CleanupPlan.Item(cluster: $0.cluster, archive: true, markRead: markRead, disposition: disposition)
+        })
+        let executor = PlanExecutor(modelContext: container.mainContext)
+        if stopAtFirstWrite {
+            mailbox.beforeWrite = { _ in await MainActor.run { executor.cancel() } }
+        }
+        await executor.apply(plan, to: account, recordRules: false, guarded: false)
+        return (executor.lastReport, plan)
+    }
+
+    @Test func theStepCountMatchesTheWritesEachDispositionMakes() async throws {
+        let generic = DemoMailbox.Flavor.generic(delimiter: "/", inboxPrefix: false)
+        let configs: [(DemoMailbox.Flavor, CleanupPolicy.Disposition, markRead: Bool, writes: Int)] = [
+            (.gmail, .fileIntoFolders, true, 3), (.gmail, .fileIntoFolders, false, 2), (.gmail, .archiveOnly, true, 2),
+            (.gmail, .trash, true, 2), (generic, .fileIntoFolders, true, 2), (generic, .archiveOnly, false, 1),
+            (generic, .trash, false, 1)
+        ]
+        for (flavor, disposition, markRead, writes) in configs {
+            let label = "\(flavor) \(disposition) markRead=\(markRead)"
+            let (clean, plan) = try await report(flavor: flavor, disposition: disposition, markRead: markRead, stopAtFirstWrite: false)
+            #expect(clean.ending == .completed, "\(label)")
+            #expect(clean.tally == SweepReport.Tally(confirmed: plannedCount(plan)), "\(label)")
+            #expect(clean.senders.allSatisfy { $0.steps == writes && $0.writes.count == writes }, "\(label)")
+
+            guard writes > 1 else { continue }
+            let (stopped, _) = try await report(flavor: flavor, disposition: disposition, markRead: markRead, stopAtFirstWrite: true)
+            let first = try #require(stopped.senders.first)
+            #expect(stopped.ending == .stopped, "\(label)")
+            #expect(stopped.tally(of: first).confirmed == 0, "\(label): the first write alone does not finish the sender")
+        }
+    }
+
+    @Test func aRefusalBeforeAnythingIsSentFailsTheSweepAndALostLineLeavesItUnknown() async throws {
+        let (container, account, mailbox, plan) = try await setUp()
+        defer { DemoRegistry.shared.remove(account.id) }
+        let cases: [(IMAPError, SweepReport.Ending)] = [
+            (.mailboxChanged, .refused), (.insecureForRemoteHost, .refused), (.startTLSUnavailable, .refused),
+            (.startTLSInjection, .refused), (.connectionClosed, .interrupted), (.timedOut("opening INBOX"), .interrupted)
+        ]
+        for (error, ending) in cases {
+            mailbox.beforeOpen = { _ in throw error }
+            let executor = PlanExecutor(modelContext: container.mainContext)
+            await executor.apply(plan, to: account, recordRules: false, guarded: false)
+            #expect(executor.lastReport.ending == ending, "\(error)")
+            let expected = ending == .refused
+                ? SweepReport.Tally(failed: plannedCount(plan))
+                : SweepReport.Tally(unknown: plannedCount(plan))
+            #expect(executor.lastReport.tally == expected, "\(error)")
+        }
     }
 
     @Test func aStopAfterTheFirstWriteLeavesTheRestUnknown() async throws {
@@ -211,18 +272,6 @@ struct SweepReportExecutorTests {
         #expect(report.tally(of: victimReport) == SweepReport.Tally(confirmed: 0, failed: victimUIDs.count, held: 0, unknown: 0))
         #expect(report.tally == SweepReport.Tally(confirmed: plannedCount(plan) - victimUIDs.count, failed: victimUIDs.count, held: 0, unknown: 0))
         #expect(victimReport.unsubscribe == .notSent)
-    }
-
-    @Test func aMailboxRefusedAtOpenFailsTheWholeSweep() async throws {
-        let (container, account, mailbox, plan) = try await setUp()
-        defer { DemoRegistry.shared.remove(account.id) }
-        mailbox.beforeOpen = { _ in throw IMAPError.mailboxChanged }
-
-        let executor = PlanExecutor(modelContext: container.mainContext)
-        await executor.apply(plan, to: account, recordRules: false, guarded: false)
-
-        #expect(executor.lastReport.ending == .refused)
-        #expect(executor.lastReport.tally == SweepReport.Tally(confirmed: 0, failed: plannedCount(plan), held: 0, unknown: 0))
     }
 
     @Test func aLostConnectionLeavesEverythingUnknown() async throws {

@@ -61,8 +61,6 @@ public final class PlanExecutor {
     /// Set by `run` when a write failed on the way rather than being refused:
     /// the connection is gone, and every later write would fail the same way.
     private var lostConnection: (any Error)?
-    /// The sender in `lastReport` that `run` is writing for.
-    private var reportIndex = 0
 
     /// How long Stop lets a write that is already on the wire finish.
     static let stopGrace: Duration = .seconds(5)
@@ -185,10 +183,7 @@ public final class PlanExecutor {
                     : SweepGuard.Verdict(allowed: item.cluster.pendingUIDs, held: [])
                 let uids = verdict.allowed
                 heldTotal += verdict.held.count
-                reportIndex = index
                 lastReport.senders[index].held = verdict.held.map(\.uid)
-                // One write per step below: mark-read, then the archive, which
-                // on Gmail's folders is a label followed by taking off \Inbox.
                 lastReport.senders[index].steps = (item.markRead ? 1 : 0)
                     + (item.archive ? (isGmail && item.disposition == .fileIntoFolders ? 2 : 1) : 0)
                 guard !uids.isEmpty else {
@@ -210,7 +205,7 @@ public final class PlanExecutor {
 
                 if item.markRead {
                     let action = record(.markRead, for: item, uids: uids, account: account, uidValidity: openValidity)
-                    confirmed = await run(action) {
+                    confirmed = await run(action, sender: index) {
                         try await provider.setFlags(uids: uids, .add, flags: ["\\Seen"])
                         return nil
                     }
@@ -230,14 +225,14 @@ public final class PlanExecutor {
                         action.heldUIDs = verdict.held.map(\.uid)
                         action.heldSummary = verdict.summary
                         action.targetMailbox = target
-                        confirmed = await run(action) { try await provider.move(uids: uids, to: target) }
+                        confirmed = await run(action, sender: index) { try await provider.move(uids: uids, to: target) }
                         itemFailed = itemFailed || action.errorMessage != nil
 
                     case .archiveOnly where isGmail:
                         let archive = record(.archive, for: item, uids: uids, account: account, uidValidity: openValidity)
                         archive.heldUIDs = verdict.held.map(\.uid)
                         archive.heldSummary = verdict.summary
-                        confirmed = await run(archive) {
+                        confirmed = await run(archive, sender: index) {
                             try await provider.setGmailLabels(uids: uids, .remove, labels: ["\\Inbox"])
                             return nil
                         }
@@ -249,12 +244,12 @@ public final class PlanExecutor {
                         archive.heldUIDs = verdict.held.map(\.uid)
                         archive.heldSummary = verdict.summary
                         archive.targetMailbox = target
-                        confirmed = await run(archive) { try await provider.move(uids: uids, to: target) }
+                        confirmed = await run(archive, sender: index) { try await provider.move(uids: uids, to: target) }
                         itemFailed = itemFailed || archive.errorMessage != nil
 
                     case .fileIntoFolders where isGmail:
                         let label = record(.label, for: item, uids: uids, account: account, labelName: item.folder, uidValidity: openValidity)
-                        let labelled = await run(label) {
+                        let labelled = await run(label, sender: index) {
                             try await provider.setGmailLabels(uids: uids, .add, labels: [item.folder])
                             return nil
                         }
@@ -266,7 +261,7 @@ public final class PlanExecutor {
                         let archive = record(.archive, for: item, uids: labelled, account: account, uidValidity: openValidity)
                         archive.heldUIDs = verdict.held.map(\.uid)
                         archive.heldSummary = verdict.summary
-                        confirmed = await run(archive) {
+                        confirmed = await run(archive, sender: index) {
                             try await provider.setGmailLabels(uids: labelled, .remove, labels: ["\\Inbox"])
                             return nil
                         }
@@ -281,7 +276,7 @@ public final class PlanExecutor {
                         archive.heldUIDs = verdict.held.map(\.uid)
                         archive.heldSummary = verdict.summary
                         archive.targetMailbox = target
-                        confirmed = await run(archive) { try await provider.move(uids: uids, to: target) }
+                        confirmed = await run(archive, sender: index) { try await provider.move(uids: uids, to: target) }
                         itemFailed = itemFailed || archive.errorMessage != nil
                     }
                     if !confirmed.isEmpty { markSwept(uids: confirmed, in: account, swept: true, address: item.cluster.address) }
@@ -307,9 +302,7 @@ public final class PlanExecutor {
                         lastReport.senders[index].unsubscribe = .declined
                     case .failed(let why):
                         action.errorMessage = why
-                        // Covers both a request never sent and one that got no
-                        // answer, so it cannot be called declined.
-                        lastReport.senders[index].unsubscribe = .unanswered
+                        lastReport.senders[index].unsubscribe = .unknown
                     }
                 }
 
@@ -348,7 +341,10 @@ public final class PlanExecutor {
             phase = .finished("Stopped. Swept \(o.messages.formatted()) messages from \(o.senders) senders; the rest were left alone.")
         } catch {
             try? modelContext.save()
-            lastReport.ending = (error as? IMAPError)?.isRefusal == true ? .refused : .interrupted
+            lastReport.ending = switch error as? IMAPError {
+            case .commandFailed?, .mailboxChanged?, .insecureForRemoteHost?, .startTLSUnavailable?, .startTLSInjection?: .refused
+            default: .interrupted
+            }
             phase = .failed(error.localizedDescription)
         }
     }
@@ -487,7 +483,7 @@ public final class PlanExecutor {
     /// server confirmed. Returns the UIDs that actually changed: all of them,
     /// the chunks before a failure, or none. The operation returns the MOVE
     /// result for a move and nil for a flag or label change.
-    private func run(_ action: CleanupAction, _ operation: () async throws -> MoveResult?) async -> [UInt32] {
+    private func run(_ action: CleanupAction, sender: Int, _ operation: () async throws -> MoveResult?) async -> [UInt32] {
         let requested = action.uids
         // A flag or label change can be reversed whether or not it landed, so
         // it is undoable from the moment it is sent; if the app dies before
@@ -498,11 +494,11 @@ public final class PlanExecutor {
         try? modelContext.save()
         do {
             settle(action, confirmed: requested, moved: try await operation())
-            note(SweepReport.Write(requested: requested, confirmed: requested))
+            note(SweepReport.Write(requested: requested, confirmed: requested), sender: sender)
             return requested
         } catch let partial as PartialWriteError {
             settle(action, confirmed: partial.applied, moved: partial.moved)
-            note(SweepReport.Write(requested: requested, confirmed: partial.applied, unsure: partial.unsure))
+            note(SweepReport.Write(requested: requested, confirmed: partial.applied, cutOff: !partial.unsure.isEmpty), sender: sender)
             if partial.unsure.isEmpty {
                 action.errorMessage = "Only \(partial.applied.count) of \(requested.count) went through. \(partial.reason)"
             } else {
@@ -515,20 +511,20 @@ public final class PlanExecutor {
         } catch let error as IMAPError where error.isRefusal {
             action.errorMessage = error.localizedDescription
             action.isUndoable = false
-            note(SweepReport.Write(requested: requested, confirmed: []))
+            note(SweepReport.Write(requested: requested, confirmed: []), sender: sender)
             return []
         } catch {
             action.errorMessage = Self.unsure(error.localizedDescription)
             action.isUndoable = reversibleIfUnsure
             lostConnection = error
-            note(SweepReport.Write(requested: requested, confirmed: [], unsure: requested))
+            note(SweepReport.Write(requested: requested, confirmed: [], cutOff: true), sender: sender)
             return []
         }
     }
 
-    private func note(_ write: SweepReport.Write) {
-        guard lastReport.senders.indices.contains(reportIndex) else { return }
-        lastReport.senders[reportIndex].writes.append(write)
+    private func note(_ write: SweepReport.Write, sender: Int) {
+        guard lastReport.senders.indices.contains(sender) else { return }
+        lastReport.senders[sender].writes.append(write)
     }
 
     static func unsure(_ reason: String) -> String {
