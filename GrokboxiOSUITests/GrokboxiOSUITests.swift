@@ -116,27 +116,22 @@ final class GrokboxiOSUITests: XCTestCase {
 
         app.tabBars.buttons["Senders"].tap()
         wait(app.navigationBars["Senders"], 20)
-        // Rules and the sweep report are not per account, so a sender indexed in several demo
-        // accounts shows no tally. Walk the list until a sender with a single account.
-        var shown = false
-        for index in 1...15 where !shown {
-            let row = app.cells.element(boundBy: index)
-            guard row.waitForExistence(timeout: 10) else { break }
-            row.tap()
-            scrollTo("label == 'Last sweep since Grokbox opened'")
-            scrollTo("label BEGINSWITH 'Only the last sweep'")
-            let shared = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'This sender is in more than one account'")).firstMatch
-            if shared.exists {
-                app.navigationBars.buttons.element(boundBy: 0).tap()
-                continue
-            }
-            shown = true
-            let shot = XCTAttachment(screenshot: app.screenshot())
-            shot.name = "sender-detail-last-sweep"
-            shot.lifetime = .keepAlways
-            add(shot)
-        }
-        XCTAssertTrue(shown, "some sender is in a single account")
+        // The sweep report is not per account, so a sender indexed in several demo accounts shows
+        // no tally. Recipe of the Day sits in one account.
+        let search = app.searchFields.firstMatch
+        wait(search, 20)
+        search.tap()
+        search.typeText("Recipe")
+        let sender = app.staticTexts["Recipe of the Day"].firstMatch
+        wait(sender, 30)
+        sender.tap()
+        scrollTo("label == 'Last sweep since Grokbox opened'")
+        scrollTo("label BEGINSWITH 'Only the last sweep'")
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'This sender is in more than one account'")).firstMatch.exists)
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "sender-detail-last-sweep"
+        shot.lifetime = .keepAlways
+        add(shot)
     }
 
     /// A sender opens to the evidence behind its recommendation, and the list says what the index covers.
