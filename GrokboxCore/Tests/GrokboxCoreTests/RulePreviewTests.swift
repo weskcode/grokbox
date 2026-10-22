@@ -213,12 +213,14 @@ struct RulePreviewTests {
 
         let proposed = SenderOverride(decision: .sweep, autoUnsubscribe: false, customFolder: "Clients/VIP")
         let preview = try RulePreview.make(address: address, edit: .replace(proposed), policy: .thorough, in: context, now: now)
-        #expect(preview.resultingRule == proposed, "the old trash disposition is replaced, not merged")
+        let stored = SenderOverride(decision: .sweep, disposition: .fileIntoFolders, autoUnsubscribe: false, customFolder: "Clients/VIP")
+        #expect(preview.resultingRule == stored, "the old trash disposition is replaced, and a folder implies filing")
         #expect(try sweep(preview).folder == "Clients/VIP")
+        #expect(try sweep(preview).disposition == .fileIntoFolders, "Thorough would trash promotions, but this sender has a folder")
         #expect(RuleStore.overrides(in: context)[address]?.disposition == .trash, "previewing changed nothing")
 
         try RuleStore.apply(.replace(proposed), for: address, in: context)
-        #expect(RuleStore.overrides(in: context)[address] == proposed)
+        #expect(RuleStore.overrides(in: context)[address] == stored)
     }
 
     @Test func sameEffectSeesChangesOutsideTheCappedSamples() throws {

@@ -217,7 +217,8 @@ public enum RuleEdit: Sendable, Equatable {
     case autoUnsubscribe(Bool?)
     case customFolder(String?)
     /// A whole rule in one piece, for a caller that drafts one (a description
-    /// turned into a proposal) rather than changing a single field.
+    /// turned into a proposal) rather than changing a single field. A folder
+    /// still implies filing into folders, as it does for `customFolder`.
     case replace(SenderOverride)
     case clear
 
@@ -241,6 +242,7 @@ public enum RuleEdit: Sendable, Equatable {
             if folder != nil { rule.disposition = .fileIntoFolders }
         case .replace(let replacement):
             rule = replacement
+            if rule.customFolder != nil { rule.disposition = .fileIntoFolders }
         case .clear:
             break
         }
@@ -259,7 +261,7 @@ public struct RuleSaveError: LocalizedError, Equatable {
 }
 
 extension SenderOverride {
-    init(rule: SenderRule) {
+    public init(rule: SenderRule) {
         self.init(decision: rule.decision, disposition: rule.disposition,
                   autoUnsubscribe: rule.autoUnsubscribeOverride, customFolder: rule.customFolder)
     }
