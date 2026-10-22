@@ -49,6 +49,8 @@ public final class PlanExecutor {
 
     public private(set) var phase: Phase = .idle
     public private(set) var lastOutcome = Outcome()
+    /// What the last `apply` did to each planned message. See `SweepReport`.
+    public private(set) var lastReport = SweepReport()
     private var activeProvider: (any MailProvider)?
     /// The generation the connected run started under.
     private var activeRun = 0
@@ -59,6 +61,8 @@ public final class PlanExecutor {
     /// Set by `run` when a write failed on the way rather than being refused:
     /// the connection is gone, and every later write would fail the same way.
     private var lostConnection: (any Error)?
+    /// The sender in `lastReport` that `run` is writing for.
+    private var reportIndex = 0
 
     /// How long Stop lets a write that is already on the wire finish.
     static let stopGrace: Duration = .seconds(5)
@@ -96,7 +100,11 @@ public final class PlanExecutor {
         lastOutcome = Outcome()
         lostConnection = nil
         let items = plan.enabledItems
-        guard !items.isEmpty else { return }
+        lastReport = SweepReport(senders: items.map {
+            SweepReport.Sender(address: $0.cluster.address, mailbox: $0.cluster.mailbox, planned: $0.cluster.pendingUIDs,
+                               unsubscribe: $0.unsubscribe ? .notSent : .notRequested)
+        })
+        guard !items.isEmpty else { lastReport.ending = .completed; return }
         let token = generation
         // A sender's rule is written only once that sender's mail has actually
         // been dealt with. Written up front, a sweep that failed or was stopped
@@ -125,6 +133,7 @@ public final class PlanExecutor {
             if plan.enabledItems.contains(where: { $0.disposition == .trash }) {
                 guard let trash = mailboxes.trashMailbox else {
                     phase = .failed("This server does not expose a Trash mailbox, so Grokbox cannot move mail there. Choose a different disposition in Settings.")
+                    lastReport.ending = .refused
                     return
                 }
                 trashName = trash.name
@@ -133,6 +142,7 @@ public final class PlanExecutor {
             if !isGmail, plan.enabledItems.contains(where: { $0.disposition == .archiveOnly }) {
                 guard let archive = mailboxes.archiveMailbox else {
                     phase = .failed("This server has no Archive mailbox, so 'Archive only' cannot be applied. Choose 'File into folders' in Settings.")
+                    lastReport.ending = .refused
                     return
                 }
                 archiveName = archive.name
@@ -143,6 +153,7 @@ public final class PlanExecutor {
             if !isGmail, items.contains(where: \.archive) {
                 guard capabilities.supportsMove else {
                     phase = .failed("This server does not support MOVE, so Grokbox cannot archive safely. Mark-read still works.")
+                    lastReport.ending = .refused
                     return
                 }
                 for folder in Set(items.filter { $0.disposition == .fileIntoFolders }.map(\.folder)) {
@@ -165,7 +176,7 @@ public final class PlanExecutor {
             let keepTransactional = policy.guardTransactional
             var heldTotal = 0
 
-            for item in items {
+            for (index, item) in items.enumerated() {
                 try checkStopped(token)
                 // Message-level safety net over the sender-level decision.
                 _ = keepTransactional
@@ -174,6 +185,12 @@ public final class PlanExecutor {
                     : SweepGuard.Verdict(allowed: item.cluster.pendingUIDs, held: [])
                 let uids = verdict.allowed
                 heldTotal += verdict.held.count
+                reportIndex = index
+                lastReport.senders[index].held = verdict.held.map(\.uid)
+                // One write per step below: mark-read, then the archive, which
+                // on Gmail's folders is a label followed by taking off \Inbox.
+                lastReport.senders[index].steps = (item.markRead ? 1 : 0)
+                    + (item.archive ? (isGmail && item.disposition == .fileIntoFolders ? 2 : 1) : 0)
                 guard !uids.isEmpty else {
                     // Everything was held, which is the guard working, not a
                     // failure: the decision about the sender still stands.
@@ -282,12 +299,17 @@ public final class PlanExecutor {
                     case .unsubscribed:
                         action.errorMessage = nil
                         unsubscribeCount += 1
+                        lastReport.senders[index].unsubscribe = .accepted
                     case .openInBrowser, .requiresEmail:
                         // Automatic mode is one-click only. Anything needing a
                         // browser or an email is left for the user to decide.
                         action.errorMessage = "Needs a browser; left for you in Senders."
+                        lastReport.senders[index].unsubscribe = .declined
                     case .failed(let why):
                         action.errorMessage = why
+                        // Covers both a request never sent and one that got no
+                        // answer, so it cannot be called declined.
+                        lastReport.senders[index].unsubscribe = .unanswered
                     }
                 }
 
@@ -306,6 +328,7 @@ public final class PlanExecutor {
             }
             // A Stop that landed during the last sender still counts as a Stop.
             try checkStopped(token)
+            lastReport.ending = .completed
 
             RuleStore.bumpApplied(for: succeeded, in: modelContext)
             let heldNote = heldTotal > 0 ? ", held \(heldTotal) for you" : ""
@@ -320,10 +343,12 @@ public final class PlanExecutor {
             // Includes a write cut off by Stop's grace period: that is the Stop.
             try? modelContext.save()
             lastOutcome.stopped = true
+            lastReport.ending = .stopped
             let o = lastOutcome
             phase = .finished("Stopped. Swept \(o.messages.formatted()) messages from \(o.senders) senders; the rest were left alone.")
         } catch {
             try? modelContext.save()
+            lastReport.ending = (error as? IMAPError)?.isRefusal == true ? .refused : .interrupted
             phase = .failed(error.localizedDescription)
         }
     }
@@ -473,9 +498,11 @@ public final class PlanExecutor {
         try? modelContext.save()
         do {
             settle(action, confirmed: requested, moved: try await operation())
+            note(SweepReport.Write(requested: requested, confirmed: requested))
             return requested
         } catch let partial as PartialWriteError {
             settle(action, confirmed: partial.applied, moved: partial.moved)
+            note(SweepReport.Write(requested: requested, confirmed: partial.applied, unsure: partial.unsure))
             if partial.unsure.isEmpty {
                 action.errorMessage = "Only \(partial.applied.count) of \(requested.count) went through. \(partial.reason)"
             } else {
@@ -488,13 +515,20 @@ public final class PlanExecutor {
         } catch let error as IMAPError where error.isRefusal {
             action.errorMessage = error.localizedDescription
             action.isUndoable = false
+            note(SweepReport.Write(requested: requested, confirmed: []))
             return []
         } catch {
             action.errorMessage = Self.unsure(error.localizedDescription)
             action.isUndoable = reversibleIfUnsure
             lostConnection = error
+            note(SweepReport.Write(requested: requested, confirmed: [], unsure: requested))
             return []
         }
+    }
+
+    private func note(_ write: SweepReport.Write) {
+        guard lastReport.senders.indices.contains(reportIndex) else { return }
+        lastReport.senders[reportIndex].writes.append(write)
     }
 
     static func unsure(_ reason: String) -> String {
