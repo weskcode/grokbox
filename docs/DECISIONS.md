@@ -551,9 +551,10 @@ Storage, both additive under ADR-0021 (schema 1.2.0, no stage):
 `MessageHeader.inReplyTo` and `referenceIDs`, where nil means "indexed before
 these were fetched" and empty means "fetched, none", and a
 `SentMessageHeader` row for each of the newest 2,000 Sent messages. Sent rows
-follow the mailbox: a completed walk keeps only what it saw under the current
-UIDVALIDITY, an empty Sent folder clears them, and a cancelled walk deletes
-nothing. Account removal and Erase
+follow the mailbox: a completed walk keeps only what it saw in the current
+Sent folder under its current UIDVALIDITY, so a completed walk of an empty
+folder clears them. A cancelled walk deletes nothing, and a server that
+reports no UIDVALIDITY leaves them as they are. Account removal and Erase
 delete them. Rows indexed before the upgrade gain reply ids on the next full
 pass and group as before until then.
 

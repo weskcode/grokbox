@@ -336,15 +336,15 @@ struct SentWalkTests {
         try SentHistory.rows(accountID: account, in: context).map { "\($0.mailbox)|\($0.uidValidity)|\($0.uid)" }.sorted()
     }
 
-    private func walk(_ provider: SentMailbox, in context: ModelContext) async -> Bool {
+    private func walk(_ provider: SentMailbox, in context: ModelContext) async -> (any Error)? {
         let engine = SyncEngine(modelContext: context)
         let task = Task { @MainActor in try await engine.walkSent(sent, using: provider, accountID: account) }
-        do { try await task.value; return true } catch { return false }
+        do { try await task.value; return nil } catch { return error }
     }
 
     @Test func aCompletedWalkKeepsExactlyWhatItSaw() async throws {
         let context = try seeded()
-        #expect(await walk(SentMailbox(uidValidity: 5, headers: [header(1), header(2), header(3)]), in: context))
+        #expect(await walk(SentMailbox(uidValidity: 5, headers: [header(1), header(2), header(3)]), in: context) == nil)
         #expect(try rows(context) == ["Sent|5|1", "Sent|5|2", "Sent|5|3"], "UID 7 is gone from the server and the old folder is gone")
         #expect(try context.fetchCount(FetchDescriptor<SentMessageHeader>()) == 4, "another account's rows stay")
         let row = try #require(try SentHistory.rows(accountID: account, in: context).first { $0.uid == 3 })
@@ -354,13 +354,13 @@ struct SentWalkTests {
 
     @Test func aRenumberedMailboxReplacesItsRows() async throws {
         let context = try seeded()
-        #expect(await walk(SentMailbox(uidValidity: 6, headers: [header(1), header(2)]), in: context))
+        #expect(await walk(SentMailbox(uidValidity: 6, headers: [header(1), header(2)]), in: context) == nil)
         #expect(try rows(context) == ["Sent|6|1", "Sent|6|2"])
     }
 
     @Test func anEmptySentFolderKeepsNothing() async throws {
         let context = try seeded()
-        #expect(await walk(SentMailbox(uidValidity: 5, headers: []), in: context))
+        #expect(await walk(SentMailbox(uidValidity: 5, headers: []), in: context) == nil)
         #expect(try rows(context) == [])
     }
 
@@ -368,16 +368,16 @@ struct SentWalkTests {
         for cancelAt in [SentMailbox.CancelAt.open, .lastBatch] {
             let context = try seeded()
             let before = try rows(context)
-            #expect(await walk(SentMailbox(uidValidity: 6, headers: [header(1)], cancelAt: cancelAt), in: context) == false)
-            try? context.save()
-            #expect(Set(before).isSubset(of: Set(try rows(context))), "cancelled at \(cancelAt)")
+            #expect(await walk(SentMailbox(uidValidity: 6, headers: [header(1)], cancelAt: cancelAt), in: context) is CancellationError)
+            try context.save()
+            #expect(Set(before).isSubset(of: Set(try rows(ModelContext(context.container)))), "cancelled at \(cancelAt)")
         }
     }
 
     @Test func noUIDValidityLeavesTheHistoryAlone() async throws {
         let context = try seeded()
         let before = try rows(context)
-        #expect(await walk(SentMailbox(uidValidity: nil, headers: [header(1, to: "bob@else.example"), header(9)]), in: context))
+        #expect(await walk(SentMailbox(uidValidity: nil, headers: [header(1, to: "bob@else.example"), header(9)]), in: context) == nil)
         #expect(try rows(context) == before)
         #expect(try context.fetchCount(FetchDescriptor<ContactedAddress>()) == 2, "contacts are still learned")
     }
