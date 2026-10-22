@@ -49,6 +49,7 @@ public struct JevCategorizer: RemoteCategorizer {
             )]
         )
 
+        try LaunchIsolation.refuse(.modelBackend)
         var urlRequest = URLRequest(url: baseURL)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")

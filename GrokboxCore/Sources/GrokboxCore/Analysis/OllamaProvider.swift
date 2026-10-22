@@ -19,6 +19,9 @@ public struct OllamaProvider: TextModel {
     }
 
     public func availability() async -> ModelAvailability {
+        if LaunchIsolation.isDemoOnly {
+            return .unavailable(reason: LaunchIsolation.Refusal(surface: .modelBackend).localizedDescription)
+        }
         guard baseURL.host == "127.0.0.1" || baseURL.host == "localhost" else {
             return .unavailable(reason: "Grokbox only talks to Ollama on this machine.")
         }
@@ -49,6 +52,7 @@ public struct OllamaProvider: TextModel {
         \(request.rendered)
         """
 
+        try LaunchIsolation.refuse(.modelBackend)
         let body = GenerateRequest(model: model, prompt: prompt, stream: false, format: "json")
         var urlRequest = URLRequest(url: baseURL.appending(path: "api/generate"))
         urlRequest.httpMethod = "POST"
@@ -79,6 +83,7 @@ public struct OllamaProvider: TextModel {
 
         \(request.rendered)
         """
+        try LaunchIsolation.refuse(.modelBackend)
         let body = GenerateRequest(model: model, prompt: prompt, stream: false, format: "json")
         var urlRequest = URLRequest(url: baseURL.appending(path: "api/generate"))
         urlRequest.httpMethod = "POST"

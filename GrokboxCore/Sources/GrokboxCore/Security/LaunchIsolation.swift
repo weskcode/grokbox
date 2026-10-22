@@ -36,6 +36,7 @@ public enum LaunchIsolation {
         case mailServer = "a mail server"
         case unsubscribe = "unsubscribe requests"
         case autoconfig = "account autoconfiguration"
+        case modelBackend = "a model backend"
     }
 
     public struct Refusal: LocalizedError, Equatable, Sendable {
@@ -100,6 +101,7 @@ public enum LaunchIsolation {
             "mailServer=\(state(.mailServer))",
             "unsubscribe=\(state(.unsubscribe))",
             "autoconfig=\(state(.autoconfig))",
+            "modelBackend=\(state(.modelBackend))",
         ]
     }
 }

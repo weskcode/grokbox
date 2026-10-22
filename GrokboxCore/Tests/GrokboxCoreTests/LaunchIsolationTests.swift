@@ -143,6 +143,24 @@ struct LaunchIsolationTests {
         }
     }
 
+    @Test func modelBackendsMakeNoRequestInIsolation() async {
+        // Loopback base URLs, so a missing guard could not reach anything real.
+        let ollama = OllamaProvider(baseURL: URL(string: "http://127.0.0.1:1")!)
+        let jev = JevCategorizer(apiKey: "not-a-key", baseURL: URL(string: "http://127.0.0.1:1")!)
+        let read = ReadRequest(subject: "Hello", senderName: "A", senderAddress: "a@example.com",
+                               senderIsKnownContact: false, receivedAt: .now, bodyExcerpt: "")
+        let categorize = CategorizeRequest(displayName: "A", address: "a@example.com", sampleSubjects: ["Hello"],
+                                           messageCount: 3, unreadRatio: 1, hasUnsubscribeLink: false)
+        await demoOnly {
+            guard case .unavailable(let why) = await ollama.availability(), why.contains("Demo-only") else {
+                Issue.record("Ollama was probed in isolation"); return
+            }
+            await #expect(throws: LaunchIsolation.Refusal.self) { _ = try await ollama.read(read) }
+            await #expect(throws: LaunchIsolation.Refusal.self) { _ = try await ollama.categorize(categorize) }
+            await #expect(throws: LaunchIsolation.Refusal.self) { _ = try await jev.categorize(categorize) }
+        }
+    }
+
     // MARK: - Unsubscribe
 
     private func cluster() -> SenderCluster {
@@ -219,7 +237,7 @@ struct LaunchIsolationTests {
         }
         for expected in ["demoOnly=true", "bundleID=com.wesleykeetch.grokbox.isolation", "store=inMemory(groupContainer: none, cloudKit: none)",
                          "defaults=com.wesleykeetch.grokbox.isolated-demo", "keychain=refused", "mailServer=refused",
-                         "unsubscribe=refused", "autoconfig=refused", "logSubsystem=com.wesleykeetch.grokbox.isolated-demo"] {
+                         "unsubscribe=refused", "autoconfig=refused", "modelBackend=refused", "logSubsystem=com.wesleykeetch.grokbox.isolated-demo"] {
             #expect(isolated.contains(expected), "\(expected) in \(isolated)")
         }
         let normal = LaunchIsolation.attestation(bundleIdentifier: "com.wesleykeetch.grokbox", storeInMemory: false, logPath: "/tmp/x.log")
