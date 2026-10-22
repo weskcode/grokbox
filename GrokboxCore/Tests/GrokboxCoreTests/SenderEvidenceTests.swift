@@ -42,7 +42,7 @@ struct SenderEvidenceTests {
     @Test func anUnindexedAccountHasEmptyCoverage() throws {
         let c = try container(); let context = c.mainContext
         let account = account("a", in: context)
-        let coverage = IndexCoverage.current(for: account, in: context)
+        let coverage = try IndexCoverage.current(for: account, in: context)
         #expect(coverage.isEmpty)
         #expect(!coverage.isPartial)
         #expect(coverage.serverMessages == nil)
@@ -56,12 +56,24 @@ struct SenderEvidenceTests {
         addMessages(10, from: "a@x.example", to: account, in: context)
         snapshot(account, onServer: 25, indexedAt: .now, in: context)
         try context.save()
-        try SenderProfileBuilder.rebuild(for: account, in: context)
 
-        let coverage = IndexCoverage.current(for: account, in: context)
+        let coverage = try IndexCoverage.current(for: account, in: context)
         #expect(coverage.indexedMessages == 10)
         #expect(coverage.serverMessages == 25)
         #expect(coverage.isPartial)
+        let oldest = try #require(coverage.oldest), newest = try #require(coverage.newest)
+        #expect(oldest < newest)
+    }
+
+    @Test func coverageDatesComeFromSavedHeadersWithoutAProfileRebuild() throws {
+        let c = try container(); let context = c.mainContext
+        let account = account("a", in: context)
+        addMessages(3, from: "a@x.example", to: account, in: context)
+        try context.save()
+        #expect(SenderProfileBuilder.profiles(for: account, in: context).isEmpty)
+
+        let coverage = try IndexCoverage.current(for: account, in: context)
+        #expect(coverage.indexedMessages == 3)
         let oldest = try #require(coverage.oldest), newest = try #require(coverage.newest)
         #expect(oldest < newest)
     }
@@ -72,7 +84,7 @@ struct SenderEvidenceTests {
         addMessages(10, from: "a@x.example", to: account, in: context)
         snapshot(account, onServer: 10, indexedAt: .now, in: context)
         try context.save()
-        #expect(!IndexCoverage.current(for: account, in: context).isPartial)
+        #expect(try !IndexCoverage.current(for: account, in: context).isPartial)
     }
 
     @Test func coverageIsStaleOnlyAfterTheThreshold() {
@@ -92,7 +104,7 @@ struct SenderEvidenceTests {
         addMessages(9, from: "a@x.example", to: second, in: context)
         snapshot(second, onServer: 9, indexedAt: .now, in: context)
         try context.save()
-        let coverage = IndexCoverage.current(for: first, in: context)
+        let coverage = try IndexCoverage.current(for: first, in: context)
         #expect(coverage.indexedMessages == 4)
         #expect(coverage.serverMessages == nil)
     }

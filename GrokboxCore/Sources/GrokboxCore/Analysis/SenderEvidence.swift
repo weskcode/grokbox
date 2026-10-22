@@ -36,17 +36,22 @@ public struct IndexCoverage: Sendable, Equatable {
         self.lastIndexedAt = lastIndexedAt
     }
 
+    /// Throws when the index cannot be read, so a failed fetch never shows as
+    /// an empty or complete index. Dates come from the headers being counted.
     @MainActor
-    public static func current(for account: MailAccount, in context: ModelContext) -> IndexCoverage {
+    public static func current(for account: MailAccount, in context: ModelContext) throws -> IndexCoverage {
         let accountID = account.id
-        let indexed = (try? context.fetchCount(FetchDescriptor<MessageHeader>(predicate: #Predicate { $0.accountID == accountID }))) ?? 0
-        let snapshots = (try? context.fetch(FetchDescriptor<MailboxSnapshot>(predicate: #Predicate { $0.accountID == accountID }))) ?? []
-        let profiles = SenderProfileBuilder.profiles(for: account, in: context).filter { $0.messageCount > 0 }
+        let matches = #Predicate<MessageHeader> { $0.accountID == accountID }
+        var first = FetchDescriptor<MessageHeader>(predicate: matches, sortBy: [SortDescriptor(\.receivedAt)])
+        first.fetchLimit = 1
+        var last = FetchDescriptor<MessageHeader>(predicate: matches, sortBy: [SortDescriptor(\.receivedAt, order: .reverse)])
+        last.fetchLimit = 1
+        let snapshots = try context.fetch(FetchDescriptor<MailboxSnapshot>(predicate: #Predicate { $0.accountID == accountID }))
         return IndexCoverage(
-            indexedMessages: indexed,
+            indexedMessages: try context.fetchCount(FetchDescriptor<MessageHeader>(predicate: matches)),
             serverMessages: snapshots.isEmpty ? nil : snapshots.reduce(0) { $0 + $1.messageCountOnServer },
-            oldest: profiles.map(\.oldest).min(),
-            newest: profiles.map(\.newest).max(),
+            oldest: try context.fetch(first).first?.receivedAt,
+            newest: try context.fetch(last).first?.receivedAt,
             lastIndexedAt: snapshots.map(\.lastIndexedAt).max()
         )
     }
