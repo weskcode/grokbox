@@ -178,4 +178,104 @@ struct SenderEvidenceTests {
         #expect(profile.displayName == name)
         #expect(SenderEvidence(profile: profile, rule: nil, allProfiles: [profile]).indexed == 3)
     }
+
+    // MARK: Wording and the sweep preview
+
+    @Test func coverageCaptionSaysWhatTheIndexCovers() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        func caption(indexed: Int, server: Int?, daysAgo: Int?, dated: Bool = true) -> String {
+            IndexCoverage(indexedMessages: indexed, serverMessages: server,
+                          oldest: dated ? now.addingTimeInterval(-400 * 86_400) : nil, newest: dated ? now : nil,
+                          lastIndexedAt: daysAgo.map { now.addingTimeInterval(-Double($0) * 86_400) })
+                .caption(now: now, calendar: Calendar(identifier: .gregorian))
+        }
+        #expect(caption(indexed: 0, server: nil, daysAgo: nil) == "Nothing indexed yet")
+        let partial = caption(indexed: 4_812, server: 6_030, daysAgo: 9)
+        #expect(partial.hasPrefix("Index covers \(4_812.formatted()) of \(6_030.formatted()) messages · partial · "))
+        #expect(partial.hasSuffix("Updated 9 days ago, may be out of date"))
+        let full = caption(indexed: 10, server: 10, daysAgo: 0)
+        #expect(full.hasPrefix("Index covers all 10 messages"))
+        #expect(full.hasSuffix("Updated today"))
+        #expect(caption(indexed: 10, server: 10, daysAgo: 1).hasSuffix("Updated yesterday"))
+        #expect(!caption(indexed: 10, server: 10, daysAgo: 7).contains("out of date"))
+        #expect(caption(indexed: 3, server: nil, daysAgo: nil, dated: false) == "Index covers 3 messages")
+    }
+
+    @Test func sweepNowMatchesThePlanAndGuardAndWritesNothing() throws {
+        let c = try container(); let context = c.mainContext
+        let account = account("a", in: context)
+        addMessages(30, from: "news@promo.example", name: "Promo", to: account, inboxEvery: 2, in: context)
+        try context.save()
+        try SenderProfileBuilder.rebuild(for: account, in: context)
+        let profile = try #require(SenderProfileBuilder.profiles(for: account, in: context).first)
+
+        let outcome = try #require(try SenderEvidence.sweepNow(address: profile.address, accountID: account.id, rule: nil, policy: .gentle, in: context))
+        guard case .sweeps(let sweep) = outcome else { Issue.record("expected a sweep, got \(outcome)"); return }
+        #expect(sweep.affectedCount + sweep.heldCount == SenderEvidence(profile: profile, rule: nil, allProfiles: [profile]).inInbox)
+        #expect(try context.fetch(FetchDescriptor<SenderRule>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<CleanupAction>()).isEmpty)
+    }
+
+    @Test func sweepNowReportsAKeepRuleAndAnEmptyInbox() throws {
+        let c = try container(); let context = c.mainContext
+        let account = account("a", in: context)
+        addMessages(4, from: "keep@x.example", to: account, in: context)
+        addMessages(4, from: "done@x.example", to: account, inboxEvery: 1_000_000, firstUID: 100, in: context)
+        for header in try context.fetch(FetchDescriptor<MessageHeader>(predicate: #Predicate { $0.senderAddress == "done@x.example" })) {
+            header.isInInbox = false
+        }
+        try context.save()
+        try SenderProfileBuilder.rebuild(for: account, in: context)
+
+        let keep = SenderRule(address: "keep@x.example", decision: .keep)
+        context.insert(keep)
+        try context.save()
+        let kept = try SenderEvidence.sweepNow(address: "keep@x.example", accountID: account.id, rule: keep, policy: .gentle, in: context)
+        #expect(kept == .keptInInbox)
+        #expect(SweepNowText(.keptInInbox).moves == "Your rule keeps this sender in the inbox. Nothing moves.")
+
+        let done = try SenderEvidence.sweepNow(address: "done@x.example", accountID: account.id, rule: nil, policy: .gentle, in: context)
+        #expect(done == .nothingPending)
+    }
+
+    @Test func sweepWordingCountsAndNamesWhereMailGoes() {
+        func sweep(moves: Int, held: Int) -> RulePreview.Outcome {
+            .sweeps(.init(disposition: .fileIntoFolders, folder: "Promotions", markRead: false, unsubscribe: false,
+                          affectedCount: moves, heldCount: held, affectedUIDs: [], heldUIDs: [], affected: [],
+                          held: held == 0 ? [] : [.init(uid: 1, subject: "Receipt #4471", receivedAt: .now, heldReason: "looks like a receipt")]))
+        }
+        #expect(SweepNowText(sweep(moves: 27, held: 4)).moves == "Moves 27 messages to Promotions.")
+        #expect(SweepNowText(sweep(moves: 1, held: 0)).moves == "Moves 1 message to Promotions.")
+        #expect(SweepNowText(sweep(moves: 0, held: 0)).moves == "Nothing would move.")
+        let text = SweepNowText(sweep(moves: 27, held: 4))
+        #expect(text.held == "4 stay in the inbox.")
+        #expect(text.heldDetails == ["Receipt #4471: looks like a receipt"])
+        #expect(SweepNowText(sweep(moves: 3, held: 0)).held == nil)
+
+        let many = RulePreview.Outcome.sweeps(.init(
+            disposition: .archiveOnly, folder: "", markRead: false, unsubscribe: false, affectedCount: 0, heldCount: 5,
+            affectedUIDs: [], heldUIDs: [], affected: [],
+            held: (1...5).map { .init(uid: UInt32($0), subject: "Subject \($0)", receivedAt: .now, heldReason: "flagged") }))
+        #expect(SweepNowText(many).heldDetails.count == 3)
+        #expect(SweepNowText(many).held == "5 stay in the inbox.")
+    }
+
+    @Test func scopeNamesTheOtherAccountsAndSaysRulesAreGlobal() throws {
+        let c = try container(); let context = c.mainContext
+        let home = account("home", in: context), work = account("work", in: context)
+        addMessages(6, from: "shared@x.example", to: home, in: context)
+        addMessages(12, from: "shared@x.example", to: work, in: context)
+        try context.save()
+        try SenderProfileBuilder.rebuild(for: home, in: context)
+        try SenderProfileBuilder.rebuild(for: work, in: context)
+        let all = try context.fetch(FetchDescriptor<SenderProfile>())
+        let profile = try #require(all.first { $0.accountID == home.id })
+
+        let none = SenderEvidence(profile: profile, rule: nil, allProfiles: all).scope(accountNames: [home.id: "home", work.id: "work"])
+        #expect(none == "No rule yet. A rule applies to this address in every account. Also seen in work (12 messages).")
+        let rule = SenderRule(address: "shared@x.example", decision: .keep)
+        let ruled = SenderEvidence(profile: profile, rule: rule, allProfiles: all).scope(accountNames: [:])
+        #expect(ruled.hasPrefix("Rule: Always keep. It applies to this address in every account."))
+        #expect(ruled.hasSuffix("Also seen in another account (12 messages)."))
+    }
 }

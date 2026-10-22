@@ -16,6 +16,8 @@ struct PhoneSendersView: View {
     @State private var pendingRule: PendingRuleEdit?
     @State private var showingUnsubscribeChecklist = false
     @State private var showingContacts = false
+    @State private var coverage: IndexCoverage?
+    @State private var coverageUnavailable = false
 
     init(account: MailAccount) {
         self.account = account
@@ -31,21 +33,31 @@ struct PhoneSendersView: View {
     var body: some View {
         List {
             Section {
-                if state.engine.phase.isRunning {
-                    PhoneStatusRow(label: state.engine.phase.label, fraction: state.engine.phase.fraction, isRunning: true, isFailed: false,
-                                   onStop: { state.stop() })
-                } else {
-                    HStack {
-                        Button { state.engine.index(account: account, messageLimit: 1_000) } label: { Label("Index last 1,000", systemImage: "arrow.clockwise") }
-                            .disabled(state.isBusy)
-                        Spacer()
-                        if case .failed(let why) = state.engine.phase { Text(why).font(.caption).foregroundStyle(.red).lineLimit(2) }
-                        else if profiles.isEmpty { Text("Nothing indexed yet").font(.caption).foregroundStyle(.secondary) }
-                        else { Text("\(profiles.count) senders").font(.caption).foregroundStyle(.secondary) }
+                VStack(alignment: .leading, spacing: 6) {
+                    if state.engine.phase.isRunning {
+                        PhoneStatusRow(label: state.engine.phase.label, fraction: state.engine.phase.fraction, isRunning: true, isFailed: false,
+                                       onStop: { state.stop() })
+                    } else {
+                        HStack {
+                            Button { state.engine.index(account: account, messageLimit: 1_000) } label: { Label("Index last 1,000", systemImage: "arrow.clockwise") }
+                                .disabled(state.isBusy)
+                            Spacer()
+                            if case .failed(let why) = state.engine.phase { Text(why).font(.caption).foregroundStyle(.red).lineLimit(2) }
+                            else if profiles.isEmpty { Text("Nothing indexed yet").font(.caption).foregroundStyle(.secondary) }
+                            else { Text("\(profiles.count) senders").font(.caption).foregroundStyle(.secondary) }
+                        }
+                    }
+                    if let coverage {
+                        Text(coverage.caption()).font(.caption).foregroundStyle(.secondary)
+                            .accessibilityIdentifier("indexCoverageLine")
+                    } else if coverageUnavailable {
+                        Text("Couldn't read the index, so coverage is unavailable.").font(.caption).foregroundStyle(.secondary)
                     }
                 }
             }
-            ForEach(shown) { profile in row(profile) }
+            ForEach(shown) { profile in
+                NavigationLink { PhoneSenderDetailView(profile: profile, account: account) } label: { row(profile) }
+            }
         }
         .listStyle(.insetGrouped)
         .searchable(text: $filter, prompt: "Filter senders")
@@ -72,11 +84,22 @@ struct PhoneSendersView: View {
             Button("OK", role: .cancel) { }
         } message: { item in Text(item.text) }
         .ruleEditSheet($pendingRule, policy: state.policy, errorMessage: $ruleError)
+        .task(id: "\(profiles.count)|\(state.engine.phase.isRunning)") { loadCoverage() }
         .background {
             Color.clear.alert("Couldn't save the rule", isPresented: Binding(get: { ruleError != nil }, set: { if !$0 { ruleError = nil } }),
                               presenting: ruleError) { _ in
                 Button("OK", role: .cancel) { }
             } message: { Text($0) }
+        }
+    }
+
+    private func loadCoverage() {
+        do {
+            coverage = try IndexCoverage.current(for: account, in: modelContext)
+            coverageUnavailable = false
+        } catch {
+            coverage = nil
+            coverageUnavailable = true
         }
     }
 

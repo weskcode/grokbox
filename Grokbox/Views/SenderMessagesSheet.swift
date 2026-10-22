@@ -14,7 +14,12 @@ struct SenderMessagesSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var messages: [MessageHeader]
     @Query private var rules: [SenderRule]
+    @Query private var sameAddress: [SenderProfile]
+    @Query private var accounts: [MailAccount]
 
+    @State private var coverage: IndexCoverage?
+    @State private var sweepNow: SweepNowText?
+    @State private var evidenceUnavailable = false
     @State private var outcome: UnsubscribeService.Outcome?
     @State private var ruleError: String?
     @State private var pendingRule: PendingRuleEdit?
@@ -34,9 +39,12 @@ struct SenderMessagesSheet: View {
                               sort: \MessageHeader.receivedAt, order: .reverse)
         }
         _rules = Query(filter: #Predicate<SenderRule> { $0.address == address })
+        _sameAddress = Query(filter: #Predicate<SenderProfile> { $0.address == address })
     }
 
     private var rule: RuleDecision? { rules.first?.decision }
+
+    private var evidence: SenderEvidence { SenderEvidence(profile: profile, rule: rules.first, allProfiles: sameAddress) }
 
     /// Subject/summary only — the sender is already fixed by this sheet.
     /// A plain `TextField`, not `.searchable`: this view has no
@@ -52,9 +60,15 @@ struct SenderMessagesSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            header
-            Divider()
-            recommendationCard
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    header
+                    evidenceBlock
+                    Divider()
+                    recommendationCard
+                }
+            }
+            .frame(maxHeight: 330)
             Divider()
             TextField("Search this sender's messages", text: $searchText)
                 .textFieldStyle(.roundedBorder)
@@ -70,6 +84,22 @@ struct SenderMessagesSheet: View {
         }
         .ruleSaveAlert($ruleError)
         .ruleEditSheet($pendingRule, policy: state.policy, errorMessage: $ruleError)
+        .task(id: "\(messages.count)|\(rules.first?.summary ?? "")") { loadEvidence() }
+    }
+
+    private func loadEvidence() {
+        guard let account else { return }
+        do {
+            coverage = try IndexCoverage.current(for: account, in: modelContext)
+            let outcome = try SenderEvidence.sweepNow(address: profile.address, accountID: account.id, rule: rules.first,
+                                                      policy: state.policy, in: modelContext)
+            sweepNow = outcome.map(SweepNowText.init)
+            evidenceUnavailable = false
+        } catch {
+            coverage = nil
+            sweepNow = nil
+            evidenceUnavailable = true
+        }
     }
 
     private var header: some View {
@@ -86,12 +116,53 @@ struct SenderMessagesSheet: View {
                     Text(profile.category.label)
                 }
                 .font(.callout)
-                Text("\(profile.messageCount) messages · \(Int(profile.unreadRatio * 100))% unopened · \(profile.pendingCount) in inbox")
+                Text("\(profile.messageCount) indexed ·\(Int(profile.unreadRatio * 100))% unopened · \(profile.pendingCount) in inbox")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Button("Close") { dismiss() }.keyboardShortcut(.cancelAction)
         }
         .padding(16)
+    }
+
+    private var evidenceBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let coverage {
+                Text(coverage.caption()).font(.caption).foregroundStyle(.secondary)
+            } else if evidenceUnavailable {
+                Text("Couldn't read the index, so coverage and the sweep preview are unavailable.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            HStack(alignment: .top, spacing: 28) {
+                stat(evidence.indexed, "indexed from this sender")
+                stat(evidence.inInbox, "in inbox now")
+                stat(evidence.outOfInbox, "already out of the inbox")
+            }
+        }
+        .padding(.horizontal, 16).padding(.bottom, 12)
+    }
+
+    private func stat(_ count: Int, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(count.formatted()).font(.title3.monospacedDigit())
+            Text(label).font(.caption).foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(count.formatted()) \(label)")
+    }
+
+    private var sweepNowBlock: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("If you sweep now").font(.subheadline.weight(.semibold)).accessibilityAddTraits(.isHeader)
+            if let sweepNow {
+                Text(sweepNow.moves).font(.callout)
+                if let held = sweepNow.held {
+                    Text(held).font(.callout)
+                    ForEach(sweepNow.heldDetails, id: \.self) { Text($0).font(.caption).foregroundStyle(.secondary) }
+                }
+            } else if evidenceUnavailable {
+                Text("Couldn't work out what a sweep would do.").font(.callout).foregroundStyle(.secondary)
+            }
+        }
     }
 
     private var recommendationCard: some View {
@@ -102,6 +173,9 @@ struct SenderMessagesSheet: View {
             }
             Text(profile.recommendationReason).font(.callout)
             Text("Type: \(profile.categoryEvidence.isEmpty ? profile.category.label : profile.categoryEvidence). Swept mail goes to \(profile.category.folderName).")
+                .font(.caption).foregroundStyle(.secondary)
+            if account != nil { sweepNowBlock }
+            Text(evidence.scope(accountNames: Dictionary(accounts.map { ($0.id, $0.displayName) }, uniquingKeysWith: { a, _ in a })))
                 .font(.caption).foregroundStyle(.secondary)
 
             HStack(spacing: 8) {

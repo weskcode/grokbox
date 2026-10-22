@@ -95,6 +95,40 @@ final class GrokboxiOSUITests: XCTestCase {
         wait(app.buttons["Clear rule"], 10)
     }
 
+    /// A sender opens to the evidence behind its recommendation, and the list says what the index covers.
+    func testSenderDetailShowsEvidenceAndIndexCoverage() {
+        app.tabBars.buttons["Senders"].tap()
+        wait(app.navigationBars["Senders"], 20)
+        let row = app.cells.element(boundBy: 1)   // the index bar is the first cell
+        wait(row, 60)
+        wait(app.staticTexts["indexCoverageLine"], 30)
+        XCTAssertTrue(app.staticTexts["indexCoverageLine"].label.hasPrefix("Index covers"))
+        let list = XCTAttachment(screenshot: app.screenshot())
+        list.name = "senders-coverage"
+        list.lifetime = .keepAlways
+        add(list)
+
+        row.tap()
+        func scrollTo(_ predicate: String, file: StaticString = #filePath, line: UInt = #line) {
+            let element = app.staticTexts.matching(NSPredicate(format: predicate)).firstMatch
+            for _ in 0..<8 where !element.exists || !element.isHittable { app.swipeUp() }
+            XCTAssertTrue(element.exists, "missing: \(predicate)", file: file, line: line)
+        }
+        wait(app.staticTexts.matching(NSPredicate(format: "label ==[c] 'In the index'")).firstMatch, 30)
+        let top = XCTAttachment(screenshot: app.screenshot())
+        top.name = "sender-detail-top"
+        top.lifetime = .keepAlways
+        add(top)
+        scrollTo("label ==[c] 'If you sweep now'")
+        scrollTo("label BEGINSWITH 'Moves' OR label BEGINSWITH 'Nothing' OR label BEGINSWITH 'Your rule' OR label BEGINSWITH 'No sweep'")
+        scrollTo("label ==[c] 'Rule scope'")
+        scrollTo("label CONTAINS 'applies to this address in every account'")
+        let detail = XCTAttachment(screenshot: app.screenshot())
+        detail.name = "sender-detail-bottom"
+        detail.lifetime = .keepAlways
+        add(detail)
+    }
+
     func testSendersSearchFilters() {
         app.tabBars.buttons["Senders"].tap()
         wait(app.navigationBars["Senders"], 20)

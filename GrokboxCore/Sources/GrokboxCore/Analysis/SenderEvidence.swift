@@ -102,3 +102,79 @@ public struct SenderEvidence: Sendable, Equatable {
         ruleSummary = rule?.summary
     }
 }
+
+extension IndexCoverage {
+    /// "Index covers 4,812 of 6,030 messages · partial · Mar 2, 2025 – Oct 20, 2026 · Updated 9 days ago, may be out of date"
+    public func caption(now: Date = Date(), calendar: Calendar = .current) -> String {
+        guard !isEmpty else { return "Nothing indexed yet" }
+        var parts: [String]
+        if let serverMessages {
+            parts = isPartial ? ["Index covers \(indexedMessages.formatted()) of \(serverMessages.formatted()) messages", "partial"]
+                              : ["Index covers all \(indexedMessages.formatted()) messages"]
+        } else {
+            parts = ["Index covers \(indexedMessages.formatted()) messages"]
+        }
+        if let oldest, let newest {
+            let style = Date.FormatStyle().month(.abbreviated).day().year()
+            parts.append("\(oldest.formatted(style)) – \(newest.formatted(style))")
+        }
+        if let lastIndexedAt {
+            let days = max(0, calendar.dateComponents([.day], from: lastIndexedAt, to: now).day ?? 0)
+            let age = days == 0 ? "today" : days == 1 ? "yesterday" : "\(days) days ago"
+            parts.append("Updated \(age)" + (isStale(now: now, calendar: calendar) ? ", may be out of date" : ""))
+        }
+        return parts.joined(separator: " · ")
+    }
+}
+
+extension SenderEvidence {
+    /// What a sweep of this sender would do right now under their current rule,
+    /// or under a sweep rule when they have none, taken from the same preview a
+    /// rule edit shows. Nothing is written.
+    @MainActor
+    public static func sweepNow(address: String, accountID: UUID, rule: SenderRule?, policy: CleanupPolicy = .current,
+                                in context: ModelContext) throws -> RulePreview.Outcome? {
+        let edit = rule.map { RuleEdit.replace(SenderOverride(rule: $0)) } ?? .decision(.sweep)
+        let preview = try RulePreview.make(address: address, edit: edit, policy: policy, in: context)
+        return preview.accounts.first { $0.accountID == accountID }?.outcome
+    }
+
+    /// The rule's reach in words. `accountNames` names the other accounts the rule also covers.
+    public func scope(accountNames: [UUID: String]) -> String {
+        let base = ruleSummary.map { "Rule: \($0). It applies to this address in every account." }
+            ?? "No rule yet. A rule applies to this address in every account."
+        guard !otherAccounts.isEmpty else { return base }
+        let others = otherAccounts.map { other in
+            "\(accountNames[other.accountID] ?? "another account") (\(Self.messages(other.messageCount)))"
+        }
+        return base + " Also seen in " + others.joined(separator: ", ") + "."
+    }
+
+    static func messages(_ count: Int) -> String { "\(count.formatted()) \(count == 1 ? "message" : "messages")" }
+}
+
+/// The "If you sweep now" block, as words.
+public struct SweepNowText: Sendable, Equatable {
+    public var moves: String
+    /// Nil when nothing is held.
+    public var held: String?
+    /// Up to three of the held messages, each with the guard's reason.
+    public var heldDetails: [String]
+
+    public init(_ outcome: RulePreview.Outcome) {
+        switch outcome {
+        case .sweeps(let sweep):
+            moves = sweep.affectedCount == 0 ? "Nothing would move."
+                : "Moves \(SenderEvidence.messages(sweep.affectedCount)) to \(sweep.destination)."
+            held = sweep.heldCount == 0 ? nil : "\(sweep.heldCount.formatted()) stay in the inbox."
+            heldDetails = sweep.held.prefix(3).map { "\($0.subject): \($0.heldReason ?? "held")" }
+        case .keptInInbox:
+            (moves, held, heldDetails) = ("Your rule keeps this sender in the inbox. Nothing moves.", nil, [])
+        case .nothingPending:
+            (moves, held, heldDetails) = ("Nothing from this sender is left in the inbox.", nil, [])
+        case .notProposed:
+            (moves, held, heldDetails) = ("No sweep is proposed for this sender.", nil, [])
+        }
+    }
+}
+

@@ -24,6 +24,8 @@ struct SendersView: View {
     @State private var folderPickerAddress: String?
     @State private var ruleError: String?
     @State private var pendingRule: PendingRuleEdit?
+    @State private var coverage: IndexCoverage?
+    @State private var coverageUnavailable = false
 
     init(account: MailAccount, state: AppState) {
         self.account = account
@@ -57,6 +59,7 @@ struct SendersView: View {
     var body: some View {
         VStack(spacing: 0) {
             indexBar
+            if coverage != nil || coverageUnavailable { coverageLine }
             Divider()
             if assessments.isEmpty {
                 ContentUnavailableView("Nothing indexed yet", systemImage: "envelope.badge.person.crop",
@@ -139,6 +142,25 @@ struct SendersView: View {
                 .help("Indexing opens mailboxes with IMAP EXAMINE, which the server enforces as read-only.")
         }
         .padding(.horizontal, 16).padding(.vertical, 10)
+        .task(id: "\(profiles.count)|\(state.engine.phase.isRunning)") { loadCoverage() }
+    }
+
+    private func loadCoverage() {
+        do {
+            coverage = try IndexCoverage.current(for: account, in: modelContext)
+            coverageUnavailable = false
+        } catch {
+            coverage = nil
+            coverageUnavailable = true
+        }
+    }
+
+    private var coverageLine: some View {
+        Text(coverage?.caption() ?? "Couldn't read the index, so coverage is unavailable.")
+            .font(.caption).foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16).padding(.bottom, 8)
+            .accessibilityIdentifier("indexCoverageLine")
     }
 
     private var summaryStrip: some View {
@@ -222,7 +244,7 @@ struct SendersView: View {
             }
             .width(min: 200, ideal: 260)
 
-            TableColumn("Msgs", value: \.cluster.messageCount) { a in
+            TableColumn("Indexed", value: \.cluster.messageCount) { a in
                 Text(a.cluster.messageCount.formatted()).monospacedDigit()
             }
             .width(60)
