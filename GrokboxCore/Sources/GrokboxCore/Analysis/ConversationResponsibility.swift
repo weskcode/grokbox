@@ -10,7 +10,7 @@ import Foundation
 /// the user does. Rule order matters: missing or conflicting facts win first,
 /// so an unknown is shown as uncertain rather than guessed.
 public enum ConversationResponsibility {
-    public enum State: String, Sendable, Codable, CaseIterable {
+    public enum State: String, Sendable {
         case needsReply, waiting, resolved, uncertain
     }
 
@@ -58,30 +58,12 @@ public enum ConversationResponsibility {
         public var parent: Parent
         public var automation: Automation?
         public var reading: Reading
-
-        public init(key: String?, date: Date, author: String, isFromUser: Bool?, isAddressedToUser: Bool?,
-                    parent: Parent, automation: Automation?, reading: Reading) {
-            self.key = key
-            self.date = date
-            self.author = author
-            self.isFromUser = isFromUser
-            self.isAddressedToUser = isAddressedToUser
-            self.parent = parent
-            self.automation = automation
-            self.reading = reading
-        }
     }
 
-    public struct Conversation: Sendable, Equatable {
+    public struct Conversation: Sendable {
         public var identity: IdentitySource?
         public var sentCoverage: SentCoverage
         public var messages: [Message]
-
-        public init(identity: IdentitySource?, sentCoverage: SentCoverage, messages: [Message]) {
-            self.identity = identity
-            self.sentCoverage = sentCoverage
-            self.messages = messages
-        }
     }
 
     /// A state the user chose, anchored to the newest human message at the time.
@@ -89,12 +71,6 @@ public enum ConversationResponsibility {
         public var state: State
         public var anchorKey: String
         public var anchorDate: Date
-
-        public init(state: State, anchorKey: String, anchorDate: Date) {
-            self.state = state
-            self.anchorKey = anchorKey
-            self.anchorDate = anchorDate
-        }
     }
 
     public enum MissingFact: Sendable, Equatable {
