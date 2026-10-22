@@ -97,7 +97,10 @@ final class GrokboxiOSUITests: XCTestCase {
 
     private func scrollTo(_ predicate: String, file: StaticString = #filePath, line: UInt = #line) {
         let element = app.staticTexts.matching(NSPredicate(format: predicate)).firstMatch
-        for _ in 0..<10 where !element.exists || !element.isHittable { app.swipeUp() }
+        // Short drags: a full swipe can jump past a section at large text sizes.
+        let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
+        let to = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4))
+        for _ in 0..<40 where !element.exists || !element.isHittable { from.press(forDuration: 0.05, thenDragTo: to) }
         XCTAssertTrue(element.exists, "missing: \(predicate)", file: file, line: line)
     }
 
