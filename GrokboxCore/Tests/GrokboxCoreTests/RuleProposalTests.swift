@@ -38,7 +38,7 @@ struct RuleProposalTests {
     // MARK: - Approved senders
 
     @Test func anApprovedSenderGetsAnExistingFolderAndKeepsEverythingElse() {
-        let result = draft(propose("File them under reading.", rule: Self.archived))
+        let result = draft(propose("File them under \"reading\".", rule: Self.archived))
         #expect(result?.address == Self.address)
         #expect(result?.after == SenderOverride(decision: .sweep, disposition: .fileIntoFolders, customFolder: "Reading"),
                 "the only case-insensitive match takes its stored spelling, and a folder implies filing")
@@ -46,7 +46,7 @@ struct RuleProposalTests {
     }
 
     @Test func everythingFromThemMeansTheSender() {
-        #expect(draft(propose("Put everything from them into Reading", rule: Self.archived))?.after.customFolder == "Reading")
+        #expect(draft(propose("Put everything from them into \"Reading\"", rule: Self.archived))?.after.customFolder == "Reading")
     }
 
     @Test func aFolderNameEndsTheSentence() {
@@ -55,11 +55,11 @@ struct RuleProposalTests {
         #expect(propose("File them under Reading too", rule: Self.archived, folders: Self.folders.union(["Reading too"]))
                 == .unresolved(.unsupported), "a folder named that is set with the folder picker")
         #expect(draft(propose("File them into folders too", rule: Self.plain))?.after == Self.filed)
-        #expect(draft(propose("File them under Reading!", rule: Self.archived))?.after.customFolder == "Reading",
+        #expect(draft(propose("File them under \"Reading\"!", rule: Self.archived))?.after.customFolder == "Reading",
                 "closing punctuation is the sentence's, not the folder's")
     }
 
-    @Test func aBareFolderNameIsOneWordSoConditionsAreNeverPartOfIt() {
+    @Test func anUnquotedFolderNameIsNeverRead() {
         let names = ["Reading older than 30 days", "Reading and mark it read", "Reading from last Tuesday", "Reading on weekdays"]
         let folders = Self.folders.union(names)
         for name in names {
@@ -69,6 +69,12 @@ struct RuleProposalTests {
                     "quoted, the person has said where the name ends")
         }
         #expect(propose("File them under Unread", rule: Self.archived, folders: Self.folders.union(["Unread"])) == .unresolved(.unsupported))
+        for (request, folder) in [("File them in December", "December"), ("File them in 2027", "2027"), ("Put them under Reading", "Reading")] {
+            #expect(propose(request, rule: Self.archived, folders: Self.folders.union([folder])) == .unresolved(.unsupported),
+                    "\(request): unquoted, even one word can be a condition")
+        }
+        #expect(draft(propose("File them in \"December\"", rule: Self.archived, folders: Self.folders.union(["December"])))?
+            .after.customFolder == "December")
         #expect(draft(propose("File them under \u{201C}Unread\u{201D}", rule: Self.archived, folders: Self.folders.union(["Unread"])))?
             .after.customFolder == "Unread")
     }
@@ -169,7 +175,7 @@ struct RuleProposalTests {
     }
 
     @Test func aFolderForAnUnapprovedSenderWouldApproveItSoItIsRefused() {
-        #expect(propose("File them under Reading", rule: nil) == .unresolved(.notApproved),
+        #expect(propose("File them under \"Reading\"", rule: nil) == .unresolved(.notApproved),
                 "RuleStore creates a sweep rule when a folder is set on a sender with none")
     }
 
@@ -192,14 +198,14 @@ struct RuleProposalTests {
     // MARK: - Folders
 
     @Test func aFolderThatDoesNotExistIsNotCreated() {
-        #expect(propose("File them under Secret", rule: Self.archived) == .unresolved(.unknownFolder("Secret")))
+        #expect(propose("File them under \"Secret\"", rule: Self.archived) == .unresolved(.unknownFolder("Secret")))
     }
 
     @Test func foldersThatDifferOnlyByCaseFollowWhatWasTyped() {
         let both = Self.folders.union(["reading"])
-        #expect(draft(propose("File them under Reading", rule: Self.archived, folders: both))?.after.customFolder == "Reading")
-        #expect(draft(propose("File them under reading", rule: Self.archived, folders: both))?.after.customFolder == "reading")
-        #expect(propose("File them under READING", rule: Self.archived, folders: both) == .unresolved(.ambiguousFolder(["Reading", "reading"])))
+        #expect(draft(propose("File them under \"Reading\"", rule: Self.archived, folders: both))?.after.customFolder == "Reading")
+        #expect(draft(propose("File them under \"reading\"", rule: Self.archived, folders: both))?.after.customFolder == "reading")
+        #expect(propose("File them under \"READING\"", rule: Self.archived, folders: both) == .unresolved(.ambiguousFolder(["Reading", "reading"])))
     }
 
     @Test func aQuotedFolderNameCanHaveSeveralWords() {
@@ -221,23 +227,23 @@ struct RuleProposalTests {
                       "INBOX.Junk", "Spam/2026", "Junk-Mail", "Courrier indésirable", "Gesendete Objekte", "Brouillons", "Sendt", "Envoyes",
                       "Messages envoyés"])
     func specialMailboxesAreNotFilingFolders(folder: String) {
-        let typed = folder.contains(" ") ? "\"\(folder)\"" : folder
+        let typed = "\"\(folder)\""
         #expect(propose("Put them in \(typed)", rule: Self.archived, folders: Self.folders.union([folder])) == .unresolved(.reservedFolder(folder)),
                 "filing there would be a different action, such as trashing without the warning")
     }
 
     @Test(arguments: ["Grokbox/Newsletters", "INBOX.Clients", "Archive/Receipts", "Mr. Smith"])
     func ordinaryFoldersWithSpecialLookingPartsAreAllowed(folder: String) {
-        let typed = folder.contains(" ") ? "\"\(folder)\"" : folder
+        let typed = "\"\(folder)\""
         #expect(draft(propose("Put them in \(typed)", rule: Self.archived, folders: Self.folders.union([folder])))?.after.customFolder == folder)
     }
 
     @Test func aLookAlikeSpellingCannotFileIntoTheTrash() {
-        #expect(propose("Put them in Tra\u{017F}h", rule: Self.archived, folders: Self.folders.union(["Trash"]))
+        #expect(propose("Put them in \"Tra\u{017F}h\"", rule: Self.archived, folders: Self.folders.union(["Trash"]))
                 == .unresolved(.reservedFolder("Tra\u{017F}h")), "the long s folds to s, so this is the Trash")
         let stored = Self.folders.union(["Tra\u{017F}h"])
-        #expect(propose("Put them in Trash", rule: Self.archived, folders: stored) == .unresolved(.reservedFolder("Trash")))
-        #expect(propose("Put them in Tra\u{017F}h", rule: Self.archived, folders: stored) == .unresolved(.reservedFolder("Tra\u{017F}h")))
+        #expect(propose("Put them in \"Trash\"", rule: Self.archived, folders: stored) == .unresolved(.reservedFolder("Trash")))
+        #expect(propose("Put them in \"Tra\u{017F}h\"", rule: Self.archived, folders: stored) == .unresolved(.reservedFolder("Tra\u{017F}h")))
     }
 
     /// The executor's Trash and Sent lookups and this refusal read the same names.
@@ -290,7 +296,7 @@ struct RuleProposalTests {
             for rule in rules {
                 for folder in form.pieces.contains(.folder) ? ["Reading", "Shopping", "Never"] : [""] {
                     let request = form.pieces.map { piece -> String in
-                        if case .word(let word) = piece { word } else { folder }
+                        if case .word(let word) = piece { word } else { "\"\(folder)\"" }
                     }.joined(separator: " ")
                     let proposal = propose(request, rule: rule)
                     if proposal == .unresolved(.nothingToChange) { reached = true }
