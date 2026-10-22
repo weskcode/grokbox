@@ -106,11 +106,19 @@ public struct SenderEvidence: Sendable, Equatable {
 extension IndexCoverage {
     /// "Index covers 4,812 of 6,030 messages · partial · Mar 2, 2025 – Oct 20, 2026 · Updated 9 days ago, may be out of date"
     public func caption(now: Date = Date(), calendar: Calendar = .current) -> String {
-        guard !isEmpty else { return "Nothing indexed yet" }
+        if isEmpty {
+            guard let serverMessages, serverMessages > 0 else { return "Nothing indexed yet" }
+            return "Nothing indexed yet · the server reports \(serverMessages.formatted()) messages"
+        }
         var parts: [String]
         if let serverMessages {
-            parts = isPartial ? ["Index covers \(indexedMessages.formatted()) of \(serverMessages.formatted()) messages", "partial"]
-                              : ["Index covers all \(indexedMessages.formatted()) messages"]
+            if isPartial {
+                parts = ["Index covers \(indexedMessages.formatted()) of \(serverMessages.formatted()) messages", "partial"]
+            } else if indexedMessages > serverMessages {
+                parts = ["Index covers \(indexedMessages.formatted()) messages", "the server now reports \(serverMessages.formatted())"]
+            } else {
+                parts = ["Index covers all \(indexedMessages.formatted()) messages"]
+            }
         } else {
             parts = ["Index covers \(indexedMessages.formatted()) messages"]
         }

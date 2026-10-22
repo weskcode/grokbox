@@ -77,13 +77,23 @@ struct PhoneSenderDetailView: View {
         }
         .navigationTitle(profile.displayName.isEmpty ? profile.address : profile.displayName)
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: "\(sameAddress.count)|\(profile.messageCount)|\(rules.first?.summary ?? "")") { load() }
+        .task(id: EvidenceKey(profiles: sameAddress.count, messages: profile.messageCount, inInbox: profile.pendingCount,
+                              indexedAt: profile.updatedAt, rule: rules.first?.summary, policy: state.policy)) { load() }
     }
 
     private func row(_ label: String, _ count: Int) -> some View {
         LabeledContent(label) { Text(count.formatted()).monospacedDigit() }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(count.formatted()) \(label.lowercased())")
+    }
+
+    private struct EvidenceKey: Equatable {
+        var profiles: Int
+        var messages: Int
+        var inInbox: Int
+        var indexedAt: Date
+        var rule: String?
+        var policy: CleanupPolicy
     }
 
     private func load() {

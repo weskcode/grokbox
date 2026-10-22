@@ -84,7 +84,16 @@ struct SenderMessagesSheet: View {
         }
         .ruleSaveAlert($ruleError)
         .ruleEditSheet($pendingRule, policy: state.policy, errorMessage: $ruleError)
-        .task(id: "\(messages.count)|\(rules.first?.summary ?? "")") { loadEvidence() }
+        .task(id: EvidenceKey(messages: messages.count, inInbox: messages.filter { $0.isInInbox && !$0.isSweptLocally }.count,
+                              indexedAt: profile.updatedAt, rule: rules.first?.summary, policy: state.policy)) { loadEvidence() }
+    }
+
+    private struct EvidenceKey: Equatable {
+        var messages: Int
+        var inInbox: Int
+        var indexedAt: Date
+        var rule: String?
+        var policy: CleanupPolicy
     }
 
     private func loadEvidence() {

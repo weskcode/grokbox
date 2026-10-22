@@ -199,6 +199,8 @@ struct SenderEvidenceTests {
         #expect(caption(indexed: 10, server: 10, daysAgo: 1).hasSuffix("Updated yesterday"))
         #expect(!caption(indexed: 10, server: 10, daysAgo: 7).contains("out of date"))
         #expect(caption(indexed: 3, server: nil, daysAgo: nil, dated: false) == "Index covers 3 messages")
+        #expect(caption(indexed: 0, server: 40, daysAgo: 2, dated: false) == "Nothing indexed yet · the server reports 40 messages")
+        #expect(caption(indexed: 12, server: 10, daysAgo: 0).hasPrefix("Index covers 12 messages · the server now reports 10 · "))
     }
 
     @Test func sweepNowMatchesThePlanAndGuardAndWritesNothing() throws {
