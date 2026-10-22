@@ -152,6 +152,7 @@ extension RuleEdit {
         case .autoUnsubscribe(nil): "Follow my policy on unsubscribing"
         case .customFolder(let folder?): "File into \(folder)"
         case .customFolder(nil): "Follow the category folder"
+        case .replace: "Set this rule"
         case .clear: "Clear rule"
         }
     }

@@ -73,14 +73,15 @@ final class GrokboxiOSUITests: XCTestCase {
         sheet.lifetime = .keepAlways
         add(sheet)
         app.buttons["Cancel"].tap()
-        wait(row, 10)
+        XCTAssertTrue(app.navigationBars["Always sweep"].waitForNonExistence(timeout: 10), "cancel closes the sheet")
 
-        row.press(forDuration: 1.0)
+        row.press(forDuration: 1.2)
         wait(app.buttons["Follow my policy"], 10)
         XCTAssertFalse(app.buttons["Clear rule"].exists, "cancelling the preview saves nothing")
         app.buttons["Follow my policy"].tap()
         wait(app.navigationBars["Follow my policy"], 20)
         app.buttons["Cancel"].tap()
+        XCTAssertTrue(app.navigationBars["Follow my policy"].waitForNonExistence(timeout: 10))
 
         row.swipeLeft()
         wait(app.buttons["Always sweep"], 10)
@@ -88,9 +89,9 @@ final class GrokboxiOSUITests: XCTestCase {
         wait(app.buttons["saveRule"], 20)
         app.buttons["saveRule"].tap()
         wait(row, 10)
-        XCTAssertFalse(app.buttons["saveRule"].exists, "saving closes the sheet")
+        XCTAssertTrue(app.buttons["saveRule"].waitForNonExistence(timeout: 10), "saving closes the sheet")
 
-        row.press(forDuration: 1.0)
+        row.press(forDuration: 1.2)
         wait(app.buttons["Clear rule"], 10)
     }
 

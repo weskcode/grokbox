@@ -216,6 +216,9 @@ public enum RuleEdit: Sendable, Equatable {
     case disposition(CleanupPolicy.Disposition?)
     case autoUnsubscribe(Bool?)
     case customFolder(String?)
+    /// A whole rule in one piece, for a caller that drafts one (a description
+    /// turned into a proposal) rather than changing a single field.
+    case replace(SenderOverride)
     case clear
 
     /// The rule after this edit, or nil when the edit removes it.
@@ -236,6 +239,8 @@ public enum RuleEdit: Sendable, Equatable {
         case .customFolder(let folder):
             rule.customFolder = folder
             if folder != nil { rule.disposition = .fileIntoFolders }
+        case .replace(let replacement):
+            rule = replacement
         case .clear:
             break
         }

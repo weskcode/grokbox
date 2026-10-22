@@ -123,7 +123,7 @@ struct RulePreviewSheet: View {
                                : "Would move to \(sweep.destination) (\(sweep.affectedCount))") {
                 VStack(alignment: .leading, spacing: 4) {
                     if sweep.affected.isEmpty { Text("Nothing would move.").font(.callout).foregroundStyle(.secondary) }
-                    ForEach(sweep.affected) { Text($0.subject).font(.callout).lineLimit(1) }
+                    ForEach(sweep.affected) { Text($0.subject).font(.callout).lineLimit(3) }
                     if sweep.affectedCount > sweep.affected.count {
                         Text("and \(sweep.affectedCount - sweep.affected.count) more").font(.caption).foregroundStyle(.secondary)
                     }
@@ -136,7 +136,7 @@ struct RulePreviewSheet: View {
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(sweep.held) { message in
                             HStack {
-                                Text(message.subject).lineLimit(1)
+                                Text(message.subject).lineLimit(3)
                                 Spacer()
                                 Text(message.heldReason ?? "").foregroundStyle(.secondary)
                             }

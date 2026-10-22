@@ -47,7 +47,7 @@ struct SweepView: View {
         .navigationTitle("Sweep · \(account.displayName)")
         .onAppear { if plan == nil { plan = buildPlan() } }
         .onChange(of: profiles.map(\.updatedAt)) { plan = buildPlan() }
-        .onChange(of: rules.count) { plan = buildPlan() }
+        .onChange(of: rules.map { $0.address + $0.summary }) { plan = buildPlan() }
         .onChange(of: state.policy) { plan = buildPlan() }
         .sheet(item: $drillDown) { profile in
             SenderMessagesSheet(profile: profile, account: account, state: state)

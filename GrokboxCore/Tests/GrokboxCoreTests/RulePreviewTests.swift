@@ -205,6 +205,22 @@ struct RulePreviewTests {
         #expect(preview.accounts.first?.outcome == .nothingPending)
     }
 
+    @Test func aWholeRuleIsPreviewedAndSavedExactlyAsGiven() throws {
+        let container = ModelContainer.grokboxTestContainer()
+        let context = container.mainContext
+        seed(bulk(8), for: account("Home", in: context), in: context)
+        try RuleStore.setDisposition(.trash, for: address, in: context)
+
+        let proposed = SenderOverride(decision: .sweep, autoUnsubscribe: false, customFolder: "Clients/VIP")
+        let preview = try RulePreview.make(address: address, edit: .replace(proposed), policy: .thorough, in: context, now: now)
+        #expect(preview.resultingRule == proposed, "the old trash disposition is replaced, not merged")
+        #expect(try sweep(preview).folder == "Clients/VIP")
+        #expect(RuleStore.overrides(in: context)[address]?.disposition == .trash, "previewing changed nothing")
+
+        try RuleStore.apply(.replace(proposed), for: address, in: context)
+        #expect(RuleStore.overrides(in: context)[address] == proposed)
+    }
+
     @Test func sameEffectSeesChangesOutsideTheCappedSamples() throws {
         let container = ModelContainer.grokboxTestContainer()
         let context = container.mainContext

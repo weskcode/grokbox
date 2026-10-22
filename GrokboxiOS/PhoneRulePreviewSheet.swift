@@ -116,7 +116,7 @@ struct PhoneRulePreviewSheet: View {
             Section(showName ? "\(effect.accountName): would move to \(sweep.destination) (\(sweep.affectedCount))"
                              : "Would move to \(sweep.destination) (\(sweep.affectedCount))") {
                 if sweep.affected.isEmpty { Text("Nothing would move.").foregroundStyle(.secondary) }
-                ForEach(sweep.affected) { Text($0.subject).lineLimit(1) }
+                ForEach(sweep.affected) { Text($0.subject).lineLimit(3) }
                 if sweep.affectedCount > sweep.affected.count {
                     Text("and \(sweep.affectedCount - sweep.affected.count) more").font(.caption).foregroundStyle(.secondary)
                 }
@@ -126,7 +126,7 @@ struct PhoneRulePreviewSheet: View {
                 Section("Staying in the inbox (\(sweep.heldCount))") {
                     ForEach(sweep.held) { message in
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(message.subject).lineLimit(1)
+                            Text(message.subject).lineLimit(3)
                             Text(message.heldReason ?? "").font(.caption).foregroundStyle(.secondary)
                         }
                     }
