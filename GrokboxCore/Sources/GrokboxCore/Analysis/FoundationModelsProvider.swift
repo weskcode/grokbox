@@ -18,7 +18,7 @@ public struct FoundationModelsProvider: TextModel {
         // Off the main actor on purpose: the availability getter blocks its
         // calling thread on an XPC reply that is delivered via the main run
         // loop. Called on the main thread inside a GUI app, it deadlocks.
-        await Task.detached(priority: .utility) {
+        return await Task.detached(priority: .utility) {
             switch SystemLanguageModel.default.availability {
             case .available:
                 return ModelAvailability.available
