@@ -524,16 +524,16 @@ struct AccountOnboarding: View {
         let read = (try? modelContext.fetchCount(FetchDescriptor<MessageHeader>(predicate: #Predicate { $0.accountID == id && $0.summary != nil }))) ?? 0
         return Result(indexed: indexed, senders: profiles.count,
                       bulkSenders: bulk.count, bulkMessages: bulk.reduce(0) { $0 + $1.pendingUIDs.count }, read: read,
-                      coverage: indexCoverage())
+                      coverage: indexCoverage(headersIndexed: indexed))
     }
 
     /// What the index reached, judged against the mailbox size seen while
     /// indexing rather than the earlier probe, which mail may have outgrown.
-    private func indexCoverage() -> IndexCoverage {
+    private func indexCoverage(headersIndexed: Int) -> IndexCoverage {
         let id = account.id
         let snapshots = (try? modelContext.fetch(FetchDescriptor<MailboxSnapshot>(predicate: #Predicate { $0.accountID == id }))) ?? []
         guard let main = snapshots.max(by: { $0.messageCountOnServer < $1.messageCountOnServer }) else {
-            return IndexCoverage(indexed: 0, mailboxTotal: nil)
+            return IndexCoverage(indexed: headersIndexed, mailboxTotal: nil)
         }
         let name = main.mailbox
         let indexed = (try? modelContext.fetchCount(FetchDescriptor<MessageHeader>(
