@@ -66,7 +66,7 @@ struct PhoneSettingsView: View {
                     .font(.footnote).foregroundStyle(.secondary)
             }
             Section("Your data") {
-                Text("Accounts (never passwords), rules, the action log and saved digests, as one JSON file.").font(.footnote).foregroundStyle(.secondary)
+                Text("Accounts (never passwords), rules, the action log, saved digests and conversation status choices, as one JSON file.").font(.footnote).foregroundStyle(.secondary)
                 if let exportURL {
                     ShareLink(item: exportURL) { Label("Share export", systemImage: "square.and.arrow.up") }
                 } else {

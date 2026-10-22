@@ -146,7 +146,7 @@ struct SettingsView: View {
             }
 
             Section("Your data") {
-                Text("Accounts (never passwords), rules, the action log and saved digests, as one JSON file. Message headers are a cache of your mail server and are not included.")
+                Text("Accounts (never passwords), rules, the action log, saved digests and conversation status choices, as one JSON file. Message headers are a cache of your mail server and are not included.")
                     .font(.callout).foregroundStyle(.secondary)
                 HStack {
                     Button("Export…") {

@@ -5,8 +5,11 @@ import SwiftData
 /// are never stored; this is the one fact Grokbox cannot recompute from mail.
 ///
 /// Keyed by account and conversation identity rather than by message, because
-/// header rows are rewritten on re-index and after a UIDVALIDITY change. If the
-/// identity scheme ever changes, old rows are orphaned, never misapplied.
+/// header rows are rewritten on re-index and after a UIDVALIDITY change. A row
+/// whose key no longer matches is orphaned, never misapplied. Note that
+/// `ConversationIdentity.Assignment.key` can change when an earlier message of
+/// the conversation is indexed later, so whatever first writes these rows must
+/// look them up by something that survives that (ADR-0026).
 @Model
 public final class ConversationCorrection {
     #Index<ConversationCorrection>([\.accountID])
@@ -51,6 +54,16 @@ public final class ConversationCorrection {
     public static func record(_ state: ConversationResponsibility.State, accountID: UUID, conversationID: String,
                               anchorMessageKey: String, anchorDate: Date, now: Date = Date(),
                               in context: ModelContext) throws -> ConversationCorrection {
+        let row = try upsert(state, accountID: accountID, conversationID: conversationID,
+                             anchorMessageKey: anchorMessageKey, anchorDate: anchorDate, now: now, in: context)
+        try context.save()
+        return row
+    }
+
+    @discardableResult
+    static func upsert(_ state: ConversationResponsibility.State, accountID: UUID, conversationID: String,
+                       anchorMessageKey: String, anchorDate: Date, now: Date,
+                       in context: ModelContext) throws -> ConversationCorrection {
         guard !conversationID.isEmpty else { throw RecordError.noConversation }
         guard state != .uncertain else { throw RecordError.notAChoice }
         let key = key(accountID: accountID, conversationID: conversationID)
@@ -66,7 +79,6 @@ public final class ConversationCorrection {
         row.anchorMessageKey = anchorMessageKey
         row.anchorDate = anchorDate
         row.correctedAt = now
-        try context.save()
         return row
     }
 

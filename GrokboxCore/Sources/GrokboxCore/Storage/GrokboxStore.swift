@@ -4,8 +4,10 @@ import SwiftData
 /// The on-disk schema.
 ///
 /// Every change so far has been *additive* — new optional properties with no
-/// default — which SwiftData migrates in place without a stage. The version
-/// identifier is bumped so the store records which shape wrote it.
+/// default, or a new model type — which SwiftData migrates in place without a
+/// stage. The version identifier is bumped so the store records which shape
+/// wrote it. A new model type is proven by a test that writes the previous
+/// shape on disk and reopens it through this plan (ADR-0026).
 ///
 /// **A breaking change needs more than a bump here.** A `VersionedSchema` is
 /// only meaningfully distinct if it declares its *own copies* of the model

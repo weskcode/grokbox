@@ -38,6 +38,13 @@ struct ConversationCorrectionTests {
                                          senderAddress: "alice@friend.example", receivedAt: anchorDate, isUnread: true,
                                          isFlagged: false, listUnsubscribe: nil, listUnsubscribePost: nil, listID: nil,
                                          messageID: "<a0@friend.example>"))
+            var sent = FetchedHeader(uid: 41, subject: "Re: Lunch", senderName: "", senderAddress: "me@example.com",
+                                     recipients: ["alice@friend.example"], date: anchorDate, isUnread: false, isFlagged: false,
+                                     gmailLabels: nil, listUnsubscribe: nil, listUnsubscribePost: nil, listID: nil,
+                                     messageID: "<s41@example.com>")
+            sent.inReplyTo = ["a0@friend.example"]
+            context.insert(SentMessageHeader(accountID: account, mailbox: "Sent", uidValidity: 5, header: sent))
+            context.insert(MailboxSnapshot(accountID: account, mailbox: "INBOX", uidValidity: 9, highestUID: 7, messageCountOnServer: 1))
             try context.save()
         }
 
@@ -54,6 +61,9 @@ struct ConversationCorrectionTests {
             #expect(try context.fetch(FetchDescriptor<CleanupAction>()).first?.uids == [3, 4])
             #expect(try context.fetchCount(FetchDescriptor<MessageHeader>()) == 1)
             #expect(try context.fetchCount(FetchDescriptor<MailAccount>()) == 1)
+            #expect(try context.fetch(FetchDescriptor<SentMessageHeader>()).first?.inReplyTo == "a0@friend.example",
+                    "1.2.0 Sent history survives")
+            #expect(try context.fetch(FetchDescriptor<MailboxSnapshot>()).first?.uidValidity == 9)
             #expect(try context.fetchCount(FetchDescriptor<ConversationCorrection>()) == 0)
             try ConversationCorrection.record(.resolved, accountID: account, conversationID: "headers|a0@friend.example",
                                               anchorMessageKey: "a0@friend.example", anchorDate: anchorDate, in: context)
@@ -64,6 +74,7 @@ struct ConversationCorrectionTests {
         #expect(rows.count == 1, "a correction written after the upgrade survives a reopen")
         #expect(rows.first?.correction == .init(state: .resolved, anchorKey: "a0@friend.example", anchorDate: anchorDate))
         #expect(try reopened.fetchCount(FetchDescriptor<SenderRule>()) == 1)
+        #expect(try reopened.fetchCount(FetchDescriptor<SentMessageHeader>()) == 1)
     }
 
     @Test func choosingAgainReplacesTheOneRow() throws {
@@ -160,6 +171,26 @@ struct ConversationCorrectionTests {
         let rows = try target.fetch(FetchDescriptor<ConversationCorrection>())
         #expect(rows.count == 1, "re-import keeps one row")
         #expect(rows.first?.key == ConversationCorrection.key(accountID: mail.id, conversationID: "headers|a0@x.example"))
+        #expect(rows.first?.correction == .init(state: .resolved, anchorKey: "a0@x.example", anchorDate: anchorDate))
+    }
+
+    @Test func importSkipsEntriesItCannotAcceptAndSavesOnce() throws {
+        let container = ModelContainer.grokboxTestContainer()
+        let context = container.mainContext
+        let mail = MailAccount(displayName: "Me", username: "me@example.com", host: "imap.example.com", port: 993,
+                               kind: .generic, security: .tls)
+        context.insert(mail)
+        try context.save()
+        func entry(_ id: String, _ state: String) -> DataExport.Document.Correction {
+            .init(accountID: mail.id, conversationID: id, state: state, anchorMessageKey: "m", anchorDate: anchorDate,
+                  correctedAt: anchorDate)
+        }
+        let document = DataExport.Document(exportedAt: anchorDate, accounts: [], rules: [], actions: [], digests: [],
+                                           corrections: [entry("ok", "waiting"), entry("bad", "uncertain"),
+                                                         entry("", "resolved"), entry("future", "someFutureState")])
+        #expect(try DataExport.importCorrections(from: document, into: context) == 1)
+        #expect(try context.fetch(FetchDescriptor<ConversationCorrection>()).map(\.key)
+                == [ConversationCorrection.key(accountID: mail.id, conversationID: "ok")])
     }
 
     @Test func versionOneExportsStillDecodeAndImportRules() throws {

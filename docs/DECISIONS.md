@@ -570,8 +570,6 @@ conversations in the Brief.
 
 ---
 
----
-
 ## ADR-0026 — Responsibility is derived from mail; only the user's choice is stored
 
 **Status:** accepted
@@ -595,6 +593,13 @@ delete corrections and log a failed delete instead of hiding it. Export
 version 2 carries them; import restores only those whose account exists in
 the store, since account ids do not carry across installs. Version 1 files
 still import.
+
+The key's conversation part is unit 09's `Assignment.key`, which can change
+when an earlier message of the conversation is indexed later. A choice keyed
+on the old value would then be orphaned: never misapplied, but no longer
+shown. Nothing writes corrections yet; the code that first does must look
+them up by something that survives re-indexing, such as the anchor message's
+id within the conversation.
 
 **Not done here:** fetching Auto-Submitted and Precedence, separating To from
 Cc, a Sent coverage date, the adapter from stored mail to the rules, and the

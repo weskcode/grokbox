@@ -7,6 +7,8 @@ All notable changes to Grokbox are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- Grokbox can store a status you choose for a conversation (schema 1.3.0,
+  upgraded in place). Nothing in the app sets one yet.
 - Data export version 2 also carries conversation status choices. Version 1
   files still import.
 - STARTTLS, which Proton Mail Bridge uses by default and many servers offer

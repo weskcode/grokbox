@@ -111,19 +111,22 @@ public enum DataExport {
 
     /// Restores corrections for accounts that exist in this store. Account ids
     /// are not carried across installs, so the rest would never apply; they are
-    /// skipped rather than stored as orphans.
+    /// skipped rather than stored as orphans, as are entries this build cannot
+    /// accept. Saves once, so a failure leaves nothing half-imported.
     @MainActor
     @discardableResult
     public static func importCorrections(from document: Document, into context: ModelContext) throws -> Int {
         let accounts = Set(try context.fetch(FetchDescriptor<MailAccount>()).map(\.id))
         var imported = 0
         for item in document.corrections ?? [] where accounts.contains(item.accountID) {
-            guard let state = ConversationResponsibility.State(rawValue: item.state) else { continue }
-            try ConversationCorrection.record(state, accountID: item.accountID, conversationID: item.conversationID,
+            guard let state = ConversationResponsibility.State(rawValue: item.state), state != .uncertain,
+                  !item.conversationID.isEmpty else { continue }
+            try ConversationCorrection.upsert(state, accountID: item.accountID, conversationID: item.conversationID,
                                               anchorMessageKey: item.anchorMessageKey, anchorDate: item.anchorDate,
                                               now: item.correctedAt, in: context)
             imported += 1
         }
+        try context.save()
         return imported
     }
 }
