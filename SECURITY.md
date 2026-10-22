@@ -28,8 +28,12 @@ otherwise.
 - **Local model.** Summaries are produced by Apple's on-device model or a
   loopback-only Ollama. Model output is displayed, never executed or acted on.
 - **Unsubscribe policy.** The RFC 8058 POST goes only to an HTTPS URL on a
-  public host — never loopback, private, link-local or `.local` — and follows
-  at most one redirect under the same rule (`PublicHostPolicy.swift`).
+  public host — never loopback, private, link-local or `.local`. The host name
+  is looked up once, every address it returns must be public, and the
+  connection goes to one of those checked addresses while TLS still verifies
+  the certificate against the host name. At most one redirect is followed,
+  under the same rule, and the whole request has a 15-second limit
+  (`PublicHostPolicy.swift`, `UnsubscribeService.swift`).
 - **Link hygiene.** Bodies are scanned for domain-mismatched anchors,
   IP-literal hosts, and account-confirmation phrasing; warnings are shown, links
   are never opened automatically.

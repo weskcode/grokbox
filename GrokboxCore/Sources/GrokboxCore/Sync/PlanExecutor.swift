@@ -279,14 +279,16 @@ public final class PlanExecutor {
                                         labelName: item.cluster.address, uidValidity: 0)
                     let outcome = await UnsubscribeService.unsubscribe(from: item.cluster)
                     switch outcome {
-                    case .unsubscribed:
+                    case .accepted:
                         action.errorMessage = nil
                         unsubscribeCount += 1
                     case .openInBrowser, .requiresEmail:
                         // Automatic mode is one-click only. Anything needing a
                         // browser or an email is left for the user to decide.
                         action.errorMessage = "Needs a browser; left for you in Senders."
-                    case .failed(let why):
+                    case .notAccepted(let status, _):
+                        action.errorMessage = "The sender's server didn't accept it (HTTP \(status)); left for you in Senders."
+                    case .failed(let why), .unknown(let why):
                         action.errorMessage = why
                     }
                 }

@@ -106,7 +106,9 @@ struct ActivityView: View {
         case .markRead: "Marked \(action.messageCount.formatted()) read"
         case .label: "Filed \(action.messageCount.formatted()) → \(action.labelName ?? "")"
         case .trash: "Moved \(action.messageCount.formatted()) to Trash"
-        case .unsubscribe: "Unsubscribed from \(action.senderName)"
+        case .unsubscribe: action.errorMessage == nil
+            ? "Unsubscribe accepted by \(action.senderName)"
+            : "Unsubscribe from \(action.senderName) not confirmed"
         }
     }
 }

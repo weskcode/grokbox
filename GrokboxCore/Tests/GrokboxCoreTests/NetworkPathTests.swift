@@ -9,10 +9,13 @@ final class FakeHTTPServer: @unchecked Sendable {
     private let queue = DispatchQueue(label: "fake-http")
     private let lock = NSLock()
     private(set) var requests: [String] = []
+    private var accepted = 0
     let responder: @Sendable (String) -> (status: Int, body: String)
     private(set) var port: UInt16 = 0
     /// When set, every reply carries this `Location` header (for redirect tests).
     var redirectLocation: String?
+    var withholdsReply = false
+    var hangsUp = false
 
     init(responder: @escaping @Sendable (String) -> (status: Int, body: String)) throws {
         self.responder = responder
@@ -39,8 +42,10 @@ final class FakeHTTPServer: @unchecked Sendable {
     func stop() { listener.cancel() }
 
     var recorded: [String] { lock.lock(); defer { lock.unlock() }; return requests }
+    var connections: Int { lock.lock(); defer { lock.unlock() }; return accepted }
 
     private func accept(_ connection: NWConnection) {
+        lock.lock(); accepted += 1; lock.unlock()
         connection.start(queue: queue)
         read(connection, Data())
     }
@@ -61,6 +66,8 @@ final class FakeHTTPServer: @unchecked Sendable {
             guard body.utf8.count >= declared else { self.read(connection, buffer); return }
 
             self.lock.lock(); self.requests.append(text); self.lock.unlock()
+            if self.withholdsReply { return }
+            if self.hangsUp { connection.cancel(); return }
             let reply = self.responder(text)
             let location = self.redirectLocation.map { "Location: \($0)\r\n" } ?? ""
             let payload = "HTTP/1.1 \(reply.status) OK\r\n\(location)Content-Type: application/json\r\nContent-Length: \(reply.body.utf8.count)\r\nConnection: close\r\n\r\n\(reply.body)"
@@ -95,7 +102,7 @@ struct UnsubscribeHTTPTests {
 
         let url = URL(string: "http://127.0.0.1:\(server.port)/unsub")!
         let result = await UnsubscribeService.performOneClick(to: url, allowingLoopbackForTests: true)
-        #expect(result == .unsubscribed)
+        #expect(result == .accepted)
         let request = try #require(server.recorded.first)
         #expect(request.hasPrefix("POST /unsub HTTP/1.1"))
         #expect(request.lowercased().contains("content-type: application/x-www-form-urlencoded"))
@@ -103,12 +110,14 @@ struct UnsubscribeHTTPTests {
         #expect(!request.lowercased().contains("cookie:"), "no cookies, no identifiers beyond what the sender already put in the URL")
     }
 
-    @Test func nonSuccessFallsBackToBrowser() async throws {
+    @Test func nonSuccessIsNotAcceptedAndLeavesTheirPage() async throws {
         let server = try FakeHTTPServer { _ in (500, "nope") }
         try await server.start()
         defer { server.stop() }
         let url = URL(string: "http://127.0.0.1:\(server.port)/unsub")!
-        #expect(await UnsubscribeService.performOneClick(to: url, allowingLoopbackForTests: true) == .openInBrowser(url))
+        let outcome = await UnsubscribeService.performOneClick(to: url, allowingLoopbackForTests: true)
+        #expect(outcome == .notAccepted(status: 500, page: url))
+        #expect(outcome.manualPage == url)
     }
 }
 

@@ -17,6 +17,13 @@ final class GrokboxiOSUITests: XCTestCase {
         XCTAssertTrue(element.waitForExistence(timeout: seconds), "missing: \(element)", file: file, line: line)
     }
 
+    private func keepScreenshot(_ name: String) {
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = name
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
     func testBriefShowsRankedRowsAfterDemoRun() {
         // --run-all indexes and reads three mailboxes with the on-device model; give it time.
         wait(app.staticTexts["Now · start here, three things, then stop"].firstMatch)
@@ -97,6 +104,55 @@ final class GrokboxiOSUITests: XCTestCase {
         app.tabBars.buttons["Settings"].tap()
         wait(app.buttons["Gentle"], 20)
         app.buttons["Gentle"].tap()
+    }
+
+    func testUnsubscribeThatCannotBeSentSaysSo() {
+        app.tabBars.buttons["Senders"].tap()
+        wait(app.navigationBars["Senders"], 20)
+        let search = app.searchFields.firstMatch
+        wait(search, 60)
+        search.tap()
+        search.typeText("Morning Digest")
+        let row = app.cells.containing(NSPredicate(format: "label CONTAINS 'The Morning Digest'")).firstMatch
+        wait(row, 30)
+        row.press(forDuration: 1.2)
+        wait(app.buttons["Unsubscribe"], 10)
+        app.buttons["Unsubscribe"].tap()
+        let alert = app.alerts["Unsubscribe"]
+        wait(alert, 30)
+        keepScreenshot("unsubscribe-not-sent")
+        XCTAssertTrue(alert.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Nothing was sent.'")).firstMatch.exists,
+                      "a request that never left is reported as not sent")
+        XCTAssertFalse(alert.staticTexts.matching(NSPredicate(format: "label CONTAINS 'acknowledged'")).firstMatch.exists)
+        alert.buttons["OK"].tap()
+    }
+
+    func testFailedAutomaticUnsubscribeIsNotShownAsDone() {
+        app.tabBars.buttons["Settings"].tap()
+        wait(app.staticTexts["How Grokbox cleans"], 20)
+        app.buttons["Thorough"].tap()
+        defer {
+            app.tabBars.buttons["Settings"].tap()
+            if app.buttons["Gentle"].waitForExistence(timeout: 20) { app.buttons["Gentle"].tap() }
+        }
+
+        app.tabBars.buttons["Sweep"].tap()
+        wait(app.navigationBars["Sweep"], 20)
+        wait(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Unsubscribes automatically'")).firstMatch, 30)
+        let apply = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Archive'")).firstMatch
+        wait(apply, 90)
+        apply.tap()
+        wait(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Swept'")).firstMatch, 120)
+
+        app.tabBars.buttons["Activity"].tap()
+        wait(app.navigationBars["Activity"], 20)
+        let notConfirmed = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'not confirmed'")).firstMatch
+        wait(notConfirmed, 30)
+        keepScreenshot("activity-not-confirmed")
+        XCTAssertTrue(notConfirmed.label.contains("Nothing was sent."), notConfirmed.label)
+        XCTAssertFalse(app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Unsubscribed from'")).firstMatch.exists)
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Archived' OR label BEGINSWITH 'Moved'")).firstMatch.exists,
+                      "the archive result is still shown")
     }
 
     func testSweepListsPlanAndSettingsHasNoOllama() {

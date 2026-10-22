@@ -90,6 +90,17 @@ All notable changes to Grokbox are recorded here. The format follows
 - Continuous integration on GitHub Actions (macOS 26).
 
 ### Fixed
+- An unsubscribe link could reach this device or the local network through a
+  host that only looked public: `localhost.`, a number such as `2130706433`,
+  or a name whose DNS answer was private. Grokbox now looks the name up once,
+  refuses unless every address is public, connects only to a checked address,
+  and still verifies the certificate against the name. A redirect gets the
+  same checks.
+- Activity said "Unsubscribed from" whatever happened. It now says the
+  sender accepted the request, or that the unsubscribe was not confirmed and
+  why: nothing was sent, the server refused it, a browser is needed, or the
+  request went out and no answer came back. The sender window no longer says
+  "Unsubscribed" when the server only acknowledged the request.
 - Removing an account left its sweep rules behind. Rules are global on
   purpose, but a rule about a sender no remaining account receives from is
   dead weight, and sweep rules from a removed demo mailbox stayed live against
