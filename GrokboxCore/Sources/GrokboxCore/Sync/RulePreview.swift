@@ -63,6 +63,8 @@ public struct RulePreview: Sendable {
 
     public let address: String
     public let edit: RuleEdit
+    /// The rule as it was when this preview was built; nil when there was none.
+    public let currentRule: SenderOverride?
     /// The rule as it would be stored; nil when the edit removes it.
     public let resultingRule: SenderOverride?
     public let accounts: [AccountEffect]
@@ -83,16 +85,20 @@ public struct RulePreview: Sendable {
         return out
     }
 
-    /// Whether another preview of the same edit reaches the same result, so a
-    /// screen can say "mail changed since you looked" before saving.
+    /// Whether another preview of the same edit starts from the same rule and
+    /// reaches the same result, so a screen can say "this changed since you
+    /// looked" before saving. A whole-rule edit reaches the same result from
+    /// any starting rule, so the starting rule is compared too: saving it
+    /// would otherwise overwrite a decision made in the meantime.
     public func sameEffect(as other: RulePreview) -> Bool {
-        address == other.address && edit == other.edit && accounts == other.accounts
+        address == other.address && edit == other.edit && currentRule == other.currentRule && accounts == other.accounts
     }
 
     @MainActor
     public static func make(address: String, edit: RuleEdit, policy: CleanupPolicy = .current,
                             in context: ModelContext, now: Date = Date(), sampleLimit: Int = 5) throws -> RulePreview {
-        let resulting = try edit.applied(to: RuleStore.override(for: address, in: context))
+        let current = try RuleStore.override(for: address, in: context)
+        let resulting = edit.applied(to: current)
         let rules = resulting.map { [address: $0.decision] } ?? [:]
         let overrides = resulting.map { [address: $0] } ?? [:]
 
@@ -133,7 +139,7 @@ public struct RulePreview: Sendable {
         }
         .sorted { ($0.accountName, $0.accountID.uuidString) < ($1.accountName, $1.accountID.uuidString) }
 
-        return RulePreview(address: address, edit: edit, resultingRule: resulting, accounts: effects,
+        return RulePreview(address: address, edit: edit, currentRule: current, resultingRule: resulting, accounts: effects,
                            generatedAt: now, indexedAt: profiles.map(\.updatedAt).max())
     }
 }
