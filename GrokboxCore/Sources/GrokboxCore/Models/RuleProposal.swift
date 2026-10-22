@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 /// One indexed row for the sender a request is about. An address can have
 /// one row per account.
@@ -15,11 +16,11 @@ struct KnownSender: Sendable, Equatable {
 /// rule menu), never read from the sentence. Display names are chosen by
 /// senders, so a sentence that named one could be captured by a sender
 /// whose name swallows the rest of it.
-enum RuleProposal: Sendable, Equatable {
+public enum RuleProposal: Sendable, Equatable {
     case draft(RuleDraft)
     case unresolved(Unresolved)
 
-    enum Unresolved: Sendable, Equatable {
+    public enum Unresolved: Sendable, Equatable {
         /// The sentence is not one of the forms in `RequestForm.all`.
         case unsupported
         /// The sentence fits more than one form with different results, or
@@ -96,7 +97,7 @@ enum RuleProposal: Sendable, Equatable {
         if after == before { return .unresolved(.nothingToChange) }
 
         let effects = Effects(categories: Set(indexed.map(\.category)), policy: policy)
-        return .draft(RuleDraft(address: address, before: before, after: after,
+        return .draft(RuleDraft(address: address, before: before, after: after, title: target.change.title(folder: target.folder),
                                 irreversibleEffects: effects.irreversible(from: before, to: after)))
     }
 
@@ -371,9 +372,69 @@ private struct Effects {
 /// A rule change for one sender, before and after, with what it would do
 /// under the policy in force when it was drafted. Global across accounts,
 /// like every sender rule.
-struct RuleDraft: Sendable, Equatable {
-    var address: String
-    var before: SenderOverride?
-    var after: SenderOverride
-    var irreversibleEffects: [String]
+public struct RuleDraft: Sendable, Equatable {
+    public var address: String
+    public var before: SenderOverride?
+    public var after: SenderOverride
+    /// The change in the words the Senders menus use ("Always move to Trash").
+    public var title: String
+    public var irreversibleEffects: [String]
+
+    /// What the review sheet previews and, on Save, writes.
+    public var edit: RuleEdit { .replace(after) }
+}
+
+extension RequestForm.Change {
+    func title(folder: String?) -> String {
+        switch self {
+        case .decide(let decision): RuleEdit.decision(decision).title
+        case .destination(let disposition): RuleEdit.disposition(disposition).title
+        case .unsubscribe(let allowed): RuleEdit.autoUnsubscribe(allowed).title
+        case .folder: RuleEdit.customFolder(folder).title
+        }
+    }
+}
+
+extension RuleProposal.Unresolved {
+    /// Why nothing was drafted, in a sentence the person can act on.
+    public var message: String {
+        switch self {
+        case .unsupported:
+            "Grokbox can't turn that into a rule yet. Try “trash them”, “keep them”, “never unsubscribe from them” or “file them under \"Reading\"”. Folder names go in quotes."
+        case .ambiguousRequest:
+            "That could mean more than one thing, so nothing was drafted."
+        case .notApproved:
+            "This sender isn't swept yet. Approve it with Always sweep first; a typed request can only keep it."
+        case .unknownFolder(let folder):
+            "There's no folder called “\(folder)”. Use Choose folder… to make a new one."
+        case .ambiguousFolder(let folders):
+            "More than one folder matches: \(folders.joined(separator: ", ")). Type the name exactly."
+        case .reservedFolder(let folder):
+            "“\(folder)” is a special mailbox, so mail can't be filed into it here."
+        case .noOneClickLink:
+            "This sender has no one-click unsubscribe link."
+        case .conflict(let reason):
+            reason
+        case .nothingToChange:
+            "That's already how this sender is set."
+        }
+    }
+}
+
+extension RuleProposal {
+    /// Reads a request about one sender against what the store holds now:
+    /// that sender's indexed rows, its rule, and the folders Grokbox already
+    /// files into (category folders and folders other rules use). A failed
+    /// fetch is thrown rather than read as "nothing there".
+    @MainActor
+    public static func make(request: String, address: String, in context: ModelContext,
+                            policy: CleanupPolicy) throws -> RuleProposal {
+        let profiles = try context.fetch(FetchDescriptor<SenderProfile>(predicate: #Predicate { $0.address == address }))
+        let rules = try context.fetch(FetchDescriptor<SenderRule>())
+        let folders = Set(SenderCategory.allCases.map(\.folderName)).union(rules.compactMap(\.customFolder))
+        return make(request: request, address: address,
+                    indexed: profiles.map { KnownSender(category: $0.category, supportsOneClickUnsubscribe: $0.supportsOneClickUnsubscribe) },
+                    rule: rules.first { $0.address == address }.map(SenderOverride.init(rule:)),
+                    folders: folders, policy: policy)
+    }
 }

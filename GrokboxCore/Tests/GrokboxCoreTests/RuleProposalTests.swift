@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import SwiftData
 @testable import GrokboxCore
 
 struct RuleProposalTests {
@@ -344,5 +345,60 @@ struct RuleProposalTests {
         }
         #expect(unapprovedKeeps > 0, "the forms must reach senders without a sweep rule")
         #expect(approvedEdits > 0, "the forms must reach approved senders")
+    }
+
+    // MARK: - What the apps see
+
+    @Test func aDraftNamesItsChangeAsTheMenusDo() {
+        #expect(draft(propose("Send them to the trash", rule: Self.archived))?.title == RuleEdit.disposition(.trash).title)
+        #expect(draft(propose("File them under \"Reading\"", rule: Self.archived))?.title == RuleEdit.customFolder("Reading").title)
+        #expect(draft(propose("Never sweep them", rule: nil))?.title == RuleEdit.decision(.keep).title)
+    }
+
+    @Test func everyRefusalHasASentence() {
+        let reasons: [RuleProposal.Unresolved] = [.unsupported, .ambiguousRequest, .notApproved, .unknownFolder("X"),
+                                                  .ambiguousFolder(["A", "a"]), .reservedFolder("Trash"), .noOneClickLink,
+                                                  .conflict("Clear that folder first."), .nothingToChange]
+        for reason in reasons { #expect(!reason.message.isEmpty, "\(reason)") }
+    }
+}
+
+@MainActor
+@Suite(.serialized)
+struct RuleProposalStoreTests {
+    private func store() throws -> ModelContext {
+        let context = ModelContainer.grokboxTestContainer().mainContext
+        let profile = SenderProfile(accountID: UUID(), address: "deals@x.example")
+        profile.category = .promotion
+        profile.supportsOneClickUnsubscribe = true
+        context.insert(profile)
+        context.insert(SenderProfile(accountID: UUID(), address: "new@x.example"))
+        try RuleStore.apply(.decision(.sweep), for: "deals@x.example", in: context)
+        try RuleStore.apply(.customFolder("Clients"), for: "other@x.example", in: context)
+        return context
+    }
+
+    @Test func foldersOtherRulesUseAreFilingDestinations() throws {
+        let context = try store()
+        let proposal = try RuleProposal.make(request: "File them under \"Clients\"", address: "deals@x.example", in: context, policy: .gentle)
+        guard case .draft(let draft) = proposal else { Issue.record("\(proposal)"); return }
+        #expect(draft.after.customFolder == "Clients")
+    }
+
+    @Test func aSenderWithoutASweepRuleIsRefusedFromTheStoreToo() throws {
+        let context = try store()
+        #expect(try RuleProposal.make(request: "Trash them", address: "new@x.example", in: context, policy: .gentle)
+                == .unresolved(.notApproved))
+    }
+
+    /// Confirming in the review sheet saves `draft.edit` through the one rule
+    /// writer, and what lands in the store is exactly the draft.
+    @Test func savingTheDraftStoresExactlyTheDraft() throws {
+        let context = try store()
+        let proposal = try RuleProposal.make(request: "Unsubscribe me from them", address: "deals@x.example", in: context, policy: .gentle)
+        guard case .draft(let draft) = proposal else { Issue.record("\(proposal)"); return }
+        try RuleStore.apply(draft.edit, for: draft.address, in: context)
+        #expect(RuleStore.overrides(in: context)["deals@x.example"] == draft.after)
+        #expect(draft.irreversibleEffects.count == 1)
     }
 }

@@ -24,6 +24,9 @@ struct SendersView: View {
     @State private var folderPickerAddress: String?
     @State private var ruleError: String?
     @State private var pendingRule: PendingRuleEdit?
+    @State private var describing: SenderCluster?
+    /// A typed request's draft, opened in the review sheet once this sheet has gone.
+    @State private var describedRule: PendingRuleEdit?
 
     init(account: MailAccount, state: AppState) {
         self.account = account
@@ -93,6 +96,14 @@ struct SendersView: View {
         .sheet(isPresented: Binding(get: { folderPickerAddress != nil }, set: { if !$0 { folderPickerAddress = nil } })) {
             if let folderPickerAddress {
                 FolderPickerSheet(address: folderPickerAddress, account: account)
+            }
+        }
+        .sheet(item: $describing, onDismiss: {
+            pendingRule = describedRule
+            describedRule = nil
+        }) { cluster in
+            DescribeChangeSheet(address: cluster.address, senderName: cluster.displayName, policy: state.policy) { draft in
+                describedRule = PendingRuleEdit(address: draft.address, senderName: cluster.displayName, edit: draft.edit)
             }
         }
         .ruleSaveAlert($ruleError)
@@ -306,6 +317,8 @@ struct SendersView: View {
                                 Button("Unsubscribe when sweeping") { pendingRule = PendingRuleEdit(address: a.cluster.address, senderName: a.cluster.displayName, edit: .autoUnsubscribe(true)) }
                             }
                         }
+                        Divider()
+                        Button("Describe a change…") { describing = a.cluster }
                         if ruleMap[a.cluster.address] != nil {
                             Divider()
                             Button("Clear rule") { pendingRule = PendingRuleEdit(address: a.cluster.address, senderName: a.cluster.displayName, edit: .clear) }

@@ -14,6 +14,9 @@ struct PhoneSendersView: View {
     @State private var showingOutcome = false
     @State private var ruleError: String?
     @State private var pendingRule: PendingRuleEdit?
+    @State private var describing: SenderProfile?
+    /// A typed request's draft, opened in the review sheet once this sheet has gone.
+    @State private var describedRule: PendingRuleEdit?
     @State private var showingUnsubscribeChecklist = false
     @State private var showingContacts = false
 
@@ -71,6 +74,14 @@ struct PhoneSendersView: View {
             if let url = item.url { Button("Open link") { openURL(url) } }
             Button("OK", role: .cancel) { }
         } message: { item in Text(item.text) }
+        .sheet(item: $describing, onDismiss: {
+            pendingRule = describedRule
+            describedRule = nil
+        }) { profile in
+            PhoneDescribeChangeSheet(address: profile.address, senderName: profile.displayName, policy: state.policy) { draft in
+                describedRule = PendingRuleEdit(address: draft.address, senderName: profile.displayName, edit: draft.edit)
+            }
+        }
         .ruleEditSheet($pendingRule, policy: state.policy, errorMessage: $ruleError)
         .background {
             Color.clear.alert("Couldn't save the rule", isPresented: Binding(get: { ruleError != nil }, set: { if !$0 { ruleError = nil } }),
@@ -125,6 +136,7 @@ struct PhoneSendersView: View {
                     Button("Unsubscribe when sweeping") { request(.autoUnsubscribe(true), for: p) }
                 }
             }
+            Button { describing = p } label: { Label("Describe a change…", systemImage: "text.bubble") }
             if ruleMap[p.address] != nil {
                 Button("Clear rule") { request(.clear, for: p) }
             }

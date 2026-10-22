@@ -95,6 +95,74 @@ final class GrokboxiOSUITests: XCTestCase {
         wait(app.buttons["Clear rule"], 10)
     }
 
+    /// A typed request is read into a draft, shown in the same review sheet,
+    /// and saved only from there. It never approves a sender.
+    func testDescribedChangeIsDraftedPreviewedAndSavedOnlyOnRequest() {
+        app.tabBars.buttons["Senders"].tap()
+        wait(app.navigationBars["Senders"], 20)
+        let row = app.cells.element(boundBy: 1)   // the index bar is the first cell
+        wait(row, 60)
+
+        func describe(_ request: String) {
+            row.press(forDuration: 1.2)
+            wait(app.buttons["Describe a change…"], 10)
+            app.buttons["Describe a change…"].tap()
+            let field = app.textFields["describeChangeField"]
+            wait(field, 20)
+            field.tap()
+            field.typeText(request)
+            app.navigationBars["Change the rule"].buttons["Draft"].tap()
+        }
+
+        describe("Trash them")
+        wait(app.staticTexts["describeChangeRefusal"], 10)
+        XCTAssertTrue(app.staticTexts["describeChangeRefusal"].label.contains("isn't swept yet"), "typing cannot approve a sender")
+        XCTAssertFalse(app.buttons["describeChangePreview"].exists, "a refusal offers nothing to save")
+        app.buttons["Cancel"].tap()
+
+        describe("Keep them")
+        wait(app.buttons["describeChangePreview"], 10)
+        app.buttons["describeChangePreview"].tap()
+        wait(app.staticTexts["Scope"], 20)
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(app.buttons["saveRule"].waitForNonExistence(timeout: 10))
+        row.press(forDuration: 1.2)
+        wait(app.buttons["Describe a change…"], 10)
+        XCTAssertFalse(app.buttons["Clear rule"].exists, "cancelling the review saves nothing")
+        app.buttons["Describe a change…"].tap()
+        app.buttons["Cancel"].tap()
+
+        row.swipeLeft()
+        wait(app.buttons["Always sweep"], 10)
+        app.buttons["Always sweep"].tap()
+        wait(app.buttons["saveRule"], 20)
+        app.buttons["saveRule"].tap()
+        XCTAssertTrue(app.buttons["saveRule"].waitForNonExistence(timeout: 10))
+
+        describe("Send them to the trash")
+        wait(app.staticTexts["describeChangeDraft"], 10)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'permanently'")).firstMatch.exists,
+                      "a draft that moves mail to Trash says it can end in loss")
+        let draft = XCTAttachment(screenshot: app.screenshot())
+        draft.name = "describe-change-draft"
+        draft.lifetime = .keepAlways
+        add(draft)
+        app.buttons["describeChangePreview"].tap()
+        wait(app.buttons["saveRule"], 20)
+        wait(app.staticTexts["Scope"], 20)
+        let review = XCTAttachment(screenshot: app.screenshot())
+        review.name = "describe-change-review"
+        review.lifetime = .keepAlways
+        add(review)
+        app.buttons["saveRule"].tap()
+        XCTAssertTrue(app.buttons["saveRule"].waitForNonExistence(timeout: 10), "saving closes the review sheet")
+
+        describe("Send them to the trash")
+        wait(app.staticTexts["describeChangeRefusal"], 10)
+        XCTAssertTrue(app.staticTexts["describeChangeRefusal"].label.contains("already"), "the saved rule now trashes this sender")
+        app.buttons["Cancel"].tap()
+    }
+
     func testSendersSearchFilters() {
         app.tabBars.buttons["Senders"].tap()
         wait(app.navigationBars["Senders"], 20)
