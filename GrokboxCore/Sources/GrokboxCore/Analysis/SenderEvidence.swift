@@ -204,25 +204,32 @@ public struct LastSweepText: Sendable, Equatable {
     public var note: String?
 
     /// `sharedAcrossAccounts`: the sender is indexed in more than one account.
-    public init(report: SweepReport, address: String, mailbox: String, sharedAcrossAccounts: Bool) {
+    /// `knownUIDs`: the UIDs this account has indexed for the sender. The report
+    /// carries no account, so a result is shown only when every message in it is
+    /// one of these; anything else could belong to another account.
+    public init(report: SweepReport, address: String, mailbox: String, sharedAcrossAccounts: Bool, knownUIDs: Set<UInt32>) {
+        let entries = report.senders.filter { $0.address == address && $0.mailbox == mailbox }
         if sharedAcrossAccounts {
             (counts, note) = ([], "This sender is in more than one account and the report does not say which one the sweep ran on, so no result is shown.")
-        } else if let sender = report.senders.first(where: { $0.address == address && $0.mailbox == mailbox }) {
-            if report.ending == .running {
-                (counts, note) = ([], "A sweep is running now.")
-            } else {
-                let tally = report.tally(of: sender)
-                counts = [Count(value: tally.confirmed, label: "confirmed moved"), Count(value: tally.failed, label: "failed"),
-                          Count(value: tally.held, label: "held in the inbox"), Count(value: tally.unknown, label: "unknown")]
-                note = switch report.ending {
-                case .completed, .running: nil
-                case .stopped: "The sweep was stopped before it finished."
-                case .refused: "The sweep was refused before it finished."
-                case .interrupted: "The connection broke off before the sweep finished."
-                }
-            }
+        } else if entries.isEmpty {
+            (counts, note) = ([], "This sender was not in the last sweep.")
+        } else if !entries.allSatisfy({ knownUIDs.isSuperset(of: $0.planned) }) {
+            (counts, note) = ([], "The last sweep's messages do not match this account's index, so no result is shown.")
+        } else if report.ending == .running {
+            (counts, note) = ([], "A sweep is running now.")
         } else {
-            (counts, note) = ([], "No sweep of this sender since Grokbox opened.")
+            let tally = entries.map(report.tally(of:)).reduce(SweepReport.Tally()) {
+                SweepReport.Tally(confirmed: $0.confirmed + $1.confirmed, failed: $0.failed + $1.failed,
+                                  held: $0.held + $1.held, unknown: $0.unknown + $1.unknown)
+            }
+            counts = [Count(value: tally.confirmed, label: "confirmed moved"), Count(value: tally.failed, label: "failed"),
+                      Count(value: tally.held, label: "held in the inbox"), Count(value: tally.unknown, label: "unknown")]
+            note = switch report.ending {
+            case .completed, .running: nil
+            case .stopped: "The sweep was stopped before it finished."
+            case .refused: "The sweep was refused before it finished."
+            case .interrupted: "The connection broke off before the sweep finished."
+            }
         }
     }
 }

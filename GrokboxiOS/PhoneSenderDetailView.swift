@@ -90,7 +90,8 @@ struct PhoneSenderDetailView: View {
 
     @ViewBuilder private var lastSweepSection: some View {
         let text = LastSweepText(report: state.executor.lastReport, address: profile.address,
-                                 mailbox: profile.cluster.mailbox, sharedAcrossAccounts: !evidence.otherAccounts.isEmpty)
+                                 mailbox: profile.cluster.mailbox, sharedAcrossAccounts: !evidence.otherAccounts.isEmpty,
+                                 knownUIDs: Set(profile.cluster.uids))
         Section {
             if text.counts.isEmpty {
                 if let note = text.note { Text(note).foregroundStyle(.secondary) }
