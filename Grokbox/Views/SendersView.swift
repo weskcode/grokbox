@@ -22,6 +22,7 @@ struct SendersView: View {
     @State private var showingUnsubscribeChecklist = false
     @State private var showingContacts = false
     @State private var folderPickerAddress: String?
+    @State private var ruleError: String?
 
     init(account: MailAccount, state: AppState) {
         self.account = account
@@ -93,6 +94,7 @@ struct SendersView: View {
                 FolderPickerSheet(address: folderPickerAddress, account: account)
             }
         }
+        .ruleSaveAlert($ruleError)
         .alert("Unsubscribe", isPresented: $showingOutcome, presenting: unsubscribeOutcome) { item in
             if case .openInBrowser(let url) = item.outcome {
                 Button("Open link") { openURL(url) }
@@ -286,25 +288,25 @@ struct SendersView: View {
             TableColumn("") { a in
                 HStack(spacing: 6) {
                     Menu {
-                        Button("Always sweep") { RuleStore.set(.sweep, for: a.cluster.address, in: modelContext) }
-                        Button("Always keep") { RuleStore.set(.keep, for: a.cluster.address, in: modelContext) }
+                        Button("Always sweep") { modelContext.saveRule(.decision(.sweep), for: a.cluster.address, reportingTo: $ruleError) }
+                        Button("Always keep") { modelContext.saveRule(.decision(.keep), for: a.cluster.address, reportingTo: $ruleError) }
                         Divider()
                         Section("Where this sender's mail goes") {
-                            Button("Follow my policy") { RuleStore.setDisposition(nil, for: a.cluster.address, in: modelContext) }
+                            Button("Follow my policy") { modelContext.saveRule(.disposition(nil), for: a.cluster.address, reportingTo: $ruleError) }
                             ForEach(CleanupPolicy.Disposition.allCases) { d in
-                                Button("Always \(d.label.lowercased())") { RuleStore.setDisposition(d, for: a.cluster.address, in: modelContext) }
+                                Button("Always \(d.label.lowercased())") { modelContext.saveRule(.disposition(d), for: a.cluster.address, reportingTo: $ruleError) }
                             }
                             Button("Choose folder…") { folderPickerAddress = a.cluster.address }
                         }
                         if a.cluster.hasUnsubscribeLink {
                             Section("Unsubscribing") {
-                                Button("Never unsubscribe from this sender") { RuleStore.setAutoUnsubscribe(false, for: a.cluster.address, in: modelContext) }
-                                Button("Unsubscribe when sweeping") { RuleStore.setAutoUnsubscribe(true, for: a.cluster.address, in: modelContext) }
+                                Button("Never unsubscribe from this sender") { modelContext.saveRule(.autoUnsubscribe(false), for: a.cluster.address, reportingTo: $ruleError) }
+                                Button("Unsubscribe when sweeping") { modelContext.saveRule(.autoUnsubscribe(true), for: a.cluster.address, reportingTo: $ruleError) }
                             }
                         }
                         if ruleMap[a.cluster.address] != nil {
                             Divider()
-                            Button("Clear rule") { RuleStore.clear(for: a.cluster.address, in: modelContext) }
+                            Button("Clear rule") { modelContext.saveRule(.clear, for: a.cluster.address, reportingTo: $ruleError) }
                         }
                     } label: {
                         Image(systemName: "slider.horizontal.3")

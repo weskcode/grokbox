@@ -66,15 +66,15 @@ struct SenderOverrideTests {
         let container = ModelContainer.grokboxTestContainer()
         let context = container.mainContext
 
-        RuleStore.setDisposition(.trash, for: "deals@x.example", in: context)
+        try RuleStore.setDisposition(.trash, for: "deals@x.example", in: context)
         #expect(RuleStore.overrides(in: context)["deals@x.example"]?.disposition == .trash)
 
-        RuleStore.setCustomFolder("Clients/VIP", for: "deals@x.example", in: context)
+        try RuleStore.setCustomFolder("Clients/VIP", for: "deals@x.example", in: context)
         let overrides = RuleStore.overrides(in: context)
         #expect(overrides["deals@x.example"]?.customFolder == "Clients/VIP")
         #expect(overrides["deals@x.example"]?.disposition == .fileIntoFolders, "a folder pick overrides trash/archive-only")
 
-        RuleStore.setCustomFolder(nil, for: "deals@x.example", in: context)
+        try RuleStore.setCustomFolder(nil, for: "deals@x.example", in: context)
         #expect(RuleStore.overrides(in: context)["deals@x.example"]?.customFolder == nil, "clearing returns to the category default")
     }
 
@@ -97,12 +97,12 @@ struct SenderOverrideTests {
         let container = ModelContainer.grokboxTestContainer()
         let context = container.mainContext
 
-        RuleStore.setDisposition(.trash, for: "deals@x.example", in: context)
+        try RuleStore.setDisposition(.trash, for: "deals@x.example", in: context)
         var overrides = RuleStore.overrides(in: context)
         #expect(overrides["deals@x.example"]?.disposition == .trash)
         #expect(overrides["deals@x.example"]?.decision == .sweep, "naming a destination implies sweeping it")
 
-        RuleStore.setAutoUnsubscribe(false, for: "deals@x.example", in: context)
+        try RuleStore.setAutoUnsubscribe(false, for: "deals@x.example", in: context)
         overrides = RuleStore.overrides(in: context)
         #expect(overrides["deals@x.example"]?.autoUnsubscribe == false)
         #expect(overrides["deals@x.example"]?.disposition == .trash, "one setting does not clear the other")
@@ -110,10 +110,10 @@ struct SenderOverrideTests {
         let rule = try #require(try context.fetch(FetchDescriptor<SenderRule>()).first)
         #expect(rule.summary.contains("Always sweep") && rule.summary.contains("trash") && rule.summary.contains("never unsubscribe"))
 
-        RuleStore.setDisposition(nil, for: "deals@x.example", in: context)
+        try RuleStore.setDisposition(nil, for: "deals@x.example", in: context)
         #expect(RuleStore.overrides(in: context)["deals@x.example"]?.disposition == nil, "back to following the policy")
 
-        RuleStore.clear(for: "deals@x.example", in: context)
+        try RuleStore.clear(for: "deals@x.example", in: context)
         #expect(RuleStore.overrides(in: context).isEmpty)
     }
 }

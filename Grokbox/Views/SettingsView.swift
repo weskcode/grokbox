@@ -25,6 +25,7 @@ struct SettingsView: View {
     @State private var showingExporter = false
     @State private var showingImporter = false
     @State private var transferMessage: String?
+    @State private var ruleError: String?
 
     @State private var jevAPIKeyField = ""
     @State private var hasJevKey = false
@@ -139,7 +140,7 @@ struct SettingsView: View {
                                 Text("\(rule.decision.label) · applied \(rule.timesApplied)×").font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Button("Remove") { RuleStore.clear(for: rule.address, in: modelContext) }.controlSize(.small)
+                            Button("Remove") { modelContext.saveRule(.clear, for: rule.address, reportingTo: $ruleError) }.controlSize(.small)
                         }
                     }
                 }
@@ -216,6 +217,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .ruleSaveAlert($ruleError)
         .navigationTitle("Settings")
     }
 
