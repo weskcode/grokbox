@@ -104,13 +104,15 @@ public enum ConversationResponsibility {
     public enum Reason: Sendable, Equatable {
         case groupedBySubject
         case missingFact(MissingFact)
+        /// Two copies of one message disagree, so neither can be trusted.
+        case conflictingCopies(key: String)
         case sentNotCheckedBefore(Date)
         case orderUnclear
         case replyMayNotHaveArrived(Date)
         case corrected
         case notReadByModel(key: String, Reading)
         case othersReplied(author: String, Date)
-        case copiedOnReply(Date)
+        case copiedOnReply(Date, ActionType?)
         case asked(author: String, Date)
         case youReplied(Date)
         case acknowledged(Date)
@@ -123,7 +125,8 @@ public enum ConversationResponsibility {
         public var reason: Reason
         /// After an open ask, what the asker sent next: `.none` for a thanks.
         public var followUp: ActionType?
-        /// Automatic replies and receipts after the user's latest message, shown as evidence only.
+        /// Automatic replies and receipts after the user's latest message, or all of
+        /// them when the user has not written. Evidence only.
         public var automaticReplies: [Date]
         public var lastFromUser: Date?
     }
@@ -139,33 +142,40 @@ public enum ConversationResponsibility {
     }
 
     /// `nil` when the conversation is not tracked and keeps today's behavior.
+    /// Unknown facts count as possibly tracking it, so an unknown is reported
+    /// rather than hidden.
     public static func derive(_ conversation: Conversation, correction: Correction? = nil) -> Result? {
-        let ordered = canonical(conversation.messages)
-        let human = ordered.indices.filter { ordered[$0].automation == .human }
-        let isTracked = human.contains { i in
-            let m = ordered[i]
-            if m.isFromUser == true { return true }
-            guard m.isFromUser == false, m.isAddressedToUser == true, case .read(.needsYou, _) = m.reading else { return false }
-            return true
+        guard conversation.messages.contains(where: mightTrack) else { return nil }
+
+        let lastHumanFromUser = conversation.messages
+            .filter { $0.isFromUser == true && $0.automation == .human }.map(\.date).max()
+        func unresolved(_ reason: Reason) -> Result {
+            Result(state: .uncertain, reason: reason, followUp: nil, automaticReplies: [], lastFromUser: lastHumanFromUser)
         }
-        guard isTracked, let l = human.last else { return nil }
+
+        switch conversation.identity {
+        case nil: return unresolved(.missingFact(.identitySource))
+        case .subjectFallback: return unresolved(.groupedBySubject)
+        case .headers: break
+        }
+        if let fact = missingFact(in: conversation.messages) { return unresolved(.missingFact(fact)) }
+
+        let ordered: [Message]
+        switch canonical(conversation.messages) {
+        case .conflict(let key): return unresolved(.conflictingCopies(key: key))
+        case .ordered(let messages): ordered = messages
+        }
+        let human = ordered.indices.filter { ordered[$0].automation == .human }
+        guard let l = human.last else { return nil }
 
         let u = human.last { ordered[$0].isFromUser == true }
-        let automaticReplies = u.map { u in
-            ordered.indices.filter { $0 > u && ordered[$0].automation == .other }.map { ordered[$0].date }
-        } ?? []
+        let automaticReplies = ordered.indices
+            .filter { ordered[$0].automation == .other && $0 > (u ?? -1) }.map { ordered[$0].date }
         func result(_ state: State, _ reason: Reason, followUp: ActionType? = nil) -> Result {
             Result(state: state, reason: reason, followUp: followUp, automaticReplies: automaticReplies,
                    lastFromUser: u.map { ordered[$0].date })
         }
 
-        switch conversation.identity {
-        case nil: return result(.uncertain, .missingFact(.identitySource))
-        case .subjectFallback: return result(.uncertain, .groupedBySubject)
-        case .headers: break
-        }
-
-        if let fact = missingFact(in: ordered) { return result(.uncertain, .missingFact(fact)) }
         switch conversation.sentCoverage {
         case .unknown:
             return result(.uncertain, .missingFact(.sentCoverage))
@@ -210,7 +220,7 @@ public enum ConversationResponsibility {
         }
 
         if latest.isFromUser == false, latest.isAddressedToUser == false, u != nil {
-            return result(.uncertain, .copiedOnReply(latest.date))
+            return result(.uncertain, .copiedOnReply(latest.date, readAction(latest)))
         }
 
         let asks = inbound.filter { i in
@@ -236,48 +246,74 @@ public enum ConversationResponsibility {
             return result(.uncertain, .taskNotReply(action))
         }
 
-        let task = inbound.last.flatMap { i -> ActionType? in
+        let task = inbound.reversed().lazy.compactMap { i -> ActionType? in
             if case .read(.needsYou, let action) = ordered[i].reading { action } else { nil }
-        }
+        }.first
         return result(.uncertain, .unmatched(task: task))
     }
 
-    /// Collapses duplicates by key and orders by (date, key), a total order, so
-    /// the same set always produces the same list. Duplicates are assumed to be
-    /// one message seen twice; the copy with the most reader information wins.
-    static func canonical(_ messages: [Message]) -> [Message] {
+    private static func readAction(_ message: Message) -> ActionType? {
+        if case .read(_, let action) = message.reading { action } else { nil }
+    }
+
+    /// Could this message make the conversation tracked, reading unknowns permissively?
+    private static func mightTrack(_ message: Message) -> Bool {
+        guard message.automation == .human || message.automation == nil else { return false }
+        if message.isFromUser != false { return true }
+        guard message.isAddressedToUser != false, case .read(.needsYou, _) = message.reading else { return false }
+        return true
+    }
+
+    enum Collapsed: Equatable {
+        case ordered([Message])
+        case conflict(String)
+    }
+
+    /// Collapses copies of one message and orders by (date, key), a total order,
+    /// so the same set always gives the same list. Copies must agree on every
+    /// fact; a reader result may only fill in where another copy has none.
+    static func canonical(_ messages: [Message]) -> Collapsed {
         var byKey: [String: Message] = [:]
-        var unkeyed: [Message] = []
+        var conflicts: [String] = []
         for message in messages {
-            guard let key = message.key else { unkeyed.append(message); continue }
-            if let existing = byKey[key], !isBetterCopy(message, than: existing) { continue }
-            byKey[key] = message
+            guard let key = message.key else { continue }
+            guard let existing = byKey[key] else { byKey[key] = message; continue }
+            switch merge(existing, message) {
+            case let merged?: byKey[key] = merged
+            case nil: conflicts.append(key)
+            }
         }
-        return (Array(byKey.values) + unkeyed).sorted {
-            $0.date != $1.date ? $0.date < $1.date : ($0.key ?? "") < ($1.key ?? "")
+        if let key = conflicts.min() { return .conflict(key) }
+        return .ordered(byKey.values.sorted { $0.date != $1.date ? $0.date < $1.date : ($0.key ?? "") < ($1.key ?? "") })
+    }
+
+    private static func merge(_ a: Message, _ b: Message) -> Message? {
+        var aFacts = a, bFacts = b
+        aFacts.reading = .notRead
+        bFacts.reading = .notRead
+        guard aFacts == bFacts else { return nil }
+        switch (a.reading, b.reading) {
+        case (.read, .read): return a.reading == b.reading ? a : nil
+        case (.read, _): return a
+        case (_, .read): return b
+        default: return rank(a.reading) >= rank(b.reading) ? a : b
         }
     }
 
-    private static func isBetterCopy(_ a: Message, than b: Message) -> Bool {
-        func rank(_ r: Reading) -> Int {
-            switch r {
-            case .notRead: 0
-            case .rulesOnly: 1
-            case .modelFailed: 2
-            case .read: 3
-            }
+    private static func rank(_ reading: Reading) -> Int {
+        switch reading {
+        case .notRead: 0
+        case .rulesOnly: 1
+        case .modelFailed: 2
+        case .read: 3
         }
-        if rank(a.reading) != rank(b.reading) { return rank(a.reading) > rank(b.reading) }
-        return a.date < b.date
     }
 
     private static func missingFact(in messages: [Message]) -> MissingFact? {
         if messages.contains(where: { $0.key == nil }) { return .key }
         if messages.contains(where: { $0.isFromUser == nil }) { return .direction }
         if messages.contains(where: { $0.automation == nil }) { return .automation }
-        if messages.contains(where: { $0.automation == .human && $0.isFromUser == false && $0.isAddressedToUser == nil }) {
-            return .addressee
-        }
+        if messages.contains(where: { $0.isFromUser == false && $0.isAddressedToUser == nil }) { return .addressee }
         return nil
     }
 }

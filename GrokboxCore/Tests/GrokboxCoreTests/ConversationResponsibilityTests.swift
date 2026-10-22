@@ -126,14 +126,28 @@ struct ConversationResponsibilityTests {
         #expect(r?.automaticReplies == [day(2)])
     }
 
-    @Test func receiptNeverResolves() {
-        let r = derive(chain([inbound("a", 0), mine("b", 1), inbound("c", 2, automation: .other, reading: .notRead)]))
-        #expect(r?.state != .resolved)
+    @Test func readReceiptIsEvidenceOnly() {
+        let receipt = inbound("c", 2, from: "postmaster@example.com", automation: .other, reading: .notRead)
+        let r = derive(chain([mine("a", 0), inbound("b", 1, reading: .read(.worthKnowing, .none)), mine("d", 1.5), receipt]))
+        #expect(r?.state == .waiting)
+        #expect(r?.reason == .youReplied(day(1.5)))
+        #expect(r?.automaticReplies == [day(2)])
     }
 
     @Test func yourOwnAutoReplyDoesNotAnswerAnAsk() {
         let r = derive(chain([inbound("a", 0), mine("b", 1, automation: .other)]))
         #expect(r?.state == .needsReply)
+        #expect(r?.automaticReplies == [day(1)])
+    }
+
+    @Test func automatedMailAloneDoesNotStartTracking() {
+        #expect(derive(chain([mine("a", 0, automation: .other)])) == nil)
+        #expect(derive(chain([inbound("a", 0, automation: .other, reading: .read(.needsYou, .pay))])) == nil)
+    }
+
+    @Test func automatedInboundNeedsAnAddresseeFact() {
+        let r = derive(chain([inbound("a", 0), mine("b", 1), inbound("c", 2, to: nil, automation: .other, reading: .notRead)]))
+        #expect(r?.reason == .missingFact(.addressee))
     }
 
     @Test func bounceAfterYourReplyIsUncertain() {
@@ -177,7 +191,12 @@ struct ConversationResponsibilityTests {
 
     @Test func copiedReplyAfterYoursIsUncertain() {
         let r = derive(chain([mine("a", 0), inbound("b", 1, to: false)]))
-        #expect(r?.reason == .copiedOnReply(day(1)))
+        #expect(r?.reason == .copiedOnReply(day(1), .reply))
+    }
+
+    @Test func latestTaskIsNamedWhenNothingElseMatches() {
+        let r = derive(chain([inbound("a", 0, reading: .read(.needsYou, .pay)), inbound("b", 1, reading: .read(.worthKnowing, .none))]))
+        #expect(r?.reason == .unmatched(task: .pay))
     }
 
     @Test func someoneElseAnsweringIsUncertain() {
@@ -194,10 +213,40 @@ struct ConversationResponsibilityTests {
 
     @Test func missingFactsAreUncertain() {
         var noKey = mine("b", 1); noKey.key = nil
-        #expect(CR.derive(chain([inbound("a", 0), noKey]))?.reason == .missingFact(.key))
+        #expect(derive(chain([inbound("a", 0), noKey]))?.reason == .missingFact(.key))
+        var unknownSender = inbound("a", 0); unknownSender.isFromUser = nil
+        #expect(derive(chain([unknownSender]))?.reason == .missingFact(.direction))
+        #expect(derive(chain([inbound("a", 0, automation: nil)]))?.reason == .missingFact(.automation))
         var noDirection = inbound("b", 1); noDirection.isFromUser = nil
         #expect(derive(chain([mine("a", 0), noDirection]))?.reason == .missingFact(.direction))
         #expect(derive(chain([mine("a", 0), inbound("b", 1, to: nil)]))?.reason == .missingFact(.addressee))
+    }
+
+    @Test func unkeyedMessagesGiveNoOrderDependentEvidence() {
+        var you = mine("a", 0); you.key = nil
+        var receipt = inbound("b", 0, automation: .other, reading: .notRead); receipt.key = nil
+        let r = derive(chain([you, receipt]))
+        #expect(r?.reason == .missingFact(.key))
+        #expect(r?.automaticReplies == [])
+        #expect(r?.lastFromUser == day(0))
+    }
+
+    @Test func disagreeingCopiesAreUncertain() {
+        var asMine = inbound("a", 0, parent: .root); asMine.isFromUser = true; asMine.author = me
+        let asTheirs = inbound("a", 0, parent: .root)
+        #expect(derive(CR.Conversation(identity: .headers, sentCoverage: .since(day(-30)), messages: [asMine, asTheirs]))?.reason
+                == .conflictingCopies(key: "a"))
+        let reply = inbound("a", 0, parent: .root)
+        let pay = inbound("a", 0, parent: .root, reading: .read(.needsYou, .pay))
+        #expect(derive(CR.Conversation(identity: .headers, sentCoverage: .since(day(-30)), messages: [reply, pay]))?.reason
+                == .conflictingCopies(key: "a"))
+    }
+
+    @Test func aReadCopyFillsInAnUnreadOne() {
+        let unread = inbound("a", 0, parent: .root, reading: .notRead)
+        let read = inbound("a", 0, parent: .root)
+        let r = derive(CR.Conversation(identity: .headers, sentCoverage: .since(day(-30)), messages: [unread, read]))
+        #expect(r?.state == .needsReply)
     }
 
     @Test func outboundNeedsNoAddresseeFact() {
@@ -237,11 +286,13 @@ struct ConversationResponsibilityTests {
         #expect(r?.reason == .corrected)
     }
 
-    @Test(arguments: [priya, dana])
-    func newHumanMailClearsACorrection(_ author: String) {
-        let r = derive(chain([inbound("a", 0), mine("b", 1), inbound("c", 2, from: author, reading: .read(.worthKnowing, .none))]),
-                       correction: resolvedAtB)
-        #expect(r?.state != .resolved)
+    @Test func newHumanMailClearsACorrection() {
+        let thanks = derive(chain([inbound("a", 0), mine("b", 1), inbound("c", 2, reading: .read(.worthKnowing, .none))]),
+                            correction: resolvedAtB)
+        #expect(thanks?.reason == .acknowledged(day(2)))
+        let thirdParty = derive(chain([inbound("a", 0), mine("b", 1), inbound("c", 2, from: dana, reading: .read(.worthKnowing, .none))]),
+                                correction: resolvedAtB)
+        #expect(thirdParty?.reason == .othersReplied(author: dana, day(2)))
     }
 
     @Test func automaticMailKeepsACorrection() {
